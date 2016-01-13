@@ -131,7 +131,6 @@ import socket
 import threading
 import random
 import string
-import boto3
 from concurrent import futures
 
 from botocore.compat import six
@@ -139,8 +138,8 @@ from botocore.vendored.requests.packages.urllib3.exceptions import \
     ReadTimeoutError
 from botocore.exceptions import IncompleteReadError
 
-import boto3.compat
-from boto3.exceptions import RetriesExceededError, S3UploadFailedError
+import s3transfer.compat
+from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 
 logger = logging.getLogger(__name__)
@@ -337,7 +336,7 @@ class OSUtils(object):
             pass
 
     def rename_file(self, current_filename, new_filename):
-        boto3.compat.rename_file(current_filename, new_filename)
+        s3transfer.compat.rename_file(current_filename, new_filename)
 
 
 class MultipartUploader(object):

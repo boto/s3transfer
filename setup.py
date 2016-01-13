@@ -10,7 +10,9 @@ ROOT = os.path.dirname(__file__)
 VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
-requires = []
+requires = [
+    'botocore>=1.3.0,<2.0.0',
+]
 
 
 if sys.version_info[0] == 2:

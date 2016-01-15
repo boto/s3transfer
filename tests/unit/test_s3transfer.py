@@ -23,14 +23,14 @@ from concurrent import futures
 
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.exceptions import S3UploadFailedError
-from s3transfer.legacy import ReadFileChunk, StreamReaderProgress
-from s3transfer.legacy import S3Transfer
-from s3transfer.legacy import OSUtils, TransferConfig
-from s3transfer.legacy import MultipartDownloader, MultipartUploader
-from s3transfer.legacy import ShutdownQueue
-from s3transfer.legacy import QueueShutdownError
-from s3transfer.legacy import random_file_extension
-from s3transfer.legacy import disable_upload_callbacks, enable_upload_callbacks
+from s3transfer import ReadFileChunk, StreamReaderProgress
+from s3transfer import S3Transfer
+from s3transfer import OSUtils, TransferConfig
+from s3transfer import MultipartDownloader, MultipartUploader
+from s3transfer import ShutdownQueue
+from s3transfer import QueueShutdownError
+from s3transfer import random_file_extension
+from s3transfer import disable_upload_callbacks, enable_upload_callbacks
 
 
 class InMemoryOSLayer(OSUtils):
@@ -98,7 +98,7 @@ class TestOSUtils(unittest.TestCase):
             m.assert_called_with('myfile')
 
     def test_open_file_chunk_reader(self):
-        with mock.patch('s3transfer.legacy.ReadFileChunk') as m:
+        with mock.patch('s3transfer.ReadFileChunk') as m:
             OSUtils().open_file_chunk_reader('myfile', 0, 100, None)
             m.from_filename.assert_called_with('myfile', 0, 100,
                                                None, enable_callback=False)
@@ -489,7 +489,7 @@ class TestS3Transfer(unittest.TestCase):
     def setUp(self):
         self.client = mock.Mock()
         self.random_file_patch = mock.patch(
-            's3transfer.legacy.random_file_extension')
+            's3transfer.random_file_extension')
         self.random_file = self.random_file_patch.start()
         self.random_file.return_value = 'RANDOM'
 
@@ -538,7 +538,7 @@ class TestS3Transfer(unittest.TestCase):
         )
 
     def test_uses_multipart_upload_when_over_threshold(self):
-        with mock.patch('s3transfer.legacy.MultipartUploader') as uploader:
+        with mock.patch('s3transfer.MultipartUploader') as uploader:
             fake_files = {
                 'smallfile': b'foobar',
             }
@@ -552,7 +552,7 @@ class TestS3Transfer(unittest.TestCase):
                 'smallfile', 'bucket', 'key', None, {})
 
     def test_uses_multipart_download_when_over_threshold(self):
-        with mock.patch('s3transfer.legacy.MultipartDownloader') as downloader:
+        with mock.patch('s3transfer.MultipartDownloader') as downloader:
             osutil = InMemoryOSLayer({})
             over_multipart_threshold = 100 * 1024 * 1024
             transfer = S3Transfer(self.client, osutil=osutil)

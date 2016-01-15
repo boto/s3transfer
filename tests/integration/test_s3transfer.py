@@ -23,7 +23,7 @@ import botocore.session
 from botocore.compat import six
 from botocore.client import Config
 
-import s3transfer.legacy
+import s3transfer
 
 
 urlopen = six.moves.urllib.request.urlopen
@@ -105,7 +105,7 @@ class FileCreator(object):
 
 
 class TestS3Transfers(unittest.TestCase):
-    """Tests for the high level s3transfer.legacy module."""
+    """Tests for the high level s3transfer module."""
 
     @classmethod
     def setUpClass(cls):
@@ -138,7 +138,7 @@ class TestS3Transfers(unittest.TestCase):
         return True
 
     def create_s3_transfer(self, config=None):
-        return s3transfer.legacy.S3Transfer(self.client,
+        return s3transfer.S3Transfer(self.client,
                                             config=config)
 
     def assert_has_public_read_acl(self, response):
@@ -148,7 +148,7 @@ class TestS3Transfers(unittest.TestCase):
         self.assertIn('groups/global/AllUsers', public_read[0])
 
     def test_upload_below_threshold(self):
-        config = s3transfer.legacy.TransferConfig(
+        config = s3transfer.TransferConfig(
             multipart_threshold=2 * 1024 * 1024)
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
@@ -160,7 +160,7 @@ class TestS3Transfers(unittest.TestCase):
         self.assertTrue(self.object_exists('foo.txt'))
 
     def test_upload_above_threshold(self):
-        config = s3transfer.legacy.TransferConfig(
+        config = s3transfer.TransferConfig(
             multipart_threshold=2 * 1024 * 1024)
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
@@ -171,7 +171,7 @@ class TestS3Transfers(unittest.TestCase):
         self.assertTrue(self.object_exists('20mb.txt'))
 
     def test_upload_file_above_threshold_with_acl(self):
-        config = s3transfer.legacy.TransferConfig(
+        config = s3transfer.TransferConfig(
             multipart_threshold=5 * 1024 * 1024)
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
@@ -192,7 +192,7 @@ class TestS3Transfers(unittest.TestCase):
             'SSECustomerKey': key_bytes,
             'SSECustomerAlgorithm': 'AES256',
         }
-        config = s3transfer.legacy.TransferConfig(
+        config = s3transfer.TransferConfig(
             multipart_threshold=5 * 1024 * 1024)
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
@@ -242,7 +242,7 @@ class TestS3Transfers(unittest.TestCase):
         client = self.session.create_client(
             's3', self.region,
             config=Config(signature_version='s3v4'))
-        transfer = s3transfer.legacy.S3Transfer(client)
+        transfer = s3transfer.S3Transfer(client)
         filename = self.files.create_file_with_size(
             '10mb.txt', filesize=10 * 1024 * 1024)
         transfer.upload_file(filename, self.bucket_name,
@@ -263,7 +263,7 @@ class TestS3Transfers(unittest.TestCase):
         self.assert_has_public_read_acl(response)
 
     def test_can_configure_threshold(self):
-        config = s3transfer.legacy.TransferConfig(
+        config = s3transfer.TransferConfig(
             multipart_threshold=6 * 1024 * 1024
         )
         transfer = self.create_s3_transfer(config)

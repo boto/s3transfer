@@ -32,6 +32,7 @@ setup(
     description='An Amazon S3 Transfer Manager',
     long_description=open('README.rst').read(),
     author='Amazon Web Services',
+    author_email='kyknapp1@gmail.com',
     url='https://github.com/boto/s3transfer',
     packages=find_packages(exclude=['tests*']),
     install_requires=requires,

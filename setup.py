@@ -42,7 +42,7 @@ setup(
     },
     license="Apache License 2.0",
     classifiers=(
-        'Development Status :: 1 - Planning'
+        'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'License :: OSI Approved :: Apache Software License',

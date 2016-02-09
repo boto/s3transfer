@@ -141,7 +141,9 @@ class StubbedClientTest(unittest.TestCase):
     def setUp(self):
         self.session = botocore.session.get_session()
         self.region = 'us-west-2'
-        self.client = self.session.create_client('s3', self.region)
+        self.client = self.session.create_client(
+            's3', self.region, aws_access_key_id='foo',
+            aws_secret_access_key='bar')
         self.stubber = Stubber(self.client)
         self.stubber.activate()
 
@@ -151,7 +153,9 @@ class StubbedClientTest(unittest.TestCase):
     def reset_stubber_with_new_client(self, override_client_kwargs):
         client_kwargs = {
             'service_name': 's3',
-            'region_name': self.region
+            'region_name': self.region,
+            'aws_access_key_id': 'foo',
+            'aws_secret_access_key': 'bar'
         }
         client_kwargs.update(override_client_kwargs)
         self.client = self.session.create_client(**client_kwargs)

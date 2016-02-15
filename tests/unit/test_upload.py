@@ -119,7 +119,16 @@ class TestUploadRequestSubmitter(BaseTaskSubmitterTest):
 class TestPutObjectTask(BaseUploadTaskTest):
     def test_main(self):
         extra_args = {'Metadata': {'foo': 'bar'}}
-        task = self.get_task(PutObjectTask)
+        task = self.get_task(
+            PutObjectTask,
+            main_kwargs={
+                'client': self.client,
+                'body': self.body,
+                'bucket': self.bucket,
+                'key': self.key,
+                'extra_args': extra_args
+            }
+        )
         self.stubber.add_response(
             method='put_object',
             service_response={},
@@ -128,7 +137,7 @@ class TestPutObjectTask(BaseUploadTaskTest):
                 'Metadata': {'foo': 'bar'}
             }
         )
-        task.main(self.client, self.body, self.bucket, self.key, extra_args)
+        task()
         self.stubber.assert_no_pending_responses()
 
 
@@ -137,7 +146,15 @@ class TestCreateMultipartUploadTask(BaseUploadTaskTest):
         upload_id = 'foo'
         extra_args = {'Metadata': {'foo': 'bar'}}
         response = {'UploadId': upload_id}
-        task = self.get_task(CreateMultipartUploadTask)
+        task = self.get_task(
+            CreateMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'extra_args': extra_args
+            }
+        )
         self.stubber.add_response(
             method='create_multipart_upload',
             service_response=response,
@@ -146,7 +163,7 @@ class TestCreateMultipartUploadTask(BaseUploadTaskTest):
               'Metadata': {'foo': 'bar'}
             }
         )
-        result_id = task.main(self.client, self.bucket, self.key, extra_args)
+        result_id = task()
         self.stubber.assert_no_pending_responses()
         # Ensure the upload id returned is correct
         self.assertEqual(upload_id, result_id)
@@ -174,7 +191,18 @@ class TestUploadPartTask(BaseUploadTaskTest):
         upload_id = 'my-id'
         part_number = 0
         etag = 'foo'
-        task = self.get_task(UploadPartTask)
+        task = self.get_task(
+            UploadPartTask,
+            main_kwargs={
+                'client': self.client,
+                'body': self.body,
+                'bucket': self.bucket,
+                'key': self.key,
+                'upload_id': upload_id,
+                'part_number': part_number,
+                'extra_args': extra_args
+            }
+        )
         self.stubber.add_response(
             method='upload_part',
             service_response={'ETag': etag},
@@ -184,8 +212,7 @@ class TestUploadPartTask(BaseUploadTaskTest):
                 'RequestPayer': 'requester'
             }
         )
-        rval = task.main(self.client, self.body, self.bucket, self.key,
-                         upload_id, part_number, extra_args)
+        rval = task()
         self.stubber.assert_no_pending_responses()
         self.assertEqual(rval, {'ETag': etag, 'PartNumber': part_number})
 
@@ -194,7 +221,16 @@ class TestCompleteMultipartUploadTask(BaseUploadTaskTest):
     def test_main(self):
         upload_id = 'my-id'
         parts = [{'ETag': 'etag', 'PartNumber': 0}]
-        task = self.get_task(CompleteMultipartUploadTask)
+        task = self.get_task(
+            CompleteMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'upload_id': upload_id,
+                'parts': parts
+            }
+        )
         self.stubber.add_response(
             method='complete_multipart_upload',
             service_response={},
@@ -206,5 +242,5 @@ class TestCompleteMultipartUploadTask(BaseUploadTaskTest):
                 }
             }
         )
-        task.main(self.client, self.bucket, self.key, upload_id, parts)
+        task()
         self.stubber.assert_no_pending_responses()

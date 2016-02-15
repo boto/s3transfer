@@ -69,10 +69,10 @@ class TaskSubmitter(object):
         """
         transfer_future, components = self._initialize_transfer_future(
             call_args)
-        self.submit(transfer_future, transfer_context=components['context'])
+        self._submit(transfer_future, transfer_context=components['context'])
         return transfer_future
 
-    def submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_context):
         """The submition method to be implemented
 
         The implementation of the method must accept two arguments:
@@ -85,7 +85,7 @@ class TaskSubmitter(object):
         :param transfer_future: The transfer future associated with the
             transfer request
         """
-        raise NotImplementedError('submit must be implemented')
+        raise NotImplementedError('_submit() must be implemented')
 
 
 class Task(object):
@@ -104,13 +104,13 @@ class Task(object):
 
         :type main_kwargs: dict
         :param main_kwargs: The keyword args that can be immediately supplied
-            to the main() method of the task
+            to the _main() method of the task
 
         :type pending_main_kwargs: dict
         :param pending_main_kwargs: The keyword args that are depended upon
             by the result from a dependent future(s). The result returned by
             the future(s) will be used as the value for the keyword argument
-            when main() is called. The values for each key can be:
+            when _main() is called. The values for each key can be:
                 * a single future - Once completed, its value will be the
                   result of that single future
                 * a list of futures - Once all of the futures complete, the
@@ -163,7 +163,7 @@ class Task(object):
             # task to the TransferFuture had failed) then execute the task's
             # main() method.
             if not self._transfer_context.done():
-                return_value = self.main(**kwargs)
+                return_value = self._main(**kwargs)
                 # If the task is the final task, then set the TransferFuture's
                 # value to the return value from main().
                 if self._is_final:
@@ -199,13 +199,13 @@ class Task(object):
             for done_callback in self._done_callbacks:
                 done_callback()
 
-    def main(self, **kwargs):
+    def _main(self, **kwargs):
         """The method that will be ran in the executor
 
         This method must be implemented by subclasses from Task. main() can
         be implemented with any arguments decided upon by the subclass.
         """
-        raise NotImplementedError('main() must be implemented')
+        raise NotImplementedError('_main() must be implemented')
 
     def _wait_on_dependent_futures(self):
         # Gather all of the futures into that main() depends on.

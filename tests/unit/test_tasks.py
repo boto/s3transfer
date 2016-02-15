@@ -27,22 +27,22 @@ class TaskFailureException(Exception):
 
 
 class SuccessTask(Task):
-    def main(self, return_value='success'):
+    def _main(self, return_value='success'):
         return return_value
 
 
 class FailureTask(Task):
-    def main(self, exception=TaskFailureException):
+    def _main(self, exception=TaskFailureException):
         raise exception()
 
 
 class ReturnKwargsTask(Task):
-    def main(self, **kwargs):
+    def _main(self, **kwargs):
         return kwargs
 
 
 class NOOPTaskSubmitter(TaskSubmitter):
-    def submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_context):
         pass
 
 

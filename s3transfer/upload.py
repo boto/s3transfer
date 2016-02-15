@@ -29,7 +29,7 @@ class UploadRequestSubmitter(TaskSubmitter):
         'RequestPayer',
     ]
 
-    def submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_context):
         # Determine the size if it was not provided
         if transfer_future.meta.size is None:
             transfer_future.meta.provide_transfer_size(
@@ -192,7 +192,7 @@ class UploadRequestSubmitter(TaskSubmitter):
 
 class PutObjectTask(Task):
     """Task to do a nonmultipart upload"""
-    def main(self, client, body, bucket, key, extra_args):
+    def _main(self, client, body, bucket, key, extra_args):
         """
         :param client: The client to use when calling PutObject
         :param body: The body to upload. It can be binary or a file-like object
@@ -206,7 +206,7 @@ class PutObjectTask(Task):
 
 class CreateMultipartUploadTask(Task):
     """Task to initiate a multipart upload"""
-    def main(self, client, bucket, key, extra_args):
+    def _main(self, client, bucket, key, extra_args):
         """
         :param client: The client to use when calling PutObject
         :param bucket: The name of the bucket to upload to
@@ -231,8 +231,8 @@ class CreateMultipartUploadTask(Task):
 
 class UploadPartTask(Task):
     """Task to upload a part in a multipart upload"""
-    def main(self, client, body, bucket, key, upload_id, part_number,
-             extra_args):
+    def _main(self, client, body, bucket, key, upload_id, part_number,
+              extra_args):
         """
         :param client: The client to use when calling PutObject
         :param body: The body to upload. It can be binary or a file-like object
@@ -262,7 +262,7 @@ class UploadPartTask(Task):
 
 class CompleteMultipartUploadTask(Task):
     """Task to complete a multipart upload"""
-    def main(self, client, bucket, key, upload_id, parts):
+    def _main(self, client, bucket, key, upload_id, parts):
         """
         :param client: The client to use when calling PutObject
         :param bucket: The name of the bucket to upload to

@@ -18,7 +18,7 @@ import mock
 
 from tests import BaseTaskTest
 from tests import BaseTaskSubmitterTest
-from s3transfer.upload import UploadRequestSubmitter
+from s3transfer.upload import UploadTaskSubmitter
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import CreateMultipartUploadTask
 from s3transfer.upload import UploadPartTask
@@ -49,10 +49,10 @@ class BaseUploadTaskTest(BaseTaskTest):
         self.body = b'contents'
 
 
-class TestUploadRequestSubmitter(BaseTaskSubmitterTest):
+class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
     def setUp(self):
-        super(TestUploadRequestSubmitter, self).setUp()
-        self.submitter = UploadRequestSubmitter(
+        super(TestUploadTaskSubmitter, self).setUp()
+        self.submitter = UploadTaskSubmitter(
             client=self.client, config=self.config,
             osutil=self.osutil, executor=self.executor
         )
@@ -75,7 +75,7 @@ class TestUploadRequestSubmitter(BaseTaskSubmitterTest):
             'before-parameter-build.s3.*', self.collect_body)
 
     def tearDown(self):
-        super(TestUploadRequestSubmitter, self).tearDown()
+        super(TestUploadTaskSubmitter, self).tearDown()
         shutil.rmtree(self.tempdir)
 
     def collect_body(self, params, **kwargs):
@@ -105,7 +105,7 @@ class TestUploadRequestSubmitter(BaseTaskSubmitterTest):
 
         # With this submitter, it will fail to stat the file if a transfer
         # size is not provided.
-        self.submitter = UploadRequestSubmitter(
+        self.submitter = UploadTaskSubmitter(
             client=self.client, config=self.config,
             osutil=OSUtilsExceptionOnFileSize(), executor=self.executor
         )

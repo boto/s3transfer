@@ -20,7 +20,7 @@ from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 
 
-class UploadRequestSubmitter(TaskSubmitter):
+class UploadTaskSubmitter(TaskSubmitter):
     """Task submitter for requesting an upload"""
     UPLOAD_PART_ARGS = [
         'SSECustomerKey',

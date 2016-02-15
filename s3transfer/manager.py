@@ -16,7 +16,7 @@ from s3transfer.compat import accepts_kwargs
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
-from s3transfer.upload import UploadRequestSubmitter
+from s3transfer.upload import UploadTaskSubmitter
 
 
 MB = 1024 * 1024
@@ -128,7 +128,7 @@ class TransferManager(object):
             fileobj=fileobj, bucket=bucket, key=key, extra_args=extra_args,
             subscribers=subscribers
         )
-        upload_submitter = UploadRequestSubmitter(
+        upload_submitter = UploadTaskSubmitter(
             client=self._client, osutil=self._osutil, config=self._config,
             executor=self._executor)
         return upload_submitter(call_args)

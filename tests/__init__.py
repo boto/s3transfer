@@ -26,7 +26,7 @@ from botocore.stub import Stubber
 from concurrent import futures
 
 from s3transfer.manager import TransferConfig
-from s3transfer.futures import TransferContext
+from s3transfer.futures import TransferCoordinator
 from s3transfer.utils import OSUtils
 
 
@@ -166,11 +166,11 @@ class StubbedClientTest(unittest.TestCase):
 class BaseTaskTest(StubbedClientTest):
     def setUp(self):
         super(BaseTaskTest, self).setUp()
-        self.transfer_context = TransferContext()
+        self.transfer_coordinator = TransferCoordinator()
 
     def get_task(self, task_cls, **kwargs):
-        if 'transfer_context' not in kwargs:
-            kwargs['transfer_context'] = self.transfer_context
+        if 'transfer_coordinator' not in kwargs:
+            kwargs['transfer_coordinator'] = self.transfer_coordinator
         return task_cls(**kwargs)
 
 

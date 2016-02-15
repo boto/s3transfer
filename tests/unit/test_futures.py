@@ -20,7 +20,7 @@ from concurrent.futures import CancelledError
 from tests import unittest
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
-from s3transfer.futures import TransferContext
+from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
 
 
@@ -31,27 +31,27 @@ def return_call_args(*args, **kwargs):
 class TestTransferFuture(unittest.TestCase):
     def setUp(self):
         self.meta = TransferMeta()
-        self.context = TransferContext()
-        self.future = TransferFuture(self.meta, self.context)
+        self.coordinator = TransferCoordinator()
+        self.future = TransferFuture(self.meta, self.coordinator)
 
     def test_meta(self):
         self.assertIs(self.future.meta, self.meta)
 
     def test_done(self):
         self.assertFalse(self.future.done())
-        self.context.set_result(None)
+        self.coordinator.set_result(None)
         self.assertTrue(self.future.done())
 
     def test_result(self):
         result = 'foo'
-        self.context.set_result(result)
-        self.context.announce_done()
+        self.coordinator.set_result(result)
+        self.coordinator.announce_done()
         self.assertEqual(self.future.result(), result)
 
     def test_cancel(self):
         self.future.cancel()
         self.assertTrue(self.future.done())
-        self.assertEqual(self.context.status, 'cancelled')
+        self.assertEqual(self.coordinator.status, 'cancelled')
 
 
 class TestTransferMeta(unittest.TestCase):
@@ -74,81 +74,82 @@ class TestTransferMeta(unittest.TestCase):
         self.assertEqual(self.transfer_meta.user_context, {'foo': 'bar'})
 
 
-class TestTransferContext(unittest.TestCase):
+class TestTransferCoordinator(unittest.TestCase):
     def setUp(self):
-        self.transfer_context = TransferContext()
+        self.transfer_coordinator = TransferCoordinator()
 
     def test_initial_status(self):
-        # A TransferContext with no progress should have the status of queued
-        self.assertEqual(self.transfer_context.status, 'queued')
+        # A TransferCoordinator with no progress should have the status
+        # of queued
+        self.assertEqual(self.transfer_coordinator.status, 'queued')
 
     def test_status_running(self):
-        self.transfer_context.set_status_to_running()
-        self.assertEqual(self.transfer_context.status, 'running')
+        self.transfer_coordinator.set_status_to_running()
+        self.assertEqual(self.transfer_coordinator.status, 'running')
 
     def test_set_result(self):
         success_result = 'foo'
-        self.transfer_context.set_result(success_result)
-        self.transfer_context.announce_done()
+        self.transfer_coordinator.set_result(success_result)
+        self.transfer_coordinator.announce_done()
         # Setting result should result in a success state and the return value
         # that was set.
-        self.assertEqual(self.transfer_context.status, 'success')
-        self.assertEqual(self.transfer_context.result(), success_result)
+        self.assertEqual(self.transfer_coordinator.status, 'success')
+        self.assertEqual(self.transfer_coordinator.result(), success_result)
 
     def test_set_exception(self):
         exception_result = RuntimeError
-        self.transfer_context.set_exception(exception_result)
-        self.transfer_context.announce_done()
+        self.transfer_coordinator.set_exception(exception_result)
+        self.transfer_coordinator.announce_done()
         # Setting an exception should result in a failed state and the return
         # value should be the rasied exception
-        self.assertEqual(self.transfer_context.status, 'failed')
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
         with self.assertRaises(exception_result):
-            self.transfer_context.result()
+            self.transfer_coordinator.result()
 
     def test_cancel(self):
-        self.transfer_context.cancel()
-        self.transfer_context.announce_done()
+        self.transfer_coordinator.cancel()
+        self.transfer_coordinator.announce_done()
         # This should set the state to cancelled and raise the CancelledError
         # exception.
-        self.assertEqual(self.transfer_context.status, 'cancelled')
+        self.assertEqual(self.transfer_coordinator.status, 'cancelled')
         with self.assertRaises(CancelledError):
-            self.transfer_context.result()
+            self.transfer_coordinator.result()
 
     def test_done(self):
         # These should result in not done state:
         # queued
-        self.assertFalse(self.transfer_context.done())
+        self.assertFalse(self.transfer_coordinator.done())
         # running
-        self.transfer_context.set_status_to_running()
-        self.assertFalse(self.transfer_context.done())
+        self.transfer_coordinator.set_status_to_running()
+        self.assertFalse(self.transfer_coordinator.done())
 
         # These should result in done state:
         # failed
-        self.transfer_context.set_exception(Exception)
-        self.assertTrue(self.transfer_context.done())
+        self.transfer_coordinator.set_exception(Exception)
+        self.assertTrue(self.transfer_coordinator.done())
 
         # success
-        self.transfer_context.set_result('foo')
-        self.assertTrue(self.transfer_context.done())
+        self.transfer_coordinator.set_result('foo')
+        self.assertTrue(self.transfer_coordinator.done())
 
         # cancelled
-        self.transfer_context.cancel()
-        self.assertTrue(self.transfer_context.done())
+        self.transfer_coordinator.cancel()
+        self.assertTrue(self.transfer_coordinator.done())
 
     def test_result_waits_until_done(self):
         execution_order = []
 
-        def sleep_then_set_result(transfer_context, execution_order):
+        def sleep_then_set_result(transfer_coordinator, execution_order):
             time.sleep(0.05)
             execution_order.append('setting_result')
-            transfer_context.set_result(None)
-            self.transfer_context.announce_done()
+            transfer_coordinator.set_result(None)
+            self.transfer_coordinator.announce_done()
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             executor.submit(
-                sleep_then_set_result, self.transfer_context,
+                sleep_then_set_result, self.transfer_coordinator,
                 execution_order)
-            self.transfer_context.result()
+            self.transfer_coordinator.result()
             execution_order.append('after_result')
 
         # The result() call should have waited until the other thread set
@@ -162,17 +163,17 @@ class TestTransferContext(unittest.TestCase):
         second_args = (2, 4)
         second_kwargs = {'biz': 'baz'}
 
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             return_call_args, *args, **kwargs)
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             return_call_args, *second_args, **second_kwargs)
 
         # Ensure the callbacks got added.
-        self.assertEqual(len(self.transfer_context.failure_cleanups), 2)
+        self.assertEqual(len(self.transfer_coordinator.failure_cleanups), 2)
 
         result_list = []
         # Ensure they will get called in the correct order.
-        for cleanup in self.transfer_context.failure_cleanups:
+        for cleanup in self.transfer_coordinator.failure_cleanups:
             result_list.append(cleanup())
         self.assertEqual(
             result_list, [(args, kwargs), (second_args, second_kwargs)])

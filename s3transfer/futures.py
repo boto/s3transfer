@@ -16,24 +16,24 @@ import threading
 
 
 class TransferFuture(object):
-    def __init__(self, meta=None, context=None):
+    def __init__(self, meta=None, coordinator=None):
         """The future associated to a submitted transfer request
 
         :type meta: TransferMeta
         :param meta: The metadata associated to the request. This object
             is visible to the requester..
 
-        :type context: TransferContext
-        :param context: The context associated to the request. This object
-            is not visible to the requester.
+        :type coordinator: TransferCoordinator
+        :param coordinator: The coordinator associated to the request. This
+            object is not visible to the requester.
         """
         self._meta = meta
         if meta is None:
             self._meta = TransferMeta()
 
-        self._context = context
-        if context is None:
-            self._context = TransferContext()
+        self._coordinator = coordinator
+        if coordinator is None:
+            self._coordinator = TransferCoordinator()
 
     @property
     def meta(self):
@@ -45,7 +45,7 @@ class TransferFuture(object):
 
         :returns: True if completed. False, otherwise.
         """
-        return self._context.done()
+        return self._coordinator.done()
 
     def result(self):
         """Waits until TransferFuture is done and returns the result
@@ -54,11 +54,11 @@ class TransferFuture(object):
         TransferFuture failed, it will raise the exception associated to the
         failure.
         """
-        return self._context.result()
+        return self._coordinator.result()
 
     def cancel(self):
         """Cancels the request associated with the TransferFuture"""
-        self._context.cancel()
+        self._coordinator.cancel()
 
 
 class TransferMeta(object):
@@ -93,7 +93,7 @@ class TransferMeta(object):
         self._size = size
 
 
-class TransferContext(object):
+class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
     def __init__(self):
         self._status = 'queued'

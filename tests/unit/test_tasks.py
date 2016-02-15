@@ -16,7 +16,7 @@ from functools import partial
 from tests import unittest
 from tests import RecordingSubscriber
 from s3transfer.futures import TransferFuture
-from s3transfer.futures import TransferContext
+from s3transfer.futures import TransferCoordinator
 from s3transfer.tasks import Task
 from s3transfer.tasks import TaskSubmitter
 from s3transfer.utils import CallArgs
@@ -42,7 +42,7 @@ class ReturnKwargsTask(Task):
 
 
 class NOOPTaskSubmitter(TaskSubmitter):
-    def _submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_coordinator):
         pass
 
 
@@ -77,65 +77,65 @@ class TestTaskSubmitter(unittest.TestCase):
 
 class TestTask(unittest.TestCase):
     def setUp(self):
-        self.transfer_context = TransferContext()
+        self.transfer_coordinator = TransferCoordinator()
 
     def test_context_status_transitioning_success(self):
-        start_task = SuccessTask(self.transfer_context)
+        start_task = SuccessTask(self.transfer_coordinator)
 
         # Before any task, the status should be queued.
-        self.assertEqual(self.transfer_context.status, 'queued')
+        self.assertEqual(self.transfer_coordinator.status, 'queued')
 
         # Once the task is called, the status should be set to running.
         start_task()
-        self.assertEqual(self.transfer_context.status, 'running')
+        self.assertEqual(self.transfer_coordinator.status, 'running')
 
         # If another task is called, the status still should be running.
-        SuccessTask(self.transfer_context)()
-        self.assertEqual(self.transfer_context.status, 'running')
+        SuccessTask(self.transfer_coordinator)()
+        self.assertEqual(self.transfer_coordinator.status, 'running')
 
         # Once the final task is called, the status should be set to success.
-        SuccessTask(self.transfer_context, is_final=True)()
-        self.assertEqual(self.transfer_context.status, 'success')
+        SuccessTask(self.transfer_coordinator, is_final=True)()
+        self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_context_status_transitioning_failed(self):
-        SuccessTask(self.transfer_context)()
-        self.assertEqual(self.transfer_context.status, 'running')
+        SuccessTask(self.transfer_coordinator)()
+        self.assertEqual(self.transfer_coordinator.status, 'running')
 
         # A failure task should result in the failed status
-        FailureTask(self.transfer_context)()
-        self.assertEqual(self.transfer_context.status, 'failed')
+        FailureTask(self.transfer_coordinator)()
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
 
         # Even if the final task comes in and succeeds, it should stay failed.
-        SuccessTask(self.transfer_context, is_final=True)()
-        self.assertEqual(self.transfer_context.status, 'failed')
+        SuccessTask(self.transfer_coordinator, is_final=True)()
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
 
     def test_result_setting_for_success(self):
         override_return = 'foo'
-        SuccessTask(self.transfer_context)()
-        SuccessTask(self.transfer_context, main_kwargs={
+        SuccessTask(self.transfer_coordinator)()
+        SuccessTask(self.transfer_coordinator, main_kwargs={
             'return_value': override_return}, is_final=True)()
 
         # The return value for the transfer future should be of the final
         # task.
-        self.assertEqual(self.transfer_context.result(), override_return)
+        self.assertEqual(self.transfer_coordinator.result(), override_return)
 
     def test_result_setting_for_error(self):
-        FailureTask(self.transfer_context)()
+        FailureTask(self.transfer_coordinator)()
 
         # If another failure comes in, the result should still throw the
         # original exception when result() is eventually called.
-        FailureTask(self.transfer_context, main_kwargs={
+        FailureTask(self.transfer_coordinator, main_kwargs={
             'exception': Exception})()
 
         # Even if a success task comes along, the result of the future
         # should be the original exception
-        SuccessTask(self.transfer_context, is_final=True)()
+        SuccessTask(self.transfer_coordinator, is_final=True)()
         with self.assertRaises(TaskFailureException):
-            self.transfer_context.result()
+            self.transfer_coordinator.result()
 
     def test_done_callbacks_success(self):
         callback_results = []
-        SuccessTask(self.transfer_context, done_callbacks=[
+        SuccessTask(self.transfer_coordinator, done_callbacks=[
             partial(callback_results.append, 'first'),
             partial(callback_results.append, 'second')
         ])()
@@ -144,7 +144,7 @@ class TestTask(unittest.TestCase):
 
     def test_done_callbacks_failure(self):
         callback_results = []
-        FailureTask(self.transfer_context, done_callbacks=[
+        FailureTask(self.transfer_coordinator, done_callbacks=[
             partial(callback_results.append, 'first'),
             partial(callback_results.append, 'second')
         ])()
@@ -152,7 +152,7 @@ class TestTask(unittest.TestCase):
         self.assertEqual(callback_results, ['first', 'second'])
 
         # Callbacks should continue to be called even after a related failure
-        SuccessTask(self.transfer_context, done_callbacks=[
+        SuccessTask(self.transfer_coordinator, done_callbacks=[
             partial(callback_results.append, 'third'),
             partial(callback_results.append, 'fourth')
         ])()
@@ -161,26 +161,26 @@ class TestTask(unittest.TestCase):
 
     def test_failure_cleanups_on_failure(self):
         callback_results = []
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             callback_results.append, 'first')
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             callback_results.append, 'second')
-        FailureTask(self.transfer_context)()
+        FailureTask(self.transfer_coordinator)()
         # The failure callbacks should have not been called yet because it
         # is not the last task
         self.assertEqual(callback_results, [])
 
         # Now the failure callbacks should get called.
-        SuccessTask(self.transfer_context, is_final=True)()
+        SuccessTask(self.transfer_coordinator, is_final=True)()
         self.assertEqual(callback_results, ['first', 'second'])
 
     def test_no_failure_cleanups_on_success(self):
         callback_results = []
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             callback_results.append, 'first')
-        self.transfer_context.add_failure_cleanup(
+        self.transfer_coordinator.add_failure_cleanup(
             callback_results.append, 'second')
-        SuccessTask(self.transfer_context, is_final=True)()
+        SuccessTask(self.transfer_coordinator, is_final=True)()
         # The failure cleanups should not have been called because no task
         # failed for the transfer context.
         self.assertEqual(callback_results, [])
@@ -188,9 +188,10 @@ class TestTask(unittest.TestCase):
     def test_passing_main_kwargs(self):
         main_kwargs = {'foo': 'bar', 'baz': 'biz'}
         ReturnKwargsTask(
-            self.transfer_context, main_kwargs=main_kwargs, is_final=True)()
+            self.transfer_coordinator, main_kwargs=main_kwargs,
+            is_final=True)()
         # The kwargs should have been passed to the main()
-        self.assertEqual(self.transfer_context.result(), main_kwargs)
+        self.assertEqual(self.transfer_coordinator.result(), main_kwargs)
 
     def test_passing_pending_kwargs_single_futures(self):
         pending_kwargs = {}
@@ -200,24 +201,24 @@ class TestTask(unittest.TestCase):
         with futures.ThreadPoolExecutor(1) as executor:
             pending_kwargs['foo'] = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value': ref_main_kwargs['foo']}
                 )
             )
             pending_kwargs['baz'] = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value': ref_main_kwargs['baz']}
                 )
             )
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_context, pending_main_kwargs=pending_kwargs,
+            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
             is_final=True)()
         # The result should have the pending keyword arg values flushed
         # out.
-        self.assertEqual(self.transfer_context.result(), ref_main_kwargs)
+        self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
 
     def test_passing_pending_kwargs_list_of_futures(self):
         pending_kwargs = {}
@@ -227,13 +228,13 @@ class TestTask(unittest.TestCase):
         with futures.ThreadPoolExecutor(1) as executor:
             first_future = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value': ref_main_kwargs['foo'][0]}
                 )
             )
             second_future = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value': ref_main_kwargs['foo'][1]}
                 )
             )
@@ -242,11 +243,11 @@ class TestTask(unittest.TestCase):
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_context, pending_main_kwargs=pending_kwargs,
+            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
             is_final=True)()
         # The result should have the pending keyword arg values flushed
         # out in the expected order.
-        self.assertEqual(self.transfer_context.result(), ref_main_kwargs)
+        self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
 
     def test_passing_pending_and_non_pending_kwargs(self):
         main_kwargs = {'nonpending_value': 'foo'}
@@ -261,7 +262,7 @@ class TestTask(unittest.TestCase):
         with futures.ThreadPoolExecutor(1) as executor:
             pending_kwargs['pending_value'] = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value':
                                  ref_main_kwargs['pending_value']}
                 )
@@ -269,14 +270,14 @@ class TestTask(unittest.TestCase):
 
             first_future = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value':
                                  ref_main_kwargs['pending_list'][0]}
                 )
             )
             second_future = executor.submit(
                 SuccessTask(
-                    self.transfer_context,
+                    self.transfer_coordinator,
                     main_kwargs={'return_value':
                                  ref_main_kwargs['pending_list'][1]}
                 )
@@ -287,12 +288,12 @@ class TestTask(unittest.TestCase):
         # Create a task that depends on the tasks passed to the executor
         # and just regular nonpending kwargs.
         ReturnKwargsTask(
-            self.transfer_context, main_kwargs=main_kwargs,
+            self.transfer_coordinator, main_kwargs=main_kwargs,
             pending_main_kwargs=pending_kwargs,
             is_final=True)()
         # The result should have all of the kwargs (both pending and
         # nonpending)
-        self.assertEqual(self.transfer_context.result(), ref_main_kwargs)
+        self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
 
     def test_single_failed_pending_future(self):
         pending_kwargs = {}
@@ -302,20 +303,21 @@ class TestTask(unittest.TestCase):
         with futures.ThreadPoolExecutor(1) as executor:
             pending_kwargs['foo'] = executor.submit(
                 SuccessTask(
-                    self.transfer_context, main_kwargs={'return_value': 'bar'}
+                    self.transfer_coordinator,
+                    main_kwargs={'return_value': 'bar'}
                 )
             )
             pending_kwargs['baz'] = executor.submit(
-                FailureTask(self.transfer_context))
+                FailureTask(self.transfer_coordinator))
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_context, pending_main_kwargs=pending_kwargs,
+            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
             is_final=True)()
         # The end result should raise the exception from the initial
         # pending future value
         with self.assertRaises(TaskFailureException):
-            self.transfer_context.result()
+            self.transfer_coordinator.result()
 
     def test_single_failed_pending_future_in_list(self):
         pending_kwargs = {}
@@ -325,19 +327,20 @@ class TestTask(unittest.TestCase):
         with futures.ThreadPoolExecutor(1) as executor:
             first_future = executor.submit(
                 SuccessTask(
-                    self.transfer_context, main_kwargs={'return_value': 'bar'}
+                    self.transfer_coordinator,
+                    main_kwargs={'return_value': 'bar'}
                 )
             )
             second_future = executor.submit(
-                FailureTask(self.transfer_context))
+                FailureTask(self.transfer_coordinator))
 
             pending_kwargs['pending_list'] = [first_future, second_future]
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_context, pending_main_kwargs=pending_kwargs,
+            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
             is_final=True)()
         # The end result should raise the exception from the initial
         # pending future value in the list
         with self.assertRaises(TaskFailureException):
-            self.transfer_context.result()
+            self.transfer_coordinator.result()

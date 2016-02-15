@@ -169,7 +169,7 @@ class TestCreateMultipartUploadTask(BaseUploadTaskTest):
         self.assertEqual(upload_id, result_id)
 
         # Make sure that the abort was added as a cleanup failure
-        self.assertEqual(len(self.transfer_context.failure_cleanups), 1)
+        self.assertEqual(len(self.transfer_coordinator.failure_cleanups), 1)
 
         # Make sure if it is called, it will abort correctly
         self.stubber.add_response(
@@ -181,7 +181,7 @@ class TestCreateMultipartUploadTask(BaseUploadTaskTest):
                 'UploadId': upload_id
             }
         )
-        self.transfer_context.failure_cleanups[0]()
+        self.transfer_coordinator.failure_cleanups[0]()
         self.stubber.assert_no_pending_responses()
 
 

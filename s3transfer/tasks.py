@@ -15,7 +15,7 @@ from concurrent import futures
 import logging
 
 from s3transfer.futures import TransferFuture
-from s3transfer.futures import TransferContext
+from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
 
@@ -51,7 +51,7 @@ class TaskSubmitter(object):
     def _initialize_transfer_future(self, call_args):
         components = {
             'meta': TransferMeta(call_args),
-            'context': TransferContext()
+            'coordinator': TransferCoordinator()
         }
         transfer_future = TransferFuture(**components)
         on_queued_callbacks = get_callbacks(transfer_future, 'queued')
@@ -69,16 +69,17 @@ class TaskSubmitter(object):
         """
         transfer_future, components = self._initialize_transfer_future(
             call_args)
-        self._submit(transfer_future, transfer_context=components['context'])
+        self._submit(transfer_future,
+                     transfer_coordinator=components['coordinator'])
         return transfer_future
 
-    def _submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_coordinator):
         """The submition method to be implemented
 
         The implementation of the method must accept two arguments:
 
-        :type transfer_context: s3transfer.futures.TransferContext
-        :param transfer_context: The transfer context associated to the
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The transfer context associated to the
             transfer future.
 
         :type transfer_future: s3transfer.futures.TransferFuture
@@ -94,13 +95,13 @@ class Task(object):
     This is a base class for other classes to subclass from. All subclassed
     classes must implement the main() method.
     """
-    def __init__(self, transfer_context, main_kwargs=None,
+    def __init__(self, transfer_coordinator, main_kwargs=None,
                  pending_main_kwargs=None, done_callbacks=None,
                  is_final=False):
         """
-        :type transfer_context: s3transfer.futures.TransferContext
-        :param transfer_context: The context associated to the TransferFuture
-            for which this Task is associated with.
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The context associated to the
+            TransferFuture for which this Task is associated with.
 
         :type main_kwargs: dict
         :param main_kwargs: The keyword args that can be immediately supplied
@@ -129,7 +130,7 @@ class Task(object):
             will set the result of the entire TransferFuture to the result
             returned by this task's main() method.
         """
-        self._transfer_context = transfer_context
+        self._transfer_coordinator = transfer_coordinator
 
         self._main_kwargs = main_kwargs
         if self._main_kwargs is None:
@@ -150,8 +151,8 @@ class Task(object):
         try:
             # If the TransferFuture's status is currently queued,
             # set it to running.
-            if self._transfer_context.status == 'queued':
-                self._transfer_context.set_status_to_running()
+            if self._transfer_coordinator.status == 'queued':
+                self._transfer_coordinator.set_status_to_running()
             # Wait for all of futures this task depends on.
             self._wait_on_dependent_futures()
             # Gather up all of the main keyword arguments for main().
@@ -162,26 +163,28 @@ class Task(object):
             # If the task is not done (really only if some other related
             # task to the TransferFuture had failed) then execute the task's
             # main() method.
-            if not self._transfer_context.done():
+            if not self._transfer_coordinator.done():
                 return_value = self._main(**kwargs)
                 # If the task is the final task, then set the TransferFuture's
                 # value to the return value from main().
                 if self._is_final:
-                    self._transfer_context.set_result(return_value)
+                    self._transfer_coordinator.set_result(return_value)
                 return return_value
         except Exception as e:
             logger.debug("Exception raised.", exc_info=True)
             # If an exception is ever thrown than set the exception for the
             # entire TransferFuture.
-            self._transfer_context.set_exception(e)
+            self._transfer_coordinator.set_exception(e)
         finally:
             # If this is the final task and it failed, then run the failure
             # cleanups associated with the TransferFuture. This needs to
             # happen in the final task as opposed to the Exception clause
             # becasue we do not want these being called twice or if the
             # task gets cancelled, it will never reach the exception clause.
-            if self._is_final and self._transfer_context.status != 'success':
-                for failure_cleanup in self._transfer_context.failure_cleanups:
+            if self._is_final and \
+                    self._transfer_coordinator.status != 'success':
+                for failure_cleanup in \
+                        self._transfer_coordinator.failure_cleanups:
                     # If any of the failure cleanups fail do not get the
                     # main process in a deadlock from waiting to announce
                     # that it is done.
@@ -194,7 +197,7 @@ class Task(object):
             # If this is the final task announce that it is done if results
             # are waiting on its completion.
             if self._is_final:
-                self._transfer_context.announce_done()
+                self._transfer_coordinator.announce_done()
             # Run any done callbacks associated to the task no matter what.
             for done_callback in self._done_callbacks:
                 done_callback()

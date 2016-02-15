@@ -29,7 +29,7 @@ class UploadTaskSubmitter(TaskSubmitter):
         'RequestPayer',
     ]
 
-    def _submit(self, transfer_future, transfer_context):
+    def _submit(self, transfer_future, transfer_coordinator):
         # Determine the size if it was not provided
         if transfer_future.meta.size is None:
             transfer_future.meta.provide_transfer_size(
@@ -39,11 +39,12 @@ class UploadTaskSubmitter(TaskSubmitter):
         # If it is greater than threshold do a multipart upload, otherwise
         # do a regular put object.
         if transfer_future.meta.size < self._config.multipart_threshold:
-            self._submit_upload_request(transfer_future, transfer_context)
+            self._submit_upload_request(transfer_future, transfer_coordinator)
         else:
-            self._submit_multipart_request(transfer_future, transfer_context)
+            self._submit_multipart_request(
+                transfer_future, transfer_coordinator)
 
-    def _submit_upload_request(self, transfer_future, transfer_context):
+    def _submit_upload_request(self, transfer_future, transfer_coordinator):
         call_args = transfer_future.meta.call_args
 
         # Get the callbacks to unregister the callbacks relevent to
@@ -62,7 +63,7 @@ class UploadTaskSubmitter(TaskSubmitter):
         # Submit the request of a single upload.
         self._executor.submit(
             PutObjectTask(
-                transfer_context=transfer_context,
+                transfer_coordinator=transfer_coordinator,
                 main_kwargs={
                     'client': self._client,
                     'body': fileobj,
@@ -77,7 +78,7 @@ class UploadTaskSubmitter(TaskSubmitter):
             )
         )
 
-    def _submit_multipart_request(self, transfer_future, transfer_context):
+    def _submit_multipart_request(self, transfer_future, transfer_coordinator):
         call_args = transfer_future.meta.call_args
 
         # Get the callbacks to unregister the callbacks relevent to
@@ -87,7 +88,7 @@ class UploadTaskSubmitter(TaskSubmitter):
         # Submit the request to create a multipart upload.
         create_multipart_future = self._executor.submit(
             CreateMultipartUploadTask(
-                transfer_context=transfer_context,
+                transfer_coordinator=transfer_coordinator,
                 main_kwargs={
                     'client': self._client,
                     'bucket': call_args.bucket,
@@ -115,7 +116,7 @@ class UploadTaskSubmitter(TaskSubmitter):
             part_futures.append(
                 self._executor.submit(
                     UploadPartTask(
-                        transfer_context=transfer_context,
+                        transfer_coordinator=transfer_coordinator,
                         main_kwargs={
                             'client': self._client,
                             'body': fileobj,
@@ -136,7 +137,7 @@ class UploadTaskSubmitter(TaskSubmitter):
         done_callbacks = get_callbacks(transfer_future, 'done')
         self._executor.submit(
             CompleteMultipartUploadTask(
-                transfer_context=transfer_context,
+                transfer_coordinator=transfer_coordinator,
                 main_kwargs={
                     'client': self._client,
                     'bucket': call_args.bucket,
@@ -222,7 +223,7 @@ class CreateMultipartUploadTask(Task):
         upload_id = response['UploadId']
 
         # Add a cleanup if the multipart upload fails at any point.
-        self._transfer_context.add_failure_cleanup(
+        self._transfer_coordinator.add_failure_cleanup(
             client.abort_multipart_upload, Bucket=bucket, Key=key,
             UploadId=upload_id
         )

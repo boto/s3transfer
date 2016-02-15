@@ -196,8 +196,10 @@ class BoundedExecutor(object):
         The executor will block if the number of tasks that have been
         submitted and is currently working on is past its maximum.
 
-        :params max_size: The size of the queue. A size of None means that
-            the executor will have no bound.
+        :params max_size: The maximum number of inflight futures. An inflight
+            future means that the task is either queued up or is currently
+            being executed. A size of None or 0 means that the executor will
+            have no bound in terms of the number of inflight futures.
 
         :params max_num_threads: The maximum number of threads the executor
             uses.

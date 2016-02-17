@@ -131,7 +131,7 @@ import socket
 import threading
 import random
 import string
-import concurrent
+import concurrent.futures
 
 from botocore.compat import six
 from botocore.vendored.requests.packages.urllib3.exceptions import \

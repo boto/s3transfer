@@ -24,3 +24,7 @@ class S3UploadFailedError(Exception):
 
 class InvalidSubscriberMethodError(Exception):
     pass
+
+
+class QueueShutdownError(Exception):
+    pass

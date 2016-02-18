@@ -128,8 +128,9 @@ class TransferCoordinator(object):
         Implies that the TransferFuture succeeded.
         """
         with self._lock:
-            self._result = result
-            self._status = 'success'
+            if self._exception is None:
+                self._result = result
+                self._status = 'success'
 
     def set_exception(self, exception):
         """Set an exception for the TransferFuture

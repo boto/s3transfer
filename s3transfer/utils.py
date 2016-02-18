@@ -14,8 +14,16 @@ import random
 import time
 import functools
 import os
+import string
+import threading
+import logging
 
 from s3transfer.compat import rename_file
+from s3transfer.compat import queue
+from s3transfer.exceptions import QueueShutdownError
+
+
+logger = logging.getLogger(__name__)
 
 
 def unique_id(name):
@@ -25,6 +33,10 @@ def unique_id(name):
     """
     return '{0}-{1}-{2}'.format(name, int(time.time()),
                                 random.randint(0, 10000))
+
+
+def random_file_extension(num_digits=8):
+    return ''.join(random.choice(string.hexdigits) for _ in range(num_digits))
 
 
 def disable_upload_callbacks(request, operation_name, **kwargs):
@@ -241,3 +253,47 @@ class ReadFileChunk(object):
         # already exhausted the stream so iterating over the file immediately
         # stops, which is what we're simulating here.
         return iter([])
+
+
+class StreamReaderProgress(object):
+    """Wrapper for a read only stream that adds progress callbacks."""
+    def __init__(self, stream, callbacks=None):
+        self._stream = stream
+        self._callbacks = callbacks
+        if callbacks is None:
+            self._callbacks = []
+
+    def read(self, *args, **kwargs):
+        value = self._stream.read(*args, **kwargs)
+        for callback in self._callbacks:
+            callback(bytes_transferred=len(value))
+        return value
+
+
+class ShutdownQueue(queue.Queue):
+    """A queue implementation that can be shutdown.
+    Shutting down a queue means that this class adds a
+    trigger_shutdown method that will trigger all subsequent
+    calls to put() to fail with a ``QueueShutdownError``.
+    It purposefully deviates from queue.Queue, and is *not* meant
+    to be a drop in replacement for ``queue.Queue``.
+    """
+    def _init(self, maxsize):
+        self._shutdown = False
+        self._shutdown_lock = threading.Lock()
+        # queue.Queue is an old style class so we don't use super().
+        return queue.Queue._init(self, maxsize)
+
+    def trigger_shutdown(self):
+        with self._shutdown_lock:
+            self._shutdown = True
+            logger.debug("The IO queue is now shutdown.")
+
+    def put(self, item):
+        # Note: this is not sufficient, it's still possible to deadlock!
+        # Need to hook into the condition vars used by this class.
+        with self._shutdown_lock:
+            if self._shutdown:
+                raise QueueShutdownError("Cannot put item to queue when "
+                                         "queue has been shutdown.")
+        return queue.Queue.put(self, item)

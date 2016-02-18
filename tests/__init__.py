@@ -56,6 +56,22 @@ def random_bucket_name(prefix='s3transfer', num_chars=10):
     return prefix + ''.join([base[b % len(base)] for b in random_bytes])
 
 
+class StreamWithError(object):
+    def __init__(self, exception_type):
+        self._exception_type = exception_type
+
+    def read(self, n=-1):
+        raise self._exception_type
+
+
+class FileSizeProvider(object):
+    def __init__(self, file_size):
+        self.file_size = file_size
+
+    def on_queued(self, future, **kwargs):
+        future.meta.provide_transfer_size(self.file_size)
+
+
 class FileCreator(object):
     def __init__(self):
         self.rootdir = tempfile.mkdtemp()

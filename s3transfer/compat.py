@@ -14,9 +14,12 @@ import inspect
 import sys
 import os
 import errno
+import socket
 
 from botocore.compat import six
 
+
+queue = six.moves.queue
 
 if sys.platform.startswith('win'):
     def rename_file(current_filename, new_filename):
@@ -38,6 +41,14 @@ if six.PY3:
         # In python3.4.1, there's backwards incompatible
         # changes when using getargspec with functools.partials.
         return inspect.getfullargspec(func)[2]
+
+    # In python3, socket.error is OSError, which is too general
+    # for what we want (i.e FileNotFoundError is a subclass of OSError).
+    # In py3 all the socket related errors are in a newly created
+    # ConnectionError
+    SOCKET_ERROR = ConnectionError
 else:
     def accepts_kwargs(func):
         return inspect.getargspec(func)[2]
+
+    SOCKET_ERROR = socket.error

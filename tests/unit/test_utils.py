@@ -16,12 +16,17 @@ import tempfile
 
 from tests import unittest
 from tests import RecordingSubscriber
+from s3transfer.compat import six
+from s3transfer.exceptions import QueueShutdownError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
+from s3transfer.utils import random_file_extension
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import ReadFileChunk
+from s3transfer.utils import ShutdownQueue
+from s3transfer.utils import StreamReaderProgress
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -60,6 +65,12 @@ class TestCallArgs(unittest.TestCase):
         call_args = CallArgs(foo='bar', biz='baz')
         self.assertEqual(call_args.foo, 'bar')
         self.assertEqual(call_args.biz, 'baz')
+
+
+class TestRandomFileExtension(unittest.TestCase):
+    def test_has_proper_length(self):
+        self.assertEqual(
+            len(random_file_extension(num_digits=4)), 4)
 
 
 class BaseUtilsTest(unittest.TestCase):
@@ -231,3 +242,30 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(1)
         chunk.read(2)
         self.assertEqual(self.amounts_seen, [2, -2, 2, -1, 2])
+
+
+class TestStreamReaderProgress(BaseUtilsTest):
+    def test_proxies_to_wrapped_stream(self):
+        original_stream = six.StringIO('foobarbaz')
+        wrapped = StreamReaderProgress(original_stream)
+        self.assertEqual(wrapped.read(), 'foobarbaz')
+
+    def test_callback_invoked(self):
+        original_stream = six.StringIO('foobarbaz')
+        wrapped = StreamReaderProgress(
+            original_stream, [self.callback, self.callback])
+        self.assertEqual(wrapped.read(), 'foobarbaz')
+        self.assertEqual(self.amounts_seen, [9, 9])
+
+
+class TestShutdownQueue(unittest.TestCase):
+    def test_handles_normal_put_get_requests(self):
+        q = ShutdownQueue()
+        q.put('foo')
+        self.assertEqual(q.get(), 'foo')
+
+    def test_put_raises_error_on_shutdown(self):
+        q = ShutdownQueue()
+        q.trigger_shutdown()
+        with self.assertRaises(QueueShutdownError):
+            q.put('foo')

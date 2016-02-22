@@ -18,6 +18,16 @@ from tests import random_bucket_name
 from s3transfer.manager import TransferManager
 
 
+def recursive_delete(client, bucket_name):
+    # Recursively deletes a bucket and all of its contents.
+    objects = client.get_paginator('list_objects').paginate(
+        Bucket=bucket_name)
+    for key in objects.search('Contents[].Key'):
+        if key is not None:
+            client.delete_object(Bucket=bucket_name, Key=key)
+    client.delete_bucket(Bucket=bucket_name)
+
+
 class BaseTransferManagerIntegTest(unittest.TestCase):
     """Tests for the high level s3transfer module."""
 
@@ -39,7 +49,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.client.delete_bucket(Bucket=cls.bucket_name)
+        recursive_delete(cls.client, cls.bucket_name)
 
     def delete_object(self, key):
         self.client.delete_object(

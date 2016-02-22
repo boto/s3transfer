@@ -15,10 +15,13 @@ from functools import partial
 
 from tests import unittest
 from tests import RecordingSubscriber
+from tests import BaseTaskTest
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferCoordinator
 from s3transfer.tasks import Task
 from s3transfer.tasks import TaskSubmitter
+from s3transfer.tasks import CreateMultipartUploadTask
+from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import CallArgs
 
 
@@ -344,3 +347,83 @@ class TestTask(unittest.TestCase):
         # pending future value in the list
         with self.assertRaises(TaskFailureException):
             self.transfer_coordinator.result()
+
+
+class BaseMultipartTaskTest(BaseTaskTest):
+    def setUp(self):
+        super(BaseMultipartTaskTest, self).setUp()
+        self.bucket = 'mybucket'
+        self.key = 'foo'
+
+
+class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
+    def test_main(self):
+        upload_id = 'foo'
+        extra_args = {'Metadata': {'foo': 'bar'}}
+        response = {'UploadId': upload_id}
+        task = self.get_task(
+            CreateMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'extra_args': extra_args
+            }
+        )
+        self.stubber.add_response(
+            method='create_multipart_upload',
+            service_response=response,
+            expected_params={
+              'Bucket': self.bucket, 'Key': self.key,
+              'Metadata': {'foo': 'bar'}
+            }
+        )
+        result_id = task()
+        self.stubber.assert_no_pending_responses()
+        # Ensure the upload id returned is correct
+        self.assertEqual(upload_id, result_id)
+
+        # Make sure that the abort was added as a cleanup failure
+        self.assertEqual(len(self.transfer_coordinator.failure_cleanups), 1)
+
+        # Make sure if it is called, it will abort correctly
+        self.stubber.add_response(
+            method='abort_multipart_upload',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'UploadId': upload_id
+            }
+        )
+        self.transfer_coordinator.failure_cleanups[0]()
+        self.stubber.assert_no_pending_responses()
+
+
+class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
+    def test_main(self):
+        upload_id = 'my-id'
+        parts = [{'ETag': 'etag', 'PartNumber': 0}]
+        task = self.get_task(
+            CompleteMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'upload_id': upload_id,
+                'parts': parts
+            }
+        )
+        self.stubber.add_response(
+            method='complete_multipart_upload',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket, 'Key': self.key,
+                'UploadId': upload_id,
+                'MultipartUpload': {
+                    'Parts': parts
+                }
+            }
+        )
+        task()
+        self.stubber.assert_no_pending_responses()

@@ -48,6 +48,35 @@ def enable_upload_callbacks(request, operation_name, **kwargs):
         request.body.enable_callback()
 
 
+def calculate_range_parameter(part_size, part_index, num_parts,
+                              total_size=None):
+    """Calculate the range parameter for multipart downloads/copies
+
+    :type part_size: int
+    :param part_size: The size of the part
+
+    :type part_index: int
+    :param part_index: The index for which this parts starts. This index starts
+        at zero
+
+    :type num_parts: int
+    :param num_parts: The total number of parts in the transfer
+
+    :returns: The value to use for Range parameter on downloads or
+        the CopySourceRange parameter for copies
+    """
+    # Used to calculate the Range parameter
+    start_range = part_index * part_size
+    if part_index == num_parts - 1:
+        end_range = ''
+        if total_size is not None:
+            end_range = str(total_size - 1)
+    else:
+        end_range = start_range + part_size - 1
+    range_param = 'bytes=%s-%s' % (start_range, end_range)
+    return range_param
+
+
 def get_callbacks(transfer_future, callback_type):
     """Retrieves callbacks from a subscriber
 

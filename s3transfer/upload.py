@@ -47,10 +47,6 @@ class UploadTaskSubmitter(TaskSubmitter):
     def _submit_upload_request(self, transfer_future, transfer_coordinator):
         call_args = transfer_future.meta.call_args
 
-        # Get the callbacks to unregister the callbacks relevent to
-        # enabling and disabling callbacks
-        unregistering_callbacks = self._register_callback_enabling()
-
         # Get the needed callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
         done_callbacks = get_callbacks(transfer_future, 'done')
@@ -72,18 +68,13 @@ class UploadTaskSubmitter(TaskSubmitter):
                     'extra_args': call_args.extra_args,
                 },
                 done_callbacks=(
-                    [fileobj.close] + unregistering_callbacks +
-                    done_callbacks),
+                    [fileobj.close] + done_callbacks),
                 is_final=True
             )
         )
 
     def _submit_multipart_request(self, transfer_future, transfer_coordinator):
         call_args = transfer_future.meta.call_args
-
-        # Get the callbacks to unregister the callbacks relevent to
-        # enabling and disabling callbacks
-        unregistering_callbacks = self._register_callback_enabling()
 
         # Submit the request to create a multipart upload.
         create_multipart_future = self._executor.submit(
@@ -147,7 +138,7 @@ class UploadTaskSubmitter(TaskSubmitter):
                     'upload_id': create_multipart_future,
                     'parts': part_futures
                 },
-                done_callbacks=unregistering_callbacks + done_callbacks,
+                done_callbacks=done_callbacks,
                 is_final=True
             )
         )
@@ -160,35 +151,6 @@ class UploadTaskSubmitter(TaskSubmitter):
             if key in self.UPLOAD_PART_ARGS:
                 upload_parts_args[key] = value
         return upload_parts_args
-
-    def _register_callback_enabling(self):
-        # TODO: This is a bit ugly because we are relying on the
-        # a the read() of a FileChunk to determine progress so sigv4
-        # can make the progress double
-        #
-        # What I want to do eventually is blow this all away and rely soley
-        # on the sending to the socket for this so we do not have to do this
-        # enabling and disabling of callbacks because it is wierd.
-        event_name = 'request-created.s3'
-        enable_id = unique_id('s3upload-callback-enable')
-        disable_id = unique_id('s3upload-callback-disable')
-
-        # Register to the handlers for enabling callbacks
-        self._client.meta.events.register_first(
-            event_name, disable_upload_callbacks, unique_id=disable_id)
-        self._client.meta.events.register_last(
-            event_name, enable_upload_callbacks, unique_id=enable_id)
-
-        # Create some callbacks to later deregister the callbacks
-        unregister_disable_callback = functools.partial(
-            self._client.meta.events.unregister, event_name,
-            disable_upload_callbacks, unique_id=disable_id)
-
-        unregister_enable_callback = functools.partial(
-            self._client.meta.events.unregister, event_name,
-            enable_upload_callbacks, unique_id=enable_id)
-
-        return [unregister_disable_callback, unregister_enable_callback]
 
 
 class PutObjectTask(Task):

@@ -13,6 +13,9 @@
 from botocore.compat import six
 
 from s3transfer.compat import accepts_kwargs
+from s3transfer.utils import unique_id
+from s3transfer.utils import disable_upload_callbacks
+from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
@@ -93,6 +96,7 @@ class TransferManager(object):
             max_size=self._config.max_queue_size,
             max_num_threads=self._config.max_concurrency
         )
+        self._register_handlers()
 
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
         """Uploads a file to S3
@@ -156,6 +160,16 @@ class TransferManager(object):
                     "Invalid extra_args key '%s', "
                     "must be one of: %s" % (
                         kwarg, ', '.join(allowed)))
+
+    def _register_handlers(self):
+        # Register handlers to enable/disable callbacks on uploads.
+        event_name = 'request-created.s3'
+        enable_id = unique_id('s3upload-callback-enable')
+        disable_id = unique_id('s3upload-callback-disable')
+        self._client.meta.events.register_first(
+            event_name, disable_upload_callbacks, unique_id=disable_id)
+        self._client.meta.events.register_last(
+            event_name, enable_upload_callbacks, unique_id=enable_id)
 
     def shutdown(self):
         """Shutdown the TransferManager

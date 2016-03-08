@@ -10,14 +10,10 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import functools
 import math
 
 from s3transfer.tasks import Task, TaskSubmitter
 from s3transfer.utils import get_callbacks
-from s3transfer.utils import unique_id
-from s3transfer.utils import disable_upload_callbacks
-from s3transfer.utils import enable_upload_callbacks
 
 
 class UploadTaskSubmitter(TaskSubmitter):
@@ -51,24 +47,21 @@ class UploadTaskSubmitter(TaskSubmitter):
         progress_callbacks = get_callbacks(transfer_future, 'progress')
         done_callbacks = get_callbacks(transfer_future, 'done')
 
-        # Create a file like object to use for the upload
-        fileobj = self._osutil.open_file_chunk_reader(
-            call_args.fileobj, 0, transfer_future.meta.size,
-            progress_callbacks)
-
         # Submit the request of a single upload.
         self._executor.submit(
             PutObjectTask(
                 transfer_coordinator=transfer_coordinator,
                 main_kwargs={
                     'client': self._client,
-                    'body': fileobj,
+                    'fileobj': call_args.fileobj,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': call_args.extra_args,
+                    'osutil': self._osutil,
+                    'size': transfer_future.meta.size,
+                    'progress_callbacks': progress_callbacks
                 },
-                done_callbacks=(
-                    [fileobj.close] + done_callbacks),
+                done_callbacks=done_callbacks,
                 is_final=True
             )
         )
@@ -101,25 +94,24 @@ class UploadTaskSubmitter(TaskSubmitter):
         extra_part_args = self._extra_upload_part_args(call_args.extra_args)
 
         for part_number in range(1, num_parts + 1):
-            fileobj = self._osutil.open_file_chunk_reader(
-                call_args.fileobj, part_size * (part_number - 1),
-                part_size, progress_callbacks)
             part_futures.append(
                 self._executor.submit(
                     UploadPartTask(
                         transfer_coordinator=transfer_coordinator,
                         main_kwargs={
                             'client': self._client,
-                            'body': fileobj,
+                            'fileobj': call_args.fileobj,
                             'bucket': call_args.bucket,
                             'key': call_args.key,
                             'part_number': part_number,
                             'extra_args': extra_part_args,
+                            'osutil': self._osutil,
+                            'part_size': part_size,
+                            'progress_callbacks': progress_callbacks
                         },
                         pending_main_kwargs={
                             'upload_id': create_multipart_future
-                        },
-                        done_callbacks=[fileobj.close]
+                        }
                     )
                 )
             )
@@ -155,16 +147,22 @@ class UploadTaskSubmitter(TaskSubmitter):
 
 class PutObjectTask(Task):
     """Task to do a nonmultipart upload"""
-    def _main(self, client, body, bucket, key, extra_args):
+    def _main(self, client, fileobj, bucket, key, extra_args, osutil, size,
+              progress_callbacks):
         """
         :param client: The client to use when calling PutObject
-        :param body: The body to upload. It can be binary or a file-like object
+        :param fileobj: The file to upload.
         :param bucket: The name of the bucket to upload to
         :param key: The name of the key to upload to
         :param extra_args: A dictionary of any extra arguments that may be
             used in the upload.
+        :param osutil: OSUtil for upload
+        :param size: The size of the part
+        :param progress_callbacks: The callbacks to invoke on progress.
         """
-        client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
+        with osutil.open_file_chunk_reader(
+                fileobj, 0, size, progress_callbacks) as body:
+            client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
 
 
 class CreateMultipartUploadTask(Task):
@@ -194,11 +192,11 @@ class CreateMultipartUploadTask(Task):
 
 class UploadPartTask(Task):
     """Task to upload a part in a multipart upload"""
-    def _main(self, client, body, bucket, key, upload_id, part_number,
-              extra_args):
+    def _main(self, client, fileobj, bucket, key, upload_id, part_number,
+              extra_args, osutil, part_size, progress_callbacks):
         """
         :param client: The client to use when calling PutObject
-        :param body: The body to upload. It can be binary or a file-like object
+        :param fileobj: The file to upload.
         :param bucket: The name of the bucket to upload to
         :param key: The name of the key to upload to
         :param upload_id: The id of the upload
@@ -206,6 +204,9 @@ class UploadPartTask(Task):
             upload
         :param extra_args: A dictionary of any extra arguments that may be
             used in the upload.
+        :param osutil: OSUtil for upload
+        :param part_size: The size of the part
+        :param progress_callbacks: The callbacks to invoke on progress.
 
         :rtype: dict
         :returns: A dictionary representing a part::
@@ -215,10 +216,13 @@ class UploadPartTask(Task):
             This value can be appended to a list to be used to complete
             the multipart upload.
         """
-        response = client.upload_part(
-            Bucket=bucket, Key=key,
-            UploadId=upload_id, PartNumber=part_number,
-            Body=body, **extra_args)
+        with osutil.open_file_chunk_reader(
+                fileobj, part_size * (part_number - 1),
+                part_size, progress_callbacks) as body:
+            response = client.upload_part(
+                Bucket=bucket, Key=key,
+                UploadId=upload_id, PartNumber=part_number,
+                Body=body, **extra_args)
         etag = response['ETag']
         return {'ETag': etag, 'PartNumber': part_number}
 

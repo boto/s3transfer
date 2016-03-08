@@ -46,7 +46,28 @@ class BaseUploadTaskTest(BaseTaskTest):
         super(BaseUploadTaskTest, self).setUp()
         self.bucket = 'mybucket'
         self.key = 'foo'
-        self.body = b'contents'
+        self.osutil = OSUtils()
+
+        self.tempdir = tempfile.mkdtemp()
+        self.filename = os.path.join(self.tempdir, 'myfile')
+        self.content = b'my content'
+
+        with open(self.filename, 'wb') as f:
+            f.write(self.content)
+
+        # A list to keep track of all of the bodies sent over the wire
+        # and their order.
+        self.sent_bodies = []
+        self.client.meta.events.register(
+            'before-parameter-build.s3.*', self.collect_body)
+
+    def tearDown(self):
+        super(BaseUploadTaskTest, self).tearDown()
+        shutil.rmtree(self.tempdir)
+
+    def collect_body(self, params, **kwargs):
+        if 'Body' in params:
+            self.sent_bodies.append(params['Body'].read())
 
 
 class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
@@ -123,22 +144,26 @@ class TestPutObjectTask(BaseUploadTaskTest):
             PutObjectTask,
             main_kwargs={
                 'client': self.client,
-                'body': self.body,
+                'fileobj': self.filename,
                 'bucket': self.bucket,
                 'key': self.key,
-                'extra_args': extra_args
+                'extra_args': extra_args,
+                'osutil': self.osutil,
+                'size': len(self.content),
+                'progress_callbacks': []
             }
         )
         self.stubber.add_response(
             method='put_object',
             service_response={},
             expected_params={
-                'Body': self.body, 'Bucket': self.bucket, 'Key': self.key,
+                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
                 'Metadata': {'foo': 'bar'}
             }
         )
         task()
         self.stubber.assert_no_pending_responses()
+        self.assertEqual(self.sent_bodies, [self.content])
 
 
 class TestCreateMultipartUploadTask(BaseUploadTaskTest):
@@ -189,25 +214,28 @@ class TestUploadPartTask(BaseUploadTaskTest):
     def test_main(self):
         extra_args = {'RequestPayer': 'requester'}
         upload_id = 'my-id'
-        part_number = 0
+        part_number = 1
         etag = 'foo'
         task = self.get_task(
             UploadPartTask,
             main_kwargs={
                 'client': self.client,
-                'body': self.body,
+                'fileobj': self.filename,
                 'bucket': self.bucket,
                 'key': self.key,
                 'upload_id': upload_id,
                 'part_number': part_number,
-                'extra_args': extra_args
+                'extra_args': extra_args,
+                'osutil': self.osutil,
+                'part_size': len(self.content),
+                'progress_callbacks': []
             }
         )
         self.stubber.add_response(
             method='upload_part',
             service_response={'ETag': etag},
             expected_params={
-                'Body': self.body, 'Bucket': self.bucket, 'Key': self.key,
+                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
                 'UploadId': upload_id, 'PartNumber': part_number,
                 'RequestPayer': 'requester'
             }
@@ -215,12 +243,13 @@ class TestUploadPartTask(BaseUploadTaskTest):
         rval = task()
         self.stubber.assert_no_pending_responses()
         self.assertEqual(rval, {'ETag': etag, 'PartNumber': part_number})
+        self.assertEqual(self.sent_bodies, [self.content])
 
 
 class TestCompleteMultipartUploadTask(BaseUploadTaskTest):
     def test_main(self):
         upload_id = 'my-id'
-        parts = [{'ETag': 'etag', 'PartNumber': 0}]
+        parts = [{'ETag': 'etag', 'PartNumber': 1}]
         task = self.get_task(
             CompleteMultipartUploadTask,
             main_kwargs={

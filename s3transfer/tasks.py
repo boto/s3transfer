@@ -62,6 +62,7 @@ class TaskSubmitter(object):
     def __call__(self, call_args=None):
         """Initializes and submits a transfer requests corresponding tasks
 
+        :type call_args: s3transfer.utils.CallArgs
         :param call_args: The call arguments associated to the request
 
         :rtype: s3transfer.futures.TransferFuture

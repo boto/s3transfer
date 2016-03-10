@@ -10,9 +10,6 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from botocore.compat import six
-
-from s3transfer.compat import accepts_kwargs
 from s3transfer.utils import unique_id
 from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
@@ -53,12 +50,6 @@ class TransferConfig(object):
 
 
 class TransferManager(object):
-    VALID_SUBSCRIBER_TYPES = [
-        'queued',
-        'progress',
-        'done'
-    ]
-
     ALLOWED_UPLOAD_ARGS = [
         'ACL',
         'CacheControl',
@@ -126,7 +117,6 @@ class TransferManager(object):
             extra_args = {}
         if subscribers is None:
             subscribers = []
-        self._validate_subscribers(subscribers)
         self._validate_all_known_args(extra_args, self.ALLOWED_UPLOAD_ARGS)
         call_args = CallArgs(
             fileobj=fileobj, bucket=bucket, key=key, extra_args=extra_args,
@@ -136,22 +126,6 @@ class TransferManager(object):
             client=self._client, osutil=self._osutil, config=self._config,
             executor=self._executor)
         return upload_submitter(call_args)
-
-    def _validate_subscribers(self, subscribers):
-        for subscriber in subscribers:
-            for subscriber_type in self.VALID_SUBSCRIBER_TYPES:
-                subscriber_method = 'on_' + subscriber_type
-                if hasattr(subscriber, subscriber_method):
-                    self._validate_is_callable_and_accepts_kwargs(
-                        getattr(subscriber, subscriber_method))
-
-    def _validate_is_callable_and_accepts_kwargs(self, func):
-        if not six.callable(func):
-            raise ValueError("Subscriber method %s must be callable." % func)
-
-        if not accepts_kwargs(func):
-            raise ValueError("Subscriber method %s must accept keyword "
-                             "arguments (**kwargs)" % func)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:

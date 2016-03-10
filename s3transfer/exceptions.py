@@ -20,3 +20,7 @@ class RetriesExceededError(Exception):
 
 class S3UploadFailedError(Exception):
     pass
+
+
+class InvalidSubscriberMethodError(Exception):
+    pass

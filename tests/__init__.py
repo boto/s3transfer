@@ -27,6 +27,7 @@ from concurrent import futures
 
 from s3transfer.manager import TransferConfig
 from s3transfer.futures import TransferCoordinator
+from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 
 
@@ -105,17 +106,7 @@ class FileCreator(object):
         return os.path.join(self.rootdir, filename)
 
 
-class NotCallableSubscriber(object):
-    def __init__(self):
-        self.on_done = 'foo'
-
-
-class NoKwargsSubscriber(object):
-    def on_done(self):
-        pass
-
-
-class RecordingSubscriber(object):
+class RecordingSubscriber(BaseSubscriber):
     def __init__(self):
         self.on_queued_calls = []
         self.on_progress_calls = []
@@ -247,18 +238,6 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         """
         raise NotImplementedError(
             'expected_progress_callback_info is not implemented')
-
-    def test_invalid_subscribers(self):
-        with self.assertRaisesRegexp(ValueError, 'must be callable'):
-            self.method(
-                subscribers=[NotCallableSubscriber()],
-                **self.call_kwargs
-            )
-
-        with self.assertRaisesRegexp(ValueError, 'must accept keyword'):
-            self.method(
-                subscribers=[NoKwargsSubscriber()], **self.call_kwargs
-            )
 
     def test_invalid_extra_args(self):
         with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):

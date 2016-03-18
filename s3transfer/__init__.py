@@ -131,7 +131,7 @@ import socket
 import threading
 import random
 import string
-from concurrent import futures
+import concurrent.futures
 
 from botocore.compat import six
 from botocore.vendored.requests.packages.urllib3.exceptions import \
@@ -353,7 +353,7 @@ class MultipartUploader(object):
     ]
 
     def __init__(self, client, config, osutil,
-                 executor_cls=futures.ThreadPoolExecutor):
+                 executor_cls=concurrent.futures.ThreadPoolExecutor):
         self._client = client
         self._config = config
         self._os = osutil
@@ -451,7 +451,7 @@ class ShutdownQueue(queue.Queue):
 
 class MultipartDownloader(object):
     def __init__(self, client, config, osutil,
-                 executor_cls=futures.ThreadPoolExecutor):
+                 executor_cls=concurrent.futures.ThreadPoolExecutor):
         self._client = client
         self._config = config
         self._os = osutil
@@ -471,8 +471,9 @@ class MultipartDownloader(object):
             io_writes_handler = functools.partial(
                 self._perform_io_writes, filename)
             io_future = controller.submit(io_writes_handler)
-            results = futures.wait([parts_future, io_future],
-                                   return_when=futures.FIRST_EXCEPTION)
+            results = concurrent.futures.wait(
+                [parts_future, io_future],
+                return_when=concurrent.futures.FIRST_EXCEPTION)
             self._process_future_results(results)
 
     def _process_future_results(self, futures):

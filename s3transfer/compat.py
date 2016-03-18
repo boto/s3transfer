@@ -10,9 +10,12 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import inspect
 import sys
 import os
 import errno
+
+from botocore.compat import six
 
 
 if sys.platform.startswith('win'):
@@ -29,3 +32,12 @@ if sys.platform.startswith('win'):
         os.rename(current_filename, new_filename)
 else:
     rename_file = os.rename
+
+if six.PY3:
+    def accepts_kwargs(func):
+        # In python3.4.1, there's backwards incompatible
+        # changes when using getargspec with functools.partials.
+        return inspect.getfullargspec(func)[2]
+else:
+    def accepts_kwargs(func):
+        return inspect.getargspec(func)[2]

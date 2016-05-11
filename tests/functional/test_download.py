@@ -10,6 +10,7 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import copy
 import os
 import tempfile
 import shutil
@@ -99,9 +100,37 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             {'bytes_transferred': 0}
         ]
 
-    def test_download_temporary_file_does_not_exist(self):
-        for stubbed_response in self.stubbed_responses:
+    def add_head_object_response(self, expected_params=None):
+        head_response = self.stubbed_responses[0]
+        if expected_params:
+            head_response['expected_params'] = expected_params
+        self.stubber.add_response(**head_response)
+
+    def add_successful_get_object_responses(
+            self, expected_params=None, expected_ranges=None):
+        # Add all get_object responses needed to complete the download.
+        # Should account for both ranged and nonranged downloads.
+        for i, stubbed_response in enumerate(self.stubbed_responses[1:]):
+            if expected_params:
+                stubbed_response['expected_params'] = copy.deepcopy(
+                    expected_params)
+                if expected_ranges:
+                    stubbed_response['expected_params'][
+                        'Range'] = expected_ranges[i]
             self.stubber.add_response(**stubbed_response)
+
+    def add_n_retryable_get_object_responses(self, n):
+        for _ in range(n):
+            self.stubber.add_response(
+                method='get_object',
+                service_response={
+                    'Body': StreamWithError(SOCKET_ERROR)
+                }
+            )
+
+    def test_download_temporary_file_does_not_exist(self):
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
 
         future = self.manager.download(**self.call_kwargs)
         future.result()
@@ -112,8 +141,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.assertEqual(possible_matches, [])
 
     def test_download_cleanup_on_failure(self):
-        # Add the stubbed HeadObject response
-        self.stubber.add_response(**self.stubbed_responses[0])
+        self.add_head_object_response()
 
         # Throw an error on the download
         self.stubber.add_client_error('get_object')
@@ -128,30 +156,22 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.assertEqual(possible_matches, [])
 
     def test_download_with_nonexistent_directory(self):
-        for stubbed_response in self.stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
 
         call_kwargs = self.call_kwargs
         call_kwargs['fileobj'] = os.path.join(
             self.tempdir, 'missing-directory', 'myfile')
         with self.assertRaises(IOError):
-            future = self.manager.download(**call_kwargs)
+            self.manager.download(**call_kwargs)
 
     def test_retries_and_succeeds(self):
-        stubbed_responses = self.stubbed_responses
+        self.add_head_object_response()
         # Insert a response that will trigger a retry.
-        stubbed_responses.insert(
-            1,
-            {
-                'method': 'get_object',
-                'service_response': {
-                    'Body': StreamWithError(SOCKET_ERROR)
-                }
-            }
-        )
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_n_retryable_get_object_responses(1)
+        # Add the normal responses to simulate the download proceeding
+        # as normal after the retry.
+        self.add_successful_get_object_responses()
 
         future = self.manager.download(**self.call_kwargs)
         future.result()
@@ -163,26 +183,13 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             self.assertEqual(self.content, f.read())
 
     def test_retry_failure(self):
-        stubbed_responses = []
-        # Add the HeadObject to the stubbed responses
-        stubbed_responses.append(self.stubbed_responses[0])
+        self.add_head_object_response()
 
-        # Make responses that trigger three retries
         max_retries = 3
         self.config.num_download_attempts = max_retries
         self._manager = TransferManager(self.client, self.config)
-        for _ in range(max_retries):
-            stubbed_responses.append(
-                {
-                    'method': 'get_object',
-                    'service_response': {
-                        'Body': StreamWithError(SOCKET_ERROR)
-                    }
-                }
-            )
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        # Add responses that fill up the maximum number of retries.
+        self.add_n_retryable_get_object_responses(max_retries)
 
         future = self.manager.download(**self.call_kwargs)
 
@@ -194,12 +201,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.stubber.assert_no_pending_responses()
 
     def test_can_provide_file_size(self):
-        stubbed_responses = self.stubbed_responses
-        # Remove the HeadObject response
-        stubbed_responses.pop(0)
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_successful_get_object_responses()
 
         call_kwargs = self.call_kwargs
         call_kwargs['subscribers'] = [FileSizeProvider(len(self.content))]
@@ -219,13 +221,13 @@ class TestNonRangedDownload(BaseDownloadTest):
 
     def test_download(self):
         self.extra_args['RequestPayer'] = 'requester'
-        for stubbed_response in self.stubbed_responses:
-            stubbed_response['expected_params'] = {
-                'Bucket': self.bucket,
-                'Key': self.key,
-                'RequestPayer': 'requester'
-            }
-            self.stubber.add_response(**stubbed_response)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'RequestPayer': 'requester'
+        }
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(expected_params)
         future = self.manager.download(
             self.bucket, self.key, self.filename, self.extra_args)
         future.result()
@@ -288,21 +290,15 @@ class TestRangedDownload(BaseDownloadTest):
 
     def test_download(self):
         self.extra_args['RequestPayer'] = 'requester'
-        stubbed_responses = self.stubbed_responses
-        for stubbed_response in stubbed_responses:
-            stubbed_response['expected_params'] = {
-                'Bucket': self.bucket,
-                'Key': self.key,
-                'RequestPayer': 'requester'
-            }
-
-        # Add the Range parameter for each ranged GET
-        ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
-        for i, range_val in enumerate(ranges):
-            stubbed_responses[i+1]['expected_params']['Range'] = range_val
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'RequestPayer': 'requester'
+        }
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(
+            expected_params, expected_ranges)
 
         future = self.manager.download(
             self.bucket, self.key, self.filename, self.extra_args)

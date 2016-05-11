@@ -134,10 +134,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         call_kwargs = self.call_kwargs
         call_kwargs['fileobj'] = os.path.join(
             self.tempdir, 'missing-directory', 'myfile')
-        future = self.manager.download(**call_kwargs)
-
         with self.assertRaises(IOError):
-            future.result()
+            future = self.manager.download(**call_kwargs)
 
     def test_retries_and_succeeds(self):
         stubbed_responses = self.stubbed_responses

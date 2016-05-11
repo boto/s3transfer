@@ -107,16 +107,11 @@ class TransferManager(object):
             max_size=self._config.max_queue_size,
             max_num_threads=self._config.max_concurrency
         )
-        # We want to match the number of threads as the main executor
-        # for performance reasons. Each thread will be working on one
-        # queue when downloading so if there are more downloads in progress
-        # then there are workers available to work on the queues you will
-        # probably start seeing some timeouts and memory use growing because
-        # there is no thread writting out what is being read from the
-        # downloaded stream.
+        # There is one thread available for writing to disk. It will handle
+        # downloads for all files.
         self._io_executor = BoundedExecutor(
-            max_size=self._config.max_concurrency,
-            max_num_threads=self._config.max_concurrency
+            max_size=self._config.max_io_queue_size,
+            max_num_threads=1
         )
         self._register_handlers()
 
@@ -158,7 +153,6 @@ class TransferManager(object):
             executor=self._executor)
         return upload_submitter(call_args)
 
-
     def download(self, bucket, key, fileobj, extra_args=None,
                  subscribers=None):
         """Downloads a file from S3
@@ -197,14 +191,6 @@ class TransferManager(object):
             client=self._client, osutil=self._osutil, config=self._config,
             executor=self._executor, io_executor=self._io_executor)
         return download_submitter(call_args)
-
-    def _validate_is_callable_and_accepts_kwargs(self, func):
-        if not six.callable(func):
-            raise ValueError("Subscriber method %s must be callable." % func)
-
-        if not accepts_kwargs(func):
-            raise ValueError("Subscriber method %s must accept keyword "
-                             "arguments (**kwargs)" % func)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:

@@ -17,7 +17,6 @@ import tempfile
 from tests import unittest
 from tests import RecordingSubscriber
 from s3transfer.compat import six
-from s3transfer.exceptions import QueueShutdownError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
@@ -25,7 +24,6 @@ from s3transfer.utils import random_file_extension
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import ReadFileChunk
-from s3transfer.utils import ShutdownQueue
 from s3transfer.utils import StreamReaderProgress
 
 
@@ -256,16 +254,3 @@ class TestStreamReaderProgress(BaseUtilsTest):
             original_stream, [self.callback, self.callback])
         self.assertEqual(wrapped.read(), 'foobarbaz')
         self.assertEqual(self.amounts_seen, [9, 9])
-
-
-class TestShutdownQueue(unittest.TestCase):
-    def test_handles_normal_put_get_requests(self):
-        q = ShutdownQueue()
-        q.put('foo')
-        self.assertEqual(q.get(), 'foo')
-
-    def test_put_raises_error_on_shutdown(self):
-        q = ShutdownQueue()
-        q.trigger_shutdown()
-        with self.assertRaises(QueueShutdownError):
-            q.put('foo')

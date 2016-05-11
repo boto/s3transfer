@@ -19,8 +19,6 @@ import socket
 from botocore.compat import six
 
 
-queue = six.moves.queue
-
 if sys.platform.startswith('win'):
     def rename_file(current_filename, new_filename):
         try:

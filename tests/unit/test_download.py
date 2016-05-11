@@ -20,14 +20,48 @@ from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.download import GetObjectTask
 from s3transfer.download import IOWriteTask
-from s3transfer.download import SHUTDOWN_SENTINEL
+from s3transfer.download import IORenameFileTask
 from s3transfer.futures import BoundedExecutor
-from s3transfer.utils import ShutdownQueue
 from s3transfer.utils import OSUtils
 
 
 class DownloadException(Exception):
     pass
+
+
+class WriteCollector(object):
+    """A utility to collect information about writes and seeks"""
+    def __init__(self):
+        self._pos = 0
+        self.writes = []
+
+    def seek(self, pos):
+        self._pos = pos
+
+    def write(self, data):
+        self.writes.append((self._pos, data))
+
+
+class CancelledStreamWrapper(object):
+    """A wrapper to trigger a cancellation while stream reading
+
+    Forces the transfer coordinator to cancel after a certain amount of reads
+    :param stream: The underlying stream to read from
+    :param transfer_coordinator: The coordinator for the transfer
+    :param num_reads: On which read to sigal a cancellation. 0 is the first
+        read.
+    """
+    def __init__(self, stream, transfer_coordinator, num_reads=0):
+        self._stream = stream
+        self._transfer_coordinator = transfer_coordinator
+        self._num_reads = num_reads
+        self._count = 0
+
+    def read(self, *args, **kwargs):
+        if self._num_reads == self._count:
+            self._transfer_coordinator.cancel()
+        self._stream.read(*args, **kwargs)
+        self._count += 1
 
 
 class TestGetObjectTask(BaseTaskTest):
@@ -38,24 +72,26 @@ class TestGetObjectTask(BaseTaskTest):
         self.extra_args = {}
         self.callbacks = []
         self.max_attempts = 5
-        self.io_queue = ShutdownQueue(0)
+        self.io_executor = BoundedExecutor(0, 1)
         self.content = b'my content'
         self.stream = six.BytesIO(self.content)
+        self.f = WriteCollector()
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
-            'extra_args': self.extra_args, 'callbacks': self.callbacks,
-            'max_attempts': self.max_attempts, 'io_queue': self.io_queue
+            'f': self.f, 'extra_args': self.extra_args,
+            'callbacks': self.callbacks,
+            'max_attempts': self.max_attempts, 'io_executor': self.io_executor
         }
         default_kwargs.update(kwargs)
         return self.get_task(GetObjectTask, main_kwargs=default_kwargs)
 
-    def assert_io_queue_contents(self, expected_contents):
-        io_queue_contents = []
-        while not self.io_queue.empty():
-            io_queue_contents.append(self.io_queue.get())
-        self.assertEqual(io_queue_contents, expected_contents)
+    def assert_io_writes(self, expected_writes):
+        # Let the io executor process all of the writes before checking
+        # what writes were sent to it.
+        self.io_executor.shutdown()
+        self.assertEqual(self.f.writes, expected_writes)
 
     def test_main(self):
         self.stubber.add_response(
@@ -66,7 +102,7 @@ class TestGetObjectTask(BaseTaskTest):
         task()
 
         self.stubber.assert_no_pending_responses()
-        self.assert_io_queue_contents([(0, self.content)])
+        self.assert_io_writes([(0, self.content)])
 
     def test_extra_args(self):
         self.stubber.add_response(
@@ -80,7 +116,7 @@ class TestGetObjectTask(BaseTaskTest):
         task()
 
         self.stubber.assert_no_pending_responses()
-        self.assert_io_queue_contents([(0, self.content)])
+        self.assert_io_writes([(0, self.content)])
 
     def test_control_chunk_size(self):
         self.stubber.add_response(
@@ -96,7 +132,7 @@ class TestGetObjectTask(BaseTaskTest):
         for i in range(len(self.content)):
             expected_contents.append((i, bytes(self.content[i:i+1])))
 
-        self.assert_io_queue_contents(expected_contents)
+        self.assert_io_writes(expected_contents)
 
     def test_start_index(self):
         self.stubber.add_response(
@@ -107,7 +143,7 @@ class TestGetObjectTask(BaseTaskTest):
         task()
 
         self.stubber.assert_no_pending_responses()
-        self.assert_io_queue_contents([(5, self.content)])
+        self.assert_io_writes([(5, self.content)])
 
     def test_retries_succeeds(self):
         self.stubber.add_response(
@@ -126,7 +162,7 @@ class TestGetObjectTask(BaseTaskTest):
         # Retryable error should have not affected the bytes placed into
         # the io queue.
         self.stubber.assert_no_pending_responses()
-        self.assert_io_queue_contents([(0, self.content)])
+        self.assert_io_writes([(0, self.content)])
 
     def test_retries_failure(self):
         for _ in range(self.max_attempts):
@@ -146,94 +182,78 @@ class TestGetObjectTask(BaseTaskTest):
             self.transfer_coordinator.result()
         self.stubber.assert_no_pending_responses()
 
-    def test_queue_shutdown(self):
-        self.io_queue.trigger_shutdown()
+    def test_cancels_out_of_queueing(self):
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
+            'get_object',
+            service_response={
+                'Body': CancelledStreamWrapper(
+                    self.stream, self.transfer_coordinator)
+            },
             expected_params={'Bucket': self.bucket, 'Key': self.key}
         )
         task = self.get_download_task()
         task()
 
         self.stubber.assert_no_pending_responses()
-        # Make sure that no contents were added to the queue because of the
-        # shutdown.
-        self.assert_io_queue_contents([])
+        # Make sure that no contents were added to the queue because the task
+        # should have been canceled before trying to add the contents to the
+        # io queue.
+        self.assert_io_writes([])
 
 
-class TestIOWriteTask(BaseTaskTest):
+class BaseIOTaskTest(BaseTaskTest):
     def setUp(self):
-        super(TestIOWriteTask, self).setUp()
+        super(BaseIOTaskTest, self).setUp()
         self.files = FileCreator()
-        self.io_queue = ShutdownQueue(0)
         self.osutil = OSUtils()
         self.temp_filename = os.path.join(self.files.rootdir, 'mytempfile')
         self.final_filename = os.path.join(self.files.rootdir, 'myfile')
 
     def tearDown(self):
-        super(TestIOWriteTask, self).tearDown()
+        super(BaseIOTaskTest, self).tearDown()
         self.files.remove_all()
 
-    def get_io_write_task(self, **kwargs):
-        default_kwargs = {
-            'filename': self.temp_filename,
-            'final_filename': self.final_filename,
-            'osutil': self.osutil,
-            'io_queue': self.io_queue
-        }
-        default_kwargs.update(kwargs)
-        return self.get_task(
-            IOWriteTask, main_kwargs=default_kwargs, is_final=True)
 
+class TestIOWriteTask(BaseIOTaskTest):
     def test_main(self):
-        self.io_queue.put((0, b'foo'))
-        self.io_queue.put((3, b'bar'))
-        self.io_queue.put(SHUTDOWN_SENTINEL)
+        with open(self.temp_filename, 'wb') as f:
+            # Write once to the file
+            task = self.get_task(
+                IOWriteTask,
+                main_kwargs={
+                    'f': f,
+                    'data': b'foo',
+                    'offset': 0
+                }
+            )
+            task()
 
-        task = self.get_io_write_task()
-        task()
+            # Write again to the file
+            task = self.get_task(
+                IOWriteTask,
+                main_kwargs={
+                    'f': f,
+                    'data': b'bar',
+                    'offset': 3
+                }
+            )
+            task()
 
-        with open(self.final_filename, 'rb') as f:
+        with open(self.temp_filename, 'rb') as f:
             self.assertEqual(f.read(), b'foobar')
+
+
+class TestIORenameFileTask(BaseIOTaskTest):
+    def test_main(self):
+        with open(self.temp_filename, 'wb') as f:
+            task = self.get_task(
+                IORenameFileTask,
+                main_kwargs={
+                    'f': f,
+                    'final_filename': self.final_filename,
+                    'osutil': self.osutil
+                }
+            )
+            task()
+        self.assertTrue(os.path.exists(self.final_filename))
         self.assertFalse(os.path.exists(self.temp_filename))
-
-    def test_failure(self):
-        self.io_queue.put((0, b'foo'))
-        self.io_queue.put((3, b'bar'))
-
-        task = self.get_io_write_task()
-
-        executor = BoundedExecutor(0, 1)
-        executor.submit(task)
-
-        # Simulate an error is some other task and then send in the
-        # shutdown signal.
-        self.transfer_coordinator.set_exception(DownloadException())
-        self.io_queue.put(SHUTDOWN_SENTINEL)
-
-        # Confirm that it would have failed
-        with self.assertRaises(DownloadException):
-            self.transfer_coordinator.result()
-
-        # Make sure the temporary file does not exist nor the final file
-        self.assertFalse(os.path.exists(self.temp_filename))
-        self.assertFalse(os.path.exists(self.final_filename))
-
-    def test_exception_in_write(self):
-        self.io_queue.put((0, b'foo'))
-        self.io_queue.put(SHUTDOWN_SENTINEL)
-
-        # Create a job that will fail because it is writing to a directory
-        # that does not exist.
-        self.temp_filename = os.path.join(
-            self.files.rootdir, 'fakedir', 'myfile')
-        task = self.get_io_write_task()
-        task()
-
-        # Confirm that it would have failed
-        with self.assertRaises(IOError):
-            self.transfer_coordinator.result()
-
-        # Make sure the temporary file does not exist nor the final file
-        self.assertFalse(os.path.exists(self.temp_filename))
-        self.assertFalse(os.path.exists(self.final_filename))

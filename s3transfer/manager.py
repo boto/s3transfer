@@ -138,7 +138,7 @@ class TransferManager(object):
         :param extra_args: Extra arguments that may be passed to the
             client operation
 
-        :type subscribers: a list of subscribers
+        :type subscribers: list(s3transfer.subscribers.BaseSubscriber)
         :param subscribers: The list of subscribers to be invoked in the
             order provided based on the event emit during the process of
             the transfer request.
@@ -177,7 +177,7 @@ class TransferManager(object):
         :param extra_args: Extra arguments that may be passed to the
             client operation
 
-        :type subscribers: a list of subscribers
+        :type subscribers: list(s3transfer.subscribers.BaseSubscriber)
         :param subscribers: The list of subscribers to be invoked in the
             order provided based on the event emit during the process of
             the transfer request.

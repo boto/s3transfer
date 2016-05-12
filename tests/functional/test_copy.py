@@ -80,13 +80,52 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
             {'bytes_transferred': len(self.content)},
         ]
 
-    def test_can_provide_file_size(self):
-        stubbed_responses = self.stubbed_responses
-        # Remove the HeadObject response
-        stubbed_responses.pop(0)
+    def add_head_object_response(self, expected_params=None, stubber=None):
+        if not stubber:
+            stubber = self.stubber
+        head_response = self.stubbed_responses[0]
+        if expected_params:
+            head_response['expected_params'] = expected_params
+        stubber.add_response(**head_response)
 
+    def add_successful_copy_responses(
+            self, expected_copy_params=None, expected_create_mpu_params=None,
+            expected_complete_mpu_params=None):
+
+        # Add all responses needed to do the copy of the object.
+        # Should account for both ranged and nonranged downloads.
+        stubbed_responses = self.stubbed_responses[1:]
+
+        # If the length of copy responses is greater than one then it is
+        # a multipart copy.
+        copy_responses = stubbed_responses[0:1]
+        if len(stubbed_responses) > 1:
+            copy_responses = stubbed_responses[1:-1]
+
+        # Add the expected create multipart upload params.
+        if expected_create_mpu_params:
+            stubbed_responses[0][
+                'expected_params'] = expected_create_mpu_params
+
+        # Add any expected copy parameters.
+        if expected_copy_params:
+            for i, copy_response in enumerate(copy_responses):
+                if isinstance(expected_copy_params, list):
+                    copy_response['expected_params'] = expected_copy_params[i]
+                else:
+                    copy_response['expected_params'] = expected_copy_params
+
+        # Add the expected complete multipart upload params.
+        if expected_complete_mpu_params:
+            stubbed_responses[-1][
+                'expected_params'] = expected_complete_mpu_params
+
+        # Add the responses to the stubber.
         for stubbed_response in stubbed_responses:
             self.stubber.add_response(**stubbed_response)
+
+    def test_can_provide_file_size(self):
+        self.add_successful_copy_responses()
 
         call_kwargs = self.call_kwargs
         call_kwargs['subscribers'] = [FileSizeProvider(len(self.content))]
@@ -100,17 +139,14 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 
     def test_provide_copy_source_as_dict(self):
         self.copy_source['VersionId'] = 'mysourceversionid'
-        # Modify the HeadObject to make sure the copy source is parsed
-        # correctly
-        stubbed_responses = self.stubbed_responses
-        stubbed_responses[0]['expected_params'] = {
+        expected_params = {
             'Bucket': 'mysourcebucket',
             'Key': 'mysourcekey',
             'VersionId': 'mysourceversionid'
         }
 
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(expected_params=expected_params)
+        self.add_successful_copy_responses()
 
         future = self.manager.copy(**self.call_kwargs)
         future.result()
@@ -120,17 +156,14 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         self.copy_source = (
             'mysourcebucket/mysourcekey?versionId=mysourceversionid'
         )
-        # Modify the HeadObject to make sure the copy source is parsed
-        # correctly
-        stubbed_responses = self.stubbed_responses
-        stubbed_responses[0]['expected_params'] = {
+        expected_params = {
             'Bucket': 'mysourcebucket',
             'Key': 'mysourcekey',
             'VersionId': 'mysourceversionid'
         }
 
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(expected_params=expected_params)
+        self.add_successful_copy_responses()
 
         future = self.manager.copy(**self.call_kwargs)
         future.result()
@@ -142,7 +175,6 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
             self.manager.copy(**self.call_kwargs)
 
     def test_provide_copy_source_client(self):
-        stubbed_responses = self.stubbed_responses
         source_client = self.session.create_client(
             's3', 'eu-central-1', aws_access_key_id='foo',
             aws_secret_access_key='bar')
@@ -150,13 +182,8 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         source_stubber.activate()
         self.addCleanup(source_stubber.deactivate)
 
-        # Add the head object response to stubber for the source
-        # client.
-        source_stubber.add_response(**stubbed_responses[0])
-
-        # Add the rest of the responses for the main stubber
-        for stubbed_response in stubbed_responses[1:]:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(stubber=source_stubber)
+        self.add_successful_copy_responses()
 
         call_kwargs = self.call_kwargs
         call_kwargs['source_client'] = source_client
@@ -172,27 +199,19 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 class TestNonMultipartCopy(BaseCopyTest):
     __test__ = True
 
-    def _get_stubbed_responses_with_expected_params(self):
-        stubbed_responses = self.stubbed_responses
-
-        # Add expected parameters to the head object
-        stubbed_responses[0]['expected_params'] = {
+    def test_copy(self):
+        expected_head_params = {
             'Bucket': 'mysourcebucket',
-            'Key': 'mysourcekey',
+            'Key': 'mysourcekey'
         }
-
-        # Add expected parameters to the copy object
-        stubbed_responses[1]['expected_params'] = {
+        expected_copy_object = {
             'Bucket': self.bucket,
             'Key': self.key,
-            'CopySource': self.copy_source,
+            'CopySource': self.copy_source
         }
-        return stubbed_responses
-
-    def test_copy(self):
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(expected_params=expected_head_params)
+        self.add_successful_copy_responses(
+            expected_copy_params=expected_copy_object)
 
         future = self.manager.copy(**self.call_kwargs)
         future.result()
@@ -200,15 +219,21 @@ class TestNonMultipartCopy(BaseCopyTest):
 
     def test_copy_with_extra_args(self):
         self.extra_args['MetadataDirective'] = 'REPLACE'
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
 
-        # The copy object should have the MetadataDirective argument
-        # passed to it
-        stubbed_responses[1]['expected_params'][
-            'MetadataDirective'] = 'REPLACE'
+        expected_head_params = {
+            'Bucket': 'mysourcebucket',
+            'Key': 'mysourcekey'
+        }
+        expected_copy_object = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'CopySource': self.copy_source,
+            'MetadataDirective': 'REPLACE'
+        }
 
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(expected_params=expected_head_params)
+        self.add_successful_copy_responses(
+            expected_copy_params=expected_copy_object)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -218,19 +243,22 @@ class TestNonMultipartCopy(BaseCopyTest):
 
     def test_copy_maps_extra_args_to_head_object(self):
         self.extra_args['CopySourceSSECustomerAlgorithm'] = 'AES256'
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
 
-        # The CopySourceSSECustomerAlgorithm needs to get mapped to
-        # SSECustomerAlgorithm for HeadObject
-        stubbed_responses[0]['expected_params'][
-            'SSECustomerAlgorithm'] = 'AES256'
+        expected_head_params = {
+            'Bucket': 'mysourcebucket',
+            'Key': 'mysourcekey',
+            'SSECustomerAlgorithm': 'AES256'
+        }
+        expected_copy_object = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'CopySource': self.copy_source,
+            'CopySourceSSECustomerAlgorithm': 'AES256'
+        }
 
-        # However, it needs to remain the same for UploadPartCopy.
-        stubbed_responses[1]['expected_params'][
-            'CopySourceSSECustomerAlgorithm'] = 'AES256'
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response(expected_params=expected_head_params)
+        self.add_successful_copy_responses(
+            expected_copy_params=expected_copy_object)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -303,37 +331,41 @@ class TestMultipartCopy(BaseCopyTest):
             {'bytes_transferred': 2}
         ]
 
-    def _get_stubbed_responses_with_expected_params(self):
+    def add_create_multipart_upload_response(self):
+        self.stubber.add_response(**self.stubbed_responses[1])
+
+    def _get_expected_params(self):
         upload_id = 'my-upload-id'
-        stubbed_responses = self.stubbed_responses
 
         # Add expected parameters to the head object
-        stubbed_responses[0]['expected_params'] = {
+        expected_head_params = {
             'Bucket': 'mysourcebucket',
             'Key': 'mysourcekey',
         }
 
         # Add expected parameters for the create multipart
-        stubbed_responses[1]['expected_params'] = {
+        expected_create_mpu_params = {
             'Bucket': self.bucket,
             'Key': self.key,
         }
 
+        expected_copy_params = []
         # Add expected parameters to the copy part
         ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-9']
         for i, range_val in enumerate(ranges):
-            index = 2 + i
-            stubbed_responses[index]['expected_params'] = {
-                'Bucket': self.bucket,
-                'Key': self.key,
-                'CopySource': self.copy_source,
-                'UploadId': upload_id,
-                'PartNumber': i + 1,
-                'CopySourceRange': range_val
-            }
+            expected_copy_params.append(
+                {
+                    'Bucket': self.bucket,
+                    'Key': self.key,
+                    'CopySource': self.copy_source,
+                    'UploadId': upload_id,
+                    'PartNumber': i + 1,
+                    'CopySourceRange': range_val
+                }
+            )
 
         # Add expected parameters for the complete multipart
-        stubbed_responses[5]['expected_params'] = {
+        expected_complete_mpu_params = {
             'Bucket': self.bucket,
             'Key': self.key, 'UploadId': upload_id,
             'MultipartUpload': {
@@ -344,40 +376,49 @@ class TestMultipartCopy(BaseCopyTest):
                 ]
             }
         }
-        return stubbed_responses
 
-    def _filter_stubbed_responses_by_operation(
-            self, stubbed_responses, operation_names):
-        filtered_stubbed_responses = []
-        for stubbed_response in stubbed_responses:
-            if stubbed_response['method'] in operation_names:
-                filtered_stubbed_responses.append(stubbed_response)
-        return filtered_stubbed_responses
+        return expected_head_params, {
+            'expected_create_mpu_params': expected_create_mpu_params,
+            'expected_copy_params': expected_copy_params,
+            'expected_complete_mpu_params': expected_complete_mpu_params,
+        }
+
+    def _add_params_to_expected_params(
+            self, add_copy_kwargs, operation_types, new_params):
+
+        expected_params_to_update = []
+        for operation_type in operation_types:
+            add_copy_kwargs_key = 'expected_' + operation_type + '_params'
+            expected_params = add_copy_kwargs[add_copy_kwargs_key]
+            if isinstance(expected_params, list):
+                expected_params_to_update.extend(expected_params)
+            else:
+                expected_params_to_update.append(expected_params)
+
+        for expected_params in expected_params_to_update:
+            expected_params.update(new_params)
 
     def test_copy(self):
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         future = self.manager.copy(**self.call_kwargs)
         future.result()
         self.stubber.assert_no_pending_responses()
 
     def test_copy_with_extra_args(self):
+        # This extra argument should be added to the head object,
+        # the create multipart upload, and upload part copy.
         self.extra_args['RequestPayer'] = 'requester'
 
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
-        filtered_responses = self._filter_stubbed_responses_by_operation(
-            stubbed_responses,
-            ['head_object', 'create_multipart_upload', 'upload_part_copy']
-        )
+        head_params, add_copy_kwargs = self._get_expected_params()
+        head_params.update(self.extra_args)
+        self.add_head_object_response(expected_params=head_params)
 
-        # Add the requester payer arg to HeadObject, CreateMultipartUpload
-        # and UploadPartCopy
-        for stubbed_response in filtered_responses:
-            stubbed_response['expected_params']['RequestPayer'] = 'requester'
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self._add_params_to_expected_params(
+            add_copy_kwargs, ['create_mpu', 'copy'], self.extra_args)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -389,9 +430,9 @@ class TestMultipartCopy(BaseCopyTest):
         # This argument can never be used for multipart uploads
         self.extra_args['MetadataDirective'] = 'COPY'
 
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -402,15 +443,12 @@ class TestMultipartCopy(BaseCopyTest):
     def test_copy_args_to_only_create_multipart(self):
         self.extra_args['ACL'] = 'private'
 
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
 
-        # ACL's should only be used for the CreateMultipartUpload
-        create_multipart_resp = self._filter_stubbed_responses_by_operation(
-            stubbed_responses, ['create_multipart_upload'])[0]
-        create_multipart_resp['expected_params']['ACL'] = 'private'
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self._add_params_to_expected_params(
+            add_copy_kwargs, ['create_mpu'], self.extra_args)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -423,17 +461,12 @@ class TestMultipartCopy(BaseCopyTest):
         # and upload part.
         self.extra_args['SSECustomerAlgorithm'] = 'AES256'
 
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
-        filtered_responses = self._filter_stubbed_responses_by_operation(
-            stubbed_responses,
-            ['create_multipart_upload', 'upload_part_copy']
-        )
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
 
-        for stubbed_response in filtered_responses:
-            stubbed_response['expected_params'][
-                'SSECustomerAlgorithm'] = 'AES256'
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self._add_params_to_expected_params(
+            add_copy_kwargs, ['create_mpu', 'copy'], self.extra_args)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -444,24 +477,17 @@ class TestMultipartCopy(BaseCopyTest):
     def test_copy_maps_extra_args_to_head_object(self):
         self.extra_args['CopySourceSSECustomerAlgorithm'] = 'AES256'
 
-        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        head_params, add_copy_kwargs = self._get_expected_params()
 
         # The CopySourceSSECustomerAlgorithm needs to get mapped to
         # SSECustomerAlgorithm for HeadObject
-        head_object_responses = self._filter_stubbed_responses_by_operation(
-            stubbed_responses, ['head_object'])
-        head_object_responses[0]['expected_params'][
-            'SSECustomerAlgorithm'] = 'AES256'
+        head_params['SSECustomerAlgorithm'] = 'AES256'
+        self.add_head_object_response(expected_params=head_params)
 
         # However, it needs to remain the same for UploadPartCopy.
-        part_copy_responses = self._filter_stubbed_responses_by_operation(
-            stubbed_responses, ['upload_part_copy'])
-        for response in part_copy_responses:
-            response['expected_params'][
-                'CopySourceSSECustomerAlgorithm'] = 'AES256'
-
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+        self._add_params_to_expected_params(
+            add_copy_kwargs, ['copy'], self.extra_args)
+        self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.call_kwargs
         call_kwargs['extra_args'] = self.extra_args
@@ -471,8 +497,8 @@ class TestMultipartCopy(BaseCopyTest):
 
     def test_abort_on_failure(self):
         # First add the head object and create multipart upload
-        for stubbed_response in self.stubbed_responses[0:2]:
-            self.stubber.add_response(**stubbed_response)
+        self.add_head_object_response()
+        self.add_create_multipart_upload_response()
 
         # Cause an error on upload_part_copy
         self.stubber.add_client_error('upload_part_copy', 'ArbitraryFailure')

@@ -10,6 +10,7 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import copy
 import os
 
 from tests import BaseTaskTest
@@ -148,7 +149,7 @@ class TestGetObjectTask(BaseTaskTest):
     def test_retries_succeeds(self):
         self.stubber.add_response(
             'get_object', service_response={
-                'Body': StreamWithError(SOCKET_ERROR)
+                'Body': StreamWithError(self.stream, SOCKET_ERROR)
             },
             expected_params={'Bucket': self.bucket, 'Key': self.key}
         )
@@ -168,7 +169,7 @@ class TestGetObjectTask(BaseTaskTest):
         for _ in range(self.max_attempts):
             self.stubber.add_response(
                 'get_object', service_response={
-                    'Body': StreamWithError(SOCKET_ERROR)
+                    'Body': StreamWithError(self.stream, SOCKET_ERROR)
                 },
                 expected_params={'Bucket': self.bucket, 'Key': self.key}
             )
@@ -181,6 +182,37 @@ class TestGetObjectTask(BaseTaskTest):
         with self.assertRaises(RetriesExceededError):
             self.transfer_coordinator.result()
         self.stubber.assert_no_pending_responses()
+
+    def test_retries_in_middle_of_streaming(self):
+        # After the first read a retryable error will be thrown
+        self.stubber.add_response(
+            'get_object', service_response={
+                'Body': StreamWithError(
+                    copy.deepcopy(self.stream), SOCKET_ERROR, 1)
+            },
+            expected_params={'Bucket': self.bucket, 'Key': self.key}
+        )
+        self.stubber.add_response(
+            'get_object', service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key}
+        )
+        task = self.get_download_task()
+        task.STREAM_CHUNK_SIZE = 1
+        task()
+
+        self.stubber.assert_no_pending_responses()
+        expected_contents = []
+        # This is the content intially read in before the retry hit on the
+        # second read()
+        expected_contents.append((0, bytes(self.content[0:1])))
+
+        # The rest of the content should be the entire set of data partitioned
+        # out based on the one byte stream chunk size. Note the second
+        # element in the list should be a copy of the first element since
+        # a retryable exception happened in between.
+        for i in range(len(self.content)):
+            expected_contents.append((i, bytes(self.content[i:i+1])))
+        self.assert_io_writes(expected_contents)
 
     def test_cancels_out_of_queueing(self):
         self.stubber.add_response(

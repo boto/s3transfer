@@ -24,6 +24,7 @@ from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
+from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import StreamReaderProgress
 from s3transfer.tasks import Task
 from s3transfer.tasks import TaskSubmitter
@@ -267,6 +268,11 @@ class GetObjectTask(Task):
                              "retrying request, (attempt %s / %s)", e, i,
                              max_attempts, exc_info=True)
                 last_exception = e
+                # Also invoke the progress callbacks to indicate that we
+                # are trying to download the stream again and all progress
+                # for this GetObject has been lost.
+                invoke_progress_callbacks(
+                    callbacks, start_index - current_index)
                 continue
         raise RetriesExceededError(last_exception)
 

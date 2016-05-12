@@ -78,6 +78,20 @@ def get_callbacks(transfer_future, callback_type):
     return callbacks
 
 
+def invoke_progress_callbacks(callbacks, bytes_transferred):
+    """Calls all progress callbacks
+
+    :param callbacks: A list of progress callbacks to invoke
+    :param bytes_transferred: The number of bytes transferred. This is passed
+        to the callbacks. If no bytes were transferred the callbacks will not
+        be invoked because no progress was achieved
+    """
+    # Only invoke the callbacks if bytes were actually transferred.
+    if bytes_transferred:
+        for callback in callbacks:
+            callback(bytes_transferred=bytes_transferred)
+
+
 class CallArgs(object):
     def __init__(self, **kwargs):
         """A class that records call arguments
@@ -205,8 +219,7 @@ class ReadFileChunk(object):
         data = self._fileobj.read(amount_to_read)
         self._amount_read += len(data)
         if self._callbacks is not None and self._callbacks_enabled:
-            for callback in self._callbacks:
-                callback(bytes_transferred=len(data))
+            invoke_progress_callbacks(self._callbacks, len(data))
         return data
 
     def enable_callback(self):
@@ -218,9 +231,9 @@ class ReadFileChunk(object):
     def seek(self, where):
         self._fileobj.seek(self._start_byte + where)
         if self._callbacks is not None and self._callbacks_enabled:
-            for callback in self._callbacks:
-                # To also rewind the callback() for an accurate progress report
-                callback(bytes_transferred=where - self._amount_read)
+            # To also rewind the callback() for an accurate progress report
+            invoke_progress_callbacks(
+                self._callbacks, bytes_transferred=where - self._amount_read)
         self._amount_read = where
 
     def close(self):
@@ -262,6 +275,5 @@ class StreamReaderProgress(object):
 
     def read(self, *args, **kwargs):
         value = self._stream.read(*args, **kwargs)
-        for callback in self._callbacks:
-            callback(bytes_transferred=len(value))
+        invoke_progress_callbacks(self._callbacks, len(value))
         return value

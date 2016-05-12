@@ -20,12 +20,14 @@ from botocore.exceptions import ClientError
 
 from tests import StreamWithError
 from tests import FileSizeProvider
+from tests import RecordingSubscriber
 from tests import BaseGeneralInterfaceTest
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
+from s3transfer.download import GetObjectTask
 
 
 class BaseDownloadTest(BaseGeneralInterfaceTest):
@@ -96,8 +98,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # Note that last read is from the empty sentinel indicating
         # that the stream is done.
         return [
-            {'bytes_transferred': 10},
-            {'bytes_transferred': 0}
+            {'bytes_transferred': 10}
         ]
 
     def add_head_object_response(self, expected_params=None):
@@ -119,14 +120,21 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
                         'Range'] = expected_ranges[i]
             self.stubber.add_response(**stubbed_response)
 
-    def add_n_retryable_get_object_responses(self, n):
+    def add_n_retryable_get_object_responses(self, n, num_reads=0):
         for _ in range(n):
             self.stubber.add_response(
                 method='get_object',
                 service_response={
-                    'Body': StreamWithError(SOCKET_ERROR)
+                    'Body': StreamWithError(
+                        copy.deepcopy(self.stream), SOCKET_ERROR, num_reads)
                 }
             )
+
+    def set_stream_chunk_size(self, chunk_size):
+        previous_chunk_size = GetObjectTask.STREAM_CHUNK_SIZE
+        GetObjectTask.STREAM_CHUNK_SIZE = chunk_size
+        self.addCleanup(
+            setattr, GetObjectTask, 'STREAM_CHUNK_SIZE',  previous_chunk_size)
 
     def test_download_temporary_file_does_not_exist(self):
         self.add_head_object_response()
@@ -199,6 +207,44 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         # All of the retries should have been used up.
         self.stubber.assert_no_pending_responses()
+
+    def test_retry_rewinds_callbacks(self):
+        self.add_head_object_response()
+        # Insert a response that will trigger a retry after one read of the
+        # stream has been made.
+        self.add_n_retryable_get_object_responses(1, num_reads=1)
+        # Add the normal responses to simulate the download proceeding
+        # as normal after the retry.
+        self.add_successful_get_object_responses()
+
+        recorder_subscriber = RecordingSubscriber()
+        # Set the streamming to a size that is smaller than the data we
+        # currently provide to it to simulate rewinds of callbacks.
+        new_chunk_size = 3
+        self.set_stream_chunk_size(new_chunk_size)
+        future = self.manager.download(
+            subscribers=[recorder_subscriber], **self.call_kwargs)
+        future.result()
+
+        # Ensure that there is no more remaining responses and that contents
+        # are correct.
+        self.stubber.assert_no_pending_responses()
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
+        # Assert that the number of bytes seen is equal to the length of
+        # downloaded content.
+        self.assertEqual(
+            recorder_subscriber.calculate_bytes_seen(), len(self.content))
+
+        # Also ensure that the second progress invocation was negative three
+        # becasue a retry happened on the second read of the stream and we
+        # know that the chunk size for each read is 3.
+        progress_byte_amts = [
+            call['bytes_transferred'] for call in
+            recorder_subscriber.on_progress_calls
+        ]
+        self.assertEqual(-3, progress_byte_amts[1])
 
     def test_can_provide_file_size(self):
         self.add_successful_get_object_responses()
@@ -277,15 +323,10 @@ class TestRangedDownload(BaseDownloadTest):
 
     @property
     def expected_progress_callback_info(self):
-        # Note that last read is from the empty sentinel indicating
-        # that the stream is done.
         return [
             {'bytes_transferred': 4},
-            {'bytes_transferred': 0},
             {'bytes_transferred': 4},
-            {'bytes_transferred': 0},
             {'bytes_transferred': 2},
-            {'bytes_transferred': 0}
         ]
 
     def test_download(self):

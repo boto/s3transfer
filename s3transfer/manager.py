@@ -51,7 +51,14 @@ class TransferConfig(object):
             means that there is no maximum.
 
         :param num_download_attempts: The number of download attempts that
-            will be tried upon errors with downloading an object in S3.
+            will be tried upon errors with downloading an object in S3. Note
+            that these retries account for errors that occur when streamming
+            down the data from s3 (i.e. socket errors and read timeouts that
+            occur after recieving an OK response from s3).
+            Other retryable exceptions such as throttling errors and 5xx errors
+            are already retried by botocore (this default is 5). The
+            ``num_download_attempts`` does not take into account the
+            number of exceptions retried by botocore.
         """
         self.multipart_threshold = multipart_threshold
         self.max_concurrency = max_concurrency

@@ -76,12 +76,12 @@ class TestGetObjectTask(BaseTaskTest):
         self.io_executor = BoundedExecutor(0, 1)
         self.content = b'my content'
         self.stream = six.BytesIO(self.content)
-        self.f = WriteCollector()
+        self.fileobj = WriteCollector()
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
-            'f': self.f, 'extra_args': self.extra_args,
+            'fileobj': self.fileobj, 'extra_args': self.extra_args,
             'callbacks': self.callbacks,
             'max_attempts': self.max_attempts, 'io_executor': self.io_executor
         }
@@ -92,7 +92,7 @@ class TestGetObjectTask(BaseTaskTest):
         # Let the io executor process all of the writes before checking
         # what writes were sent to it.
         self.io_executor.shutdown()
-        self.assertEqual(self.f.writes, expected_writes)
+        self.assertEqual(self.fileobj.writes, expected_writes)
 
     def test_main(self):
         self.stubber.add_response(
@@ -253,7 +253,7 @@ class TestIOWriteTask(BaseIOTaskTest):
             task = self.get_task(
                 IOWriteTask,
                 main_kwargs={
-                    'f': f,
+                    'fileobj': f,
                     'data': b'foo',
                     'offset': 0
                 }
@@ -264,7 +264,7 @@ class TestIOWriteTask(BaseIOTaskTest):
             task = self.get_task(
                 IOWriteTask,
                 main_kwargs={
-                    'f': f,
+                    'fileobj': f,
                     'data': b'bar',
                     'offset': 3
                 }
@@ -281,7 +281,7 @@ class TestIORenameFileTask(BaseIOTaskTest):
             task = self.get_task(
                 IORenameFileTask,
                 main_kwargs={
-                    'f': f,
+                    'fileobj': f,
                     'final_filename': self.final_filename,
                     'osutil': self.osutil
                 }

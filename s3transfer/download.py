@@ -74,7 +74,8 @@ class DownloadTaskSubmitter(TaskSubmitter):
         call_args = transfer_future.meta.call_args
 
         # Get a handle to the temp file
-        temp_f = self._get_io_file_handle(temp_filename, transfer_coordinator)
+        temp_fileobj = self._get_io_file_handle(
+            temp_filename, transfer_coordinator)
 
         # Get the needed callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
@@ -94,7 +95,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
                     'client': self._client,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
-                    'f': temp_f,
+                    'fileobj': temp_fileobj,
                     'extra_args': call_args.extra_args,
                     'callbacks': progress_callbacks,
                     'max_attempts': self._config.num_download_attempts,
@@ -105,7 +106,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
 
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            temp_f, call_args.fileobj, transfer_coordinator,
+            temp_fileobj, call_args.fileobj, transfer_coordinator,
             [download_future], done_callbacks
         )
 
@@ -118,7 +119,8 @@ class DownloadTaskSubmitter(TaskSubmitter):
         done_callbacks = get_callbacks(transfer_future, 'done')
 
         # Get a handle to the temp file
-        temp_f = self._get_io_file_handle(temp_filename, transfer_coordinator)
+        temp_fileobj = self._get_io_file_handle(
+            temp_filename, transfer_coordinator)
 
         # Determine the number of parts
         part_size = self._config.multipart_chunksize
@@ -150,7 +152,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
                             'client': self._client,
                             'bucket': call_args.bucket,
                             'key': call_args.key,
-                            'f': temp_f,
+                            'fileobj': temp_fileobj,
                             'extra_args': extra_args,
                             'callbacks': progress_callbacks,
                             'max_attempts': self._config.num_download_attempts,
@@ -162,7 +164,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
             )
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            temp_f, call_args.fileobj, transfer_coordinator,
+            temp_fileobj, call_args.fileobj, transfer_coordinator,
             ranged_downloads, done_callbacks
         )
 
@@ -171,7 +173,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
         transfer_coordinator.add_failure_cleanup(f.close)
         return f
 
-    def _complete_download(self, f, final_filename,
+    def _complete_download(self, fileobj, final_filename,
                            transfer_coordinator, download_futures,
                            done_callbacks):
         # A task to rename the file from the temporary file to its final
@@ -180,7 +182,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
         rename_task = IORenameFileTask(
             transfer_coordinator=transfer_coordinator,
             main_kwargs={
-                'f': f,
+                'fileobj': fileobj,
                 'final_filename': final_filename,
                 'osutil': self._osutil
             },
@@ -217,14 +219,14 @@ class DownloadTaskSubmitter(TaskSubmitter):
 class GetObjectTask(Task):
     STREAM_CHUNK_SIZE = 8 * 1024
 
-    def _main(self, client, bucket, key, f, extra_args, callbacks,
+    def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
               max_attempts, io_executor, start_index=0):
         """Downloads an object and places content into io queue
 
         :param client: The client to use when calling GetObject
         :param bucket: The bucket to download from
         :param key: The key to download from
-        :param f: The file handle to write content to
+        :param fileobj: The file handle to write content to
         :param exta_args: Any extra arguements to include in GetObject request
         :param callbacks: List of progress callbacks to invoke on download
         :param max_attempts: The number of retries to do when downloading
@@ -253,7 +255,7 @@ class GetObjectTask(Task):
                             IOWriteTask(
                                 self._transfer_coordinator,
                                 main_kwargs={
-                                    'f': f,
+                                    'fileobj': fileobj,
                                     'data': chunk,
                                     'offset': current_index
                                 }
@@ -287,15 +289,15 @@ class JoinFuturesTask(Task):
 
 
 class IOWriteTask(Task):
-    def _main(self, f, data, offset):
+    def _main(self, fileobj, data, offset):
         """Pulls off an io queue to write contents to a file
 
         :param f: The file handle to write content to
         :param data: The data to write
         :param offset: The offset to write the data to.
         """
-        f.seek(offset)
-        f.write(data)
+        fileobj.seek(offset)
+        fileobj.write(data)
 
 
 class IORenameFileTask(Task):
@@ -306,6 +308,6 @@ class IORenameFileTask(Task):
         upon completion of writing the contents.
     :param osutil: OS utility
     """
-    def _main(self, f, final_filename, osutil):
-        f.close()
-        osutil.rename_file(f.name, final_filename)
+    def _main(self, fileobj, final_filename, osutil):
+        fileobj.close()
+        osutil.rename_file(fileobj.name, final_filename)

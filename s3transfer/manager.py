@@ -29,7 +29,7 @@ class TransferConfig(object):
                  max_concurrency=10,
                  multipart_chunksize=8 * MB,
                  max_queue_size=0,
-                 max_io_queue_size=0,
+                 max_io_queue_size=1000,
                  num_download_attempts=5):
         """Configurations for the transfer mangager
 
@@ -48,7 +48,8 @@ class TransferConfig(object):
 
         :param max_io_queue_size: The maximum amount of read parts that
             can be queued to be written to disk per download. A value of zero
-            means that there is no maximum.
+            means that there is no maximum. The default size for each element
+            in this queue is 8 KB.
 
         :param num_download_attempts: The number of download attempts that
             will be tried upon errors with downloading an object in S3. Note

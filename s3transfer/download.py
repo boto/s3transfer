@@ -10,7 +10,6 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import functools
 import logging
 import os
 import socket
@@ -25,6 +24,7 @@ from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import invoke_progress_callbacks
+from s3transfer.utils import FunctionContainer
 from s3transfer.utils import StreamReaderProgress
 from s3transfer.tasks import Task
 from s3transfer.tasks import TaskSubmitter
@@ -189,7 +189,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
             done_callbacks=done_callbacks,
             is_final=True
         )
-        submit_rename_task = functools.partial(
+        submit_rename_task = FunctionContainer(
             self._io_executor.submit, rename_task)
 
         # Submit a task to wait for all of the downloads to complete
@@ -285,6 +285,11 @@ class JoinFuturesTask(Task):
     :params future_to_wait_on: A list of futures to wait on
     """
     def _main(self, futures_to_wait_on):
+        # The _main is a noop because the functionality of waiting on
+        # futures lives in the signature of the _main method. If you
+        # make the future_to_wait_on a pending_main_kwargs, all of those
+        # futures need to complete before main is executed and at that point
+        # nothing more needs to be executed.
         pass
 
 

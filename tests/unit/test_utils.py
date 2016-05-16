@@ -23,6 +23,7 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import CallArgs
+from s3transfer.utils import FunctionContainer
 from s3transfer.utils import OSUtils
 from s3transfer.utils import ReadFileChunk
 from s3transfer.utils import StreamReaderProgress
@@ -64,6 +65,23 @@ class TestCallArgs(unittest.TestCase):
         call_args = CallArgs(foo='bar', biz='baz')
         self.assertEqual(call_args.foo, 'bar')
         self.assertEqual(call_args.biz, 'baz')
+
+
+class TestFunctionContainer(unittest.TestCase):
+    def get_args_kwargs(self, *args, **kwargs):
+        return args, kwargs
+
+    def test_call(self):
+        func_container = FunctionContainer(
+            self.get_args_kwargs, 'foo', bar='baz')
+        self.assertEqual(func_container(), (('foo',), {'bar': 'baz'}))
+
+    def test_repr(self):
+        func_container = FunctionContainer(
+            self.get_args_kwargs, 'foo', bar='baz')
+        self.assertEqual(
+            str(func_container), 'Function: %s with args %s and kwargs %s' % (
+                self.get_args_kwargs, ('foo',), {'bar': 'baz'}))
 
 
 class TestRandomFileExtension(unittest.TestCase):

@@ -218,7 +218,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.add_successful_get_object_responses()
 
         recorder_subscriber = RecordingSubscriber()
-        # Set the streamming to a size that is smaller than the data we
+        # Set the streaming to a size that is smaller than the data we
         # currently provide to it to simulate rewinds of callbacks.
         new_chunk_size = 3
         self.set_stream_chunk_size(new_chunk_size)

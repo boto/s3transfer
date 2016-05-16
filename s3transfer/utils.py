@@ -84,7 +84,9 @@ def invoke_progress_callbacks(callbacks, bytes_transferred):
     :param callbacks: A list of progress callbacks to invoke
     :param bytes_transferred: The number of bytes transferred. This is passed
         to the callbacks. If no bytes were transferred the callbacks will not
-        be invoked because no progress was achieved
+        be invoked because no progress was achieved. It is also possible
+        to receive a negative amount which comes from retrying a transfer
+        request.
     """
     # Only invoke the callbacks if bytes were actually transferred.
     if bytes_transferred:
@@ -102,6 +104,25 @@ class CallArgs(object):
         """
         for arg, value in kwargs.items():
             setattr(self, arg, value)
+
+
+class FunctionContainer(object):
+    """An object that contains a function and any args or kwargs to call it
+
+    When called the provided function will be called with provided args
+    and kwargs.
+    """
+    def __init__(self, func, *args, **kwargs):
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+
+    def __repr__(self):
+        return 'Function: %s with args %s and kwargs %s' % (
+            self._func, self._args, self._kwargs)
+
+    def __call__(self):
+        return self._func(*self._args, **self._kwargs)
 
 
 class OSUtils(object):

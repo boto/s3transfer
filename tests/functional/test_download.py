@@ -263,6 +263,11 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
 
 class TestNonRangedDownload(BaseDownloadTest):
+    # TODO: If you want to add tests outside of this test class and still
+    # subclass from BaseDownloadTest you need to set ``__test__ = True``. If
+    # you do not, your tests will not get picked up by the test runner! This
+    # needs to be done until we find a better way to ignore running test cases
+    # from the general test base class, which we do not want ran.
     __test__ = True
 
     def test_download(self):
@@ -284,6 +289,11 @@ class TestNonRangedDownload(BaseDownloadTest):
 
 
 class TestRangedDownload(BaseDownloadTest):
+    # TODO: If you want to add tests outside of this test class and still
+    # subclass from BaseDownloadTest you need to set ``__test__ = True``. If
+    # you do not, your tests will not get picked up by the test runner! This
+    # needs to be done until we find a better way to ignore running test cases
+    # from the general test base class, which we do not want ran.
     __test__ = True
 
     def setUp(self):

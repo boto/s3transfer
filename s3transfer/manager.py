@@ -16,6 +16,7 @@ from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
+from s3transfer.download import DownloadTaskSubmitter
 from s3transfer.upload import UploadTaskSubmitter
 
 
@@ -27,7 +28,9 @@ class TransferConfig(object):
                  multipart_threshold=8 * MB,
                  max_concurrency=10,
                  multipart_chunksize=8 * MB,
-                 max_queue_size=0):
+                 max_queue_size=0,
+                 max_io_queue_size=1000,
+                 num_download_attempts=5):
         """Configurations for the transfer mangager
 
         :param multipart_threshold: The threshold for which multipart
@@ -42,14 +45,39 @@ class TransferConfig(object):
         :param max_queue_size: The maximum amount of requests that
             can be queued at a time. A value of zero means that there
             is no maximum.
+
+        :param max_io_queue_size: The maximum amount of read parts that
+            can be queued to be written to disk per download. A value of zero
+            means that there is no maximum. The default size for each element
+            in this queue is 8 KB.
+
+        :param num_download_attempts: The number of download attempts that
+            will be tried upon errors with downloading an object in S3. Note
+            that these retries account for errors that occur when streamming
+            down the data from s3 (i.e. socket errors and read timeouts that
+            occur after recieving an OK response from s3).
+            Other retryable exceptions such as throttling errors and 5xx errors
+            are already retried by botocore (this default is 5). The
+            ``num_download_attempts`` does not take into account the
+            number of exceptions retried by botocore.
         """
         self.multipart_threshold = multipart_threshold
         self.max_concurrency = max_concurrency
         self.multipart_chunksize = multipart_chunksize
         self.max_queue_size = max_queue_size
+        self.max_io_queue_size = max_io_queue_size
+        self.num_download_attempts = num_download_attempts
 
 
 class TransferManager(object):
+    ALLOWED_DOWNLOAD_ARGS = [
+        'VersionId',
+        'SSECustomerAlgorithm',
+        'SSECustomerKey',
+        'SSECustomerKeyMD5',
+        'RequestPayer',
+    ]
+
     ALLOWED_UPLOAD_ARGS = [
         'ACL',
         'CacheControl',
@@ -87,6 +115,12 @@ class TransferManager(object):
             max_size=self._config.max_queue_size,
             max_num_threads=self._config.max_concurrency
         )
+        # There is one thread available for writing to disk. It will handle
+        # downloads for all files.
+        self._io_executor = BoundedExecutor(
+            max_size=self._config.max_io_queue_size,
+            max_num_threads=1
+        )
         self._register_handlers()
 
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
@@ -105,7 +139,7 @@ class TransferManager(object):
         :param extra_args: Extra arguments that may be passed to the
             client operation
 
-        :type subscribers: a list of subscribers
+        :type subscribers: list(s3transfer.subscribers.BaseSubscriber)
         :param subscribers: The list of subscribers to be invoked in the
             order provided based on the event emit during the process of
             the transfer request.
@@ -126,6 +160,45 @@ class TransferManager(object):
             client=self._client, osutil=self._osutil, config=self._config,
             executor=self._executor)
         return upload_submitter(call_args)
+
+    def download(self, bucket, key, fileobj, extra_args=None,
+                 subscribers=None):
+        """Downloads a file from S3
+
+        :type bucket: str
+        :param bucket: The name of the bucket to download from
+
+        :type key: str
+        :param key: The name of the key to download from
+
+        :type fileobj: str
+        :param fileobj: The name of a file to download to.
+
+        :type extra_args: dict
+        :param extra_args: Extra arguments that may be passed to the
+            client operation
+
+        :type subscribers: list(s3transfer.subscribers.BaseSubscriber)
+        :param subscribers: The list of subscribers to be invoked in the
+            order provided based on the event emit during the process of
+            the transfer request.
+
+        :rtype: s3transfer.futures.TransferFuture
+        :returns: Transfer future representing the download
+        """
+        if extra_args is None:
+            extra_args = {}
+        if subscribers is None:
+            subscribers = []
+        self._validate_all_known_args(extra_args, self.ALLOWED_DOWNLOAD_ARGS)
+        call_args = CallArgs(
+            bucket=bucket, key=key, fileobj=fileobj, extra_args=extra_args,
+            subscribers=subscribers
+        )
+        download_submitter = DownloadTaskSubmitter(
+            client=self._client, osutil=self._osutil, config=self._config,
+            executor=self._executor, io_executor=self._io_executor)
+        return download_submitter(call_args)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:
@@ -151,3 +224,4 @@ class TransferManager(object):
         It will wait till all requests complete before it complete shuts down.
         """
         self._executor.shutdown()
+        self._io_executor.shutdown()

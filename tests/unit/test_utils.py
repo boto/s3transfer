@@ -16,12 +16,17 @@ import tempfile
 
 from tests import unittest
 from tests import RecordingSubscriber
+from s3transfer.compat import six
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
+from s3transfer.utils import random_file_extension
+from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import CallArgs
+from s3transfer.utils import FunctionContainer
 from s3transfer.utils import OSUtils
 from s3transfer.utils import ReadFileChunk
+from s3transfer.utils import StreamReaderProgress
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -60,6 +65,41 @@ class TestCallArgs(unittest.TestCase):
         call_args = CallArgs(foo='bar', biz='baz')
         self.assertEqual(call_args.foo, 'bar')
         self.assertEqual(call_args.biz, 'baz')
+
+
+class TestFunctionContainer(unittest.TestCase):
+    def get_args_kwargs(self, *args, **kwargs):
+        return args, kwargs
+
+    def test_call(self):
+        func_container = FunctionContainer(
+            self.get_args_kwargs, 'foo', bar='baz')
+        self.assertEqual(func_container(), (('foo',), {'bar': 'baz'}))
+
+    def test_repr(self):
+        func_container = FunctionContainer(
+            self.get_args_kwargs, 'foo', bar='baz')
+        self.assertEqual(
+            str(func_container), 'Function: %s with args %s and kwargs %s' % (
+                self.get_args_kwargs, ('foo',), {'bar': 'baz'}))
+
+
+class TestRandomFileExtension(unittest.TestCase):
+    def test_has_proper_length(self):
+        self.assertEqual(
+            len(random_file_extension(num_digits=4)), 4)
+
+
+class TestInvokeProgressCallbacks(unittest.TestCase):
+    def test_invoke_progress_callbacks(self):
+        recording_subscriber = RecordingSubscriber()
+        invoke_progress_callbacks([recording_subscriber.on_progress], 2)
+        self.assertEqual(recording_subscriber.calculate_bytes_seen(), 2)
+
+    def test_invoke_progress_callbacks_with_no_progress(self):
+        recording_subscriber = RecordingSubscriber()
+        invoke_progress_callbacks([recording_subscriber.on_progress], 0)
+        self.assertEqual(len(recording_subscriber.on_progress_calls), 0)
 
 
 class BaseUtilsTest(unittest.TestCase):
@@ -231,3 +271,17 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(1)
         chunk.read(2)
         self.assertEqual(self.amounts_seen, [2, -2, 2, -1, 2])
+
+
+class TestStreamReaderProgress(BaseUtilsTest):
+    def test_proxies_to_wrapped_stream(self):
+        original_stream = six.StringIO('foobarbaz')
+        wrapped = StreamReaderProgress(original_stream)
+        self.assertEqual(wrapped.read(), 'foobarbaz')
+
+    def test_callback_invoked(self):
+        original_stream = six.StringIO('foobarbaz')
+        wrapped = StreamReaderProgress(
+            original_stream, [self.callback, self.callback])
+        self.assertEqual(wrapped.read(), 'foobarbaz')
+        self.assertEqual(self.amounts_seen, [9, 9])

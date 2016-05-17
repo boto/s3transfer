@@ -56,6 +56,36 @@ def random_bucket_name(prefix='s3transfer', num_chars=10):
     return prefix + ''.join([base[b % len(base)] for b in random_bytes])
 
 
+class StreamWithError(object):
+    """A wrapper to simulate errors while reading from a stream
+
+    :param stream: The underlying stream to read from
+    :param exception_type: The exception type to throw
+    :param num_reads: The number of times to allow a read before raising
+        the exception. A value of zero indicates to raise the error on the
+        first read.
+    """
+    def __init__(self, stream, exception_type, num_reads=0):
+        self._stream = stream
+        self._exception_type = exception_type
+        self._num_reads = num_reads
+        self._count = 0
+
+    def read(self, n=-1):
+        if self._count == self._num_reads:
+            raise self._exception_type
+        self._count += 1
+        return self._stream.read(n)
+
+
+class FileSizeProvider(object):
+    def __init__(self, file_size):
+        self.file_size = file_size
+
+    def on_queued(self, future, **kwargs):
+        future.meta.provide_transfer_size(self.file_size)
+
+
 class FileCreator(object):
     def __init__(self):
         self.rootdir = tempfile.mkdtemp()

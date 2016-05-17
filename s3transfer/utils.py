@@ -14,8 +14,13 @@ import random
 import time
 import functools
 import os
+import string
+import logging
 
 from s3transfer.compat import rename_file
+
+
+logger = logging.getLogger(__name__)
 
 
 def unique_id(name):
@@ -25,6 +30,10 @@ def unique_id(name):
     """
     return '{0}-{1}-{2}'.format(name, int(time.time()),
                                 random.randint(0, 10000))
+
+
+def random_file_extension(num_digits=8):
+    return ''.join(random.choice(string.hexdigits) for _ in range(num_digits))
 
 
 def disable_upload_callbacks(request, operation_name, **kwargs):
@@ -69,6 +78,22 @@ def get_callbacks(transfer_future, callback_type):
     return callbacks
 
 
+def invoke_progress_callbacks(callbacks, bytes_transferred):
+    """Calls all progress callbacks
+
+    :param callbacks: A list of progress callbacks to invoke
+    :param bytes_transferred: The number of bytes transferred. This is passed
+        to the callbacks. If no bytes were transferred the callbacks will not
+        be invoked because no progress was achieved. It is also possible
+        to receive a negative amount which comes from retrying a transfer
+        request.
+    """
+    # Only invoke the callbacks if bytes were actually transferred.
+    if bytes_transferred:
+        for callback in callbacks:
+            callback(bytes_transferred=bytes_transferred)
+
+
 class CallArgs(object):
     def __init__(self, **kwargs):
         """A class that records call arguments
@@ -79,6 +104,25 @@ class CallArgs(object):
         """
         for arg, value in kwargs.items():
             setattr(self, arg, value)
+
+
+class FunctionContainer(object):
+    """An object that contains a function and any args or kwargs to call it
+
+    When called the provided function will be called with provided args
+    and kwargs.
+    """
+    def __init__(self, func, *args, **kwargs):
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+
+    def __repr__(self):
+        return 'Function: %s with args %s and kwargs %s' % (
+            self._func, self._args, self._kwargs)
+
+    def __call__(self):
+        return self._func(*self._args, **self._kwargs)
 
 
 class OSUtils(object):
@@ -196,8 +240,7 @@ class ReadFileChunk(object):
         data = self._fileobj.read(amount_to_read)
         self._amount_read += len(data)
         if self._callbacks is not None and self._callbacks_enabled:
-            for callback in self._callbacks:
-                callback(bytes_transferred=len(data))
+            invoke_progress_callbacks(self._callbacks, len(data))
         return data
 
     def enable_callback(self):
@@ -209,9 +252,9 @@ class ReadFileChunk(object):
     def seek(self, where):
         self._fileobj.seek(self._start_byte + where)
         if self._callbacks is not None and self._callbacks_enabled:
-            for callback in self._callbacks:
-                # To also rewind the callback() for an accurate progress report
-                callback(bytes_transferred=where - self._amount_read)
+            # To also rewind the callback() for an accurate progress report
+            invoke_progress_callbacks(
+                self._callbacks, bytes_transferred=where - self._amount_read)
         self._amount_read = where
 
     def close(self):
@@ -241,3 +284,17 @@ class ReadFileChunk(object):
         # already exhausted the stream so iterating over the file immediately
         # stops, which is what we're simulating here.
         return iter([])
+
+
+class StreamReaderProgress(object):
+    """Wrapper for a read only stream that adds progress callbacks."""
+    def __init__(self, stream, callbacks=None):
+        self._stream = stream
+        self._callbacks = callbacks
+        if callbacks is None:
+            self._callbacks = []
+
+    def read(self, *args, **kwargs):
+        value = self._stream.read(*args, **kwargs)
+        invoke_progress_callbacks(self._callbacks, len(value))
+        return value

@@ -106,6 +106,13 @@ class TestTransferCoordinator(unittest.TestCase):
         with self.assertRaises(exception_result):
             self.transfer_coordinator.result()
 
+    def test_exception_cannot_override_done_state(self):
+        self.transfer_coordinator.set_result('foo')
+        self.transfer_coordinator.set_exception(RuntimeError)
+        # It status should be success even after the exception is set because
+        # succes is a done state.
+        self.assertEqual(self.transfer_coordinator.status, 'success')
+
     def test_cancel(self):
         self.transfer_coordinator.cancel()
         self.transfer_coordinator.announce_done()
@@ -114,6 +121,13 @@ class TestTransferCoordinator(unittest.TestCase):
         self.assertEqual(self.transfer_coordinator.status, 'cancelled')
         with self.assertRaises(CancelledError):
             self.transfer_coordinator.result()
+
+    def test_cancel_cannot_override_done_state(self):
+        self.transfer_coordinator.set_result('foo')
+        self.transfer_coordinator.cancel()
+        # It status should be success even after cancel is called because
+        # succes is a done state.
+        self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_done(self):
         # These should result in not done state:

@@ -73,7 +73,9 @@ class BaseSubscriber(object):
 
         :type bytes_transferred: int
         :param bytes_transferred: The number of bytes transferred for that
-            invocation of the callback.
+            invocation of the callback. Note that a negative amount can be
+            provided, which usually indicates that an in-progress request
+            needed to be retried and thus progress was rewound.
         """
         pass
 

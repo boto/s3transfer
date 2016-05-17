@@ -127,18 +127,20 @@ class TransferCoordinator(object):
 
         Implies that the TransferFuture succeeded.
         """
-        with self._lock:
-            self._result = result
-            self._status = 'success'
+        if not self.done():
+            with self._lock:
+                self._result = result
+                self._status = 'success'
 
     def set_exception(self, exception):
         """Set an exception for the TransferFuture
 
         Implies the TransferFuture failed.
         """
-        with self._lock:
-            self._exception = exception
-            self._status = 'failed'
+        if not self.done():
+            with self._lock:
+                self._exception = exception
+                self._status = 'failed'
 
     def result(self):
         """Waits until TransferFuture is done and returns the result
@@ -155,9 +157,10 @@ class TransferCoordinator(object):
 
     def cancel(self):
         """Cancels the TransferFuture"""
-        with self._lock:
-            self._exception = futures.CancelledError
-            self._status = 'cancelled'
+        if not self.done():
+            with self._lock:
+                self._exception = futures.CancelledError
+                self._status = 'cancelled'
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""

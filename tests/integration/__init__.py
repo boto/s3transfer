@@ -53,3 +53,10 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
 
     def create_transfer_manager(self, config=None):
         return TransferManager(self.client, config=config)
+
+    def upload_file(self, filename, key):
+        with open(filename, 'rb') as f:
+            self.client.put_object(Bucket=self.bucket_name,
+                                   Key=key,
+                                   Body=f)
+            self.addCleanup(self.delete_object, key)

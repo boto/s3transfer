@@ -18,6 +18,7 @@ import mock
 
 from tests import BaseTaskTest
 from tests import BaseTaskSubmitterTest
+from tests import FileSizeProvider
 from s3transfer.upload import UploadTaskSubmitter
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import CreateMultipartUploadTask
@@ -25,14 +26,6 @@ from s3transfer.upload import UploadPartTask
 from s3transfer.upload import CompleteMultipartUploadTask
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
-
-
-class FileSizeProvider(object):
-    def __init__(self, file_size):
-        self.file_size = file_size
-
-    def on_queued(self, future, **kwargs):
-        future.meta.provide_transfer_size(self.file_size)
 
 
 class OSUtilsExceptionOnFileSize(OSUtils):

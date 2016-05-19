@@ -120,12 +120,12 @@ Copy Tests
 
 General
 ~~~~~~~
-* [ ] Copy single nonmultipart object
-* [ ] Copy single multipart object
-* [ ] Copy multiple nonmultipart objects
-* [ ] Copy multiple multipart objects
-* [ ] Provide a transfer size for any copy in lieu of using HeadObject.
-* [ ] Failed/cancelled multipart copy is aborted and leaves no orphaned parts
+* [x] Copy single nonmultipart object
+* [x] Copy single multipart object
+* [x] Copy multiple nonmultipart objects
+* [x] Copy multiple multipart objects
+* [x] Provide a transfer size for any copy in lieu of using HeadObject.
+* [x] Failed/cancelled multipart copy is aborted and leaves no orphaned parts
 * [ ] Ctrl-C of any copy does not hang and the wait time is ``avg(transfer_time_iter_chunk) * some_margin``
 
 
@@ -149,32 +149,32 @@ Extra Parameters
 ~~~~~~~~~~~~~~~~
 * [ ] Copy multipart and nonmultipart file with any of the following properties:
   
-  * [ ] ACL's
-  * [ ] CacheControl
-  * [ ] ContentDisposition
-  * [ ] ContentEncoding
-  * [ ] ContentLanguage
-  * [ ] ContentType
-  * [ ] Expires
-  * [ ] Metadata
-  * [ ] Grants
-  * [ ] StorageClass
-  * [ ] SSE (including KMS)
+  * [x] ACL's
+  * [x] CacheControl
+  * [x] ContentDisposition
+  * [x] ContentEncoding
+  * [x] ContentLanguage
+  * [x] ContentType
+  * [x] Expires
+  * [x] Metadata
+  * [x] Grants
+  * [x] StorageClass
+  * [x] SSE (including KMS)
   * [ ] Website Redirect
 
-* [ ] Copy multipart and nonmultipart copies with copy source parameters:
+* [x] Copy multipart and nonmultipart copies with copy source parameters:
 
-  * [ ] CopySourceIfMatch
-  * [ ] CopySourceIfModifiedSince
-  * [ ] CopySourceIfNoneMatch
-  * [ ] CopySourceIfUnmodifiedSince
+  * [x] CopySourceIfMatch
+  * [x] CopySourceIfModifiedSince
+  * [x] CopySourceIfNoneMatch
+  * [x] CopySourceIfUnmodifiedSince
 
-* [ ] Copy nonmultipart object with metadata directive and do not use metadata directive for multipart object
-* [ ] Copy multipart and nonmultipart objects of a specific version
-* [ ] Copy multipart and nonmultipart objects using requester pays
-* [ ] Copy multipart and nonmultipart objects using a sse-c key
-* [ ] Copy multipart and nonmultipart objects using a copy source sse-c key
-* [ ] Copy multipart and nonmultipart objects using a copy source sse-c key and sse-c key
+* [x] Copy nonmultipart object with metadata directive and do not use metadata directive for multipart object
+* [x] Copy multipart and nonmultipart objects of a specific version
+* [x] Copy multipart and nonmultipart objects using requester pays
+* [x] Copy multipart and nonmultipart objects using a sse-c key
+* [x] Copy multipart and nonmultipart objects using a copy source sse-c key
+* [x] Copy multipart and nonmultipart objects using a copy source sse-c key and sse-c key
 
 
 Cross-Bucket

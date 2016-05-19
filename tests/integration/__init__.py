@@ -22,8 +22,8 @@ def recursive_delete(client, bucket_name):
     # Recursively deletes a bucket and all of its contents.
     objects = client.get_paginator('list_objects').paginate(
         Bucket=bucket_name)
-    for key in objects.search('Contents[].Key'):
-        if key is not None:
+    for key in objects.search('Contents[].Key || `[]`'):
+        if key:
             client.delete_object(Bucket=bucket_name, Key=key)
     client.delete_bucket(Bucket=bucket_name)
 

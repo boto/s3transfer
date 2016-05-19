@@ -152,23 +152,6 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         future.result()
         self.stubber.assert_no_pending_responses()
 
-    def test_provide_copy_source_as_string(self):
-        self.copy_source = (
-            'mysourcebucket/mysourcekey?versionId=mysourceversionid'
-        )
-        expected_params = {
-            'Bucket': 'mysourcebucket',
-            'Key': 'mysourcekey',
-            'VersionId': 'mysourceversionid'
-        }
-
-        self.add_head_object_response(expected_params=expected_params)
-        self.add_successful_copy_responses()
-
-        future = self.manager.copy(**self.call_kwargs)
-        future.result()
-        self.stubber.assert_no_pending_responses()
-
     def test_invalid_copy_source(self):
         self.copy_source = ['bucket', 'key']
         with self.assertRaises(TypeError):

@@ -22,9 +22,6 @@ from s3transfer.tasks import get_callbacks
 from s3transfer.utils import calculate_range_parameter
 
 
-VERSION_ID_SUFFIX = re.compile(r'\?versionId=[^\s]+$')
-
-
 class CopyTaskSubmitter(TaskSubmitter):
     EXTRA_ARGS_TO_HEAD_ARGS_MAPPING = {
         'CopySourceIfMatch': 'IfMatch',
@@ -209,23 +206,11 @@ class CopyTaskSubmitter(TaskSubmitter):
     def _get_head_object_request_from_copy_source(self, copy_source):
         if isinstance(copy_source, dict):
             return copy.copy(copy_source)
-        elif isinstance(copy_source, str):
-            head_object_request = {}
-            bucket, key = copy_source.split('/', 1)
-            head_object_request['Bucket'] = bucket
-            head_object_request['Key'] = key
-            result = VERSION_ID_SUFFIX.search(key)
-            version_id = None
-            if result is not None:
-                head_object_request['Key'] = key[:result.start()]
-                # Make sure you strip off the ?versionId= part if it is there.
-                head_object_request['VersionId'] = key[result.start()+11:]
-            return head_object_request
         else:
             raise TypeError(
                 'Expecting dictionary formatted: '
-                '{"Bucket": bucket_name, "Key": key} or '
-                'string fomatted: "bucket_name/key" but got %s or type %s.'
+                '{"Bucket": bucket_name, "Key": key} '
+                'but got %s or type %s.'
                 % (copy_source, type(copy_source))
             )
 

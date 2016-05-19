@@ -13,11 +13,21 @@ General
 * [x] Upload single multipart file
 * [x] Upload multiple nonmultipart files
 * [x] Upload multiple multipart files
-* [x] Failed/cancelled multipart upload is aborted and leaves no orphaned parts
-* [ ] Ctrl-C of any upload does not hang
+* [x] Failed/cancelled multipart upload is aborted and leaves no orphaned parts especially for:
+
+  * [x] Failure of ``UploadPart``
+  * [x] Failure of ``CompleteMultipartUpload``
+  * [x] Failure unrelated to making an API call during upload such as read failure
+
+* [ ] Ctrl-C of any upload does not hang and the wait time is ``avg(transfer_time_iter_chunk) * some_margin``
 * [ ] Upload empty file
 * [ ] Upload nonseekable nonmultipart binary stream
 * [ ] Upload nonseekable multipart binary stream
+
+
+Region
+~~~~~~
+* [ ] Provide no or incorrect region for sig4 and be able to redirect request in fewest amount of calls as possible for multipart upload.
 
 
 Validation
@@ -34,7 +44,7 @@ Validation
 
 Extra Parameters
 ~~~~~~~~~~~~~~~~
-* [ ] Upload multipart and nonmultioart file with any of the following properties:
+* [ ] Upload multipart and nonmultipart file with any of the following properties:
 
   * [x] ACL's
   * [x] CacheControl
@@ -71,9 +81,14 @@ General
 * [x] Download of any object is written to temporary file and renamed to final filename once the object is completely downloaded
 * [x] Failed downloads of any object cleans up temporary file
 * [x] Provide a transfer size for any download in lieu of using HeadObject
-* [ ] Ctrl-C of any download does not hang
+* [ ] Ctrl-C of any download does not hang and the wait time is ``avg(transfer_time_iter_chunk) * some_margin``
 * [ ] Download nonmultipart object as nonseekable binary stream
 * [ ] Download multipart object as nonseekable binary stream
+
+
+Region
+~~~~~~
+* [ ] Provide no or incorrect region for sig4 and be able to redirect request in fewest amount of calls as possible for multipart download.
 
 
 Retry Logic
@@ -111,7 +126,12 @@ General
 * [ ] Copy multiple multipart objects
 * [ ] Provide a transfer size for any copy in lieu of using HeadObject.
 * [ ] Failed/cancelled multipart copy is aborted and leaves no orphaned parts
-* [ ] Ctrl-C of any copy does not hang
+* [ ] Ctrl-C of any copy does not hang and the wait time is ``avg(transfer_time_iter_chunk) * some_margin``
+
+
+Region
+~~~~~~
+* [ ] Provide no or incorrect region for sig4 and be able to redirect request in fewest amount of calls as possible for multipart copy.
 
 
 Validation

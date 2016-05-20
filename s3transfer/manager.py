@@ -126,8 +126,36 @@ class TransferManager(object):
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
         """Uploads a file to S3
 
-        :type fileobj: str
-        :param fileobj: The name of a file to upload.
+        :type fileobj: str or filelike object
+        :param fileobj: The file to upload. Valid value types are as follows:
+
+            * name of file (str): This format is recommended because it
+              results in much better memory management and handles the
+              file management for you.
+
+            * seekable file-like object: The file like object **must**
+              produce binary data. Note that there are memory implications
+              with this format. In the worst possible scenario, you can
+              expect based on the TransferConfig::
+
+                  multipart_chunksize * min(max_queue_size, max_concurrency)
+
+              So configure the manager accordingly.
+
+            * unseekable file-like object: The file like object **must**
+              produce binary data. Note that there are memory implications
+              with this format. In the worst possible scenario, you can
+              expect based on the TransferConfig::
+
+                  multipart_threshold + (
+                     multipart_chunksize * (min(
+                        max_queue_size, max_concurrency))
+
+              If a transfer size is provided, the worst case scenario becomes::
+
+                  multipart_chunksize * min(max_queue_size, max_concurrency)
+
+            So configure the manager accordingly.
 
         :type bucket: str
         :param bucket: The name of the bucket to upload to

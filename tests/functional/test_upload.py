@@ -21,6 +21,8 @@ from botocore.awsrequest import AWSRequest
 
 from tests import BaseGeneralInterfaceTest
 from tests import RecordingSubscriber
+from tests import UnseekableStream
+from tests import FileSizeProvider
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
 
@@ -123,6 +125,35 @@ class TestNonMultipartUpload(BaseUploadTest):
         self.stubber.assert_no_pending_responses()
         self.assertEqual(self.sent_bodies, [self.content])
 
+    def test_upload_open_file(self):
+        self.stubber.add_response(
+            method='put_object',
+            service_response={},
+            expected_params={
+                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key
+            }
+        )
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(f, self.bucket, self.key)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(self.sent_bodies, [self.content])
+
+    def test_upload_unseekable_stream(self):
+        self.stubber.add_response(
+            method='put_object',
+            service_response={},
+            expected_params={
+                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key
+            }
+        )
+        with open(self.filename, 'rb') as f:
+            with UnseekableStream(f) as stream:
+                future = self.manager.upload(stream, self.bucket, self.key)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(self.sent_bodies, [self.content])
+
     def test_sigv4_progress_callbacks_invoked_once(self):
         # Reset the client and manager to use sigv4
         self.reset_stubber_with_new_client(
@@ -180,75 +211,64 @@ class TestMultipartUpload(BaseUploadTest):
             {'bytes_transferred': 2}
         ]
 
+    def _get_stubbed_responses_with_expected_params(self):
+        upload_id = 'my-upload-id'
+        stubbed_responses = self.stubbed_responses
+
+        stubbed_responses[0]['expected_params'] = {
+            'Bucket': self.bucket, 'Key': self.key
+        }
+
+        expected_parts =  [
+            {'ETag': 'etag-1', 'PartNumber': 1},
+            {'ETag': 'etag-2', 'PartNumber': 2},
+            {'ETag': 'etag-3', 'PartNumber': 3}
+        ]
+        for part in expected_parts:
+            part_number = part['PartNumber']
+            stubbed_responses[part_number]['expected_params'] = {
+                'Bucket': self.bucket, 'Body': mock.ANY,
+                'Key': self.key, 'UploadId': upload_id,
+                'PartNumber': part_number
+            }
+            
+
+        stubbed_responses[-1]['expected_params'] = {
+            'Bucket': self.bucket,
+            'Key': self.key, 'UploadId': upload_id,
+            'MultipartUpload': {
+                'Parts': [
+                    {'ETag': 'etag-1', 'PartNumber': 1},
+                    {'ETag': 'etag-2', 'PartNumber': 2},
+                    {'ETag': 'etag-3', 'PartNumber': 3}
+                ]
+            }
+        }
+
+        return stubbed_responses
+
+    def _filter_stubbed_responses_by_operation(
+            self, stubbed_responses, operation_names):
+        filtered_stubbed_responses = []
+        for stubbed_response in stubbed_responses:
+            if stubbed_response['method'] in operation_names:
+                filtered_stubbed_responses.append(stubbed_response)
+        return filtered_stubbed_responses
+
     def test_upload(self):
-        # Set the threshold for multipart upload to something small
-        # to trigger multipart.
         self.extra_args['RequestPayer'] = 'requester'
 
-        upload_id = 'my-multipart-id'
-        self.stubber.add_response(
-            method='create_multipart_upload',
-            service_response={
-                'UploadId': upload_id
-            },
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'RequestPayer': 'requester'
-            }
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        filtered_responses = self._filter_stubbed_responses_by_operation(
+            stubbed_responses, ['create_multipart_upload', 'upload_part']
         )
 
-        # Add the PartUpload calls. There should be three in all based on the
-        # chunksize
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-1'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 1, 'RequestPayer': 'requester'
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-2'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 2, 'RequestPayer': 'requester'
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-3'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 3, 'RequestPayer': 'requester'
-            }
-        )
-
-        # Add the complete multipart call
-        self.stubber.add_response(
-            method='complete_multipart_upload',
-            service_response={},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': [
-                        {'ETag': 'etag-1', 'PartNumber': 1},
-                        {'ETag': 'etag-2', 'PartNumber': 2},
-                        {'ETag': 'etag-3', 'PartNumber': 3}
-                    ]
-                }
-            }
-        )
+        # Add the request payer paramter to the operations that require it:
+        # CreateMultipartUpload and UploadPart
+        for stubbed_response in filtered_responses:
+            stubbed_response['expected_params']['RequestPayer'] = 'requester'
+        for stubbed_response in stubbed_responses:
+            self.stubber.add_response(**stubbed_response)
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
@@ -258,29 +278,83 @@ class TestMultipartUpload(BaseUploadTest):
             self.sent_bodies,
             [self.content[0:4], self.content[4:8], self.content[8:]])
 
-    def test_upload_failure_invokes_abort(self):
-        upload_id = 'my-multipart-id'
+    def test_upload_open_file(self):
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        for stubbed_response in stubbed_responses:
+            self.stubber.add_response(**stubbed_response)
+
+        # Should be able to pass in an open file handle.
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(f, self.bucket, self.key)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            self.sent_bodies,
+            [self.content[0:4], self.content[4:8], self.content[8:]])
+
+    def test_upload_unseekable_stream(self):
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        for stubbed_response in stubbed_responses[:-1]:
+            self.stubber.add_response(**stubbed_response)
+
+        # The unseekable stream will require one more part. The part
+        # comes from when we stream the file to determine if its size
+        # breaks the threshold. That streammed part then becomes the first part
+        # of the multipart upload if it breaks the threshold.
         self.stubber.add_response(
-            method='create_multipart_upload',
-            service_response={
-                'UploadId': upload_id
-            },
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-1'
-            },
+            method='upload_part', service_response={'ETag': 'etag-4'},
             expected_params={
                 'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 1
+                'Key': self.key, 'UploadId': 'my-upload-id',
+                'PartNumber': 4
             }
         )
+        stubbed_responses[-1]['expected_params']['MultipartUpload'][
+            'Parts'].append({'ETag': 'etag-4', 'PartNumber': 4})
+        self.stubber.add_response(**stubbed_responses[-1])
+
+        with open(self.filename, 'rb') as f:
+            with UnseekableStream(f) as stream:
+                future = self.manager.upload(stream, self.bucket, self.key)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+        # Note the first body is of size one because the multipart threshold
+        # is of size 1.
+        self.assertEqual(
+            self.sent_bodies,
+            [self.content[0:1], self.content[1:5], self.content[5:9],
+             self.content[9:]]
+        )
+
+    def test_upload_unseekable_stream_with_provided_size(self):
+        file_size_provider = FileSizeProvider(len(self.content))
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        for stubbed_response in stubbed_responses:
+            self.stubber.add_response(**stubbed_response)
+
+        with open(self.filename, 'rb') as f:
+            with UnseekableStream(f) as stream:
+                future = self.manager.upload(
+                    stream, self.bucket, self.key,
+                    subscribers=[file_size_provider]
+                )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+        # The uploads should be the normal partitions as we know the size
+        # ahead of time and can divvy it out appropriately.
+        self.assertEqual(
+            self.sent_bodies,
+            [self.content[0:4], self.content[4:8], self.content[8:]])
+
+    def test_upload_failure_invokes_abort(self):
+        upload_id = 'my-upload-id'
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        # Only stub the create mulitpart and the upload part
+        for stubbed_response in stubbed_responses[0:2]:
+            self.stubber.add_response(**stubbed_response)    
+
         # With the upload part failing this should immediately initiate
         # an abort multipart with no more upload parts called.
         self.stubber.add_client_error(method='upload_part')
@@ -304,72 +378,22 @@ class TestMultipartUpload(BaseUploadTest):
     def test_upload_passes_select_extra_args(self):
         self.extra_args['Metadata'] = {'foo': 'bar'}
 
-        upload_id = 'my-multipart-id'
-        self.stubber.add_response(
-            method='create_multipart_upload',
-            service_response={
-                'UploadId': upload_id
-            },
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'Metadata': {'foo': 'bar'}
-            }
+        stubbed_responses = self._get_stubbed_responses_with_expected_params()
+        filtered_responses = self._filter_stubbed_responses_by_operation(
+            stubbed_responses, ['create_multipart_upload']
         )
 
-        # Add the PartUpload calls. There should be three in all based on the
-        # chunksize and should not include the metadata
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-1'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 1
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-2'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 2
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-3'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 3
-            }
-        )
-
-        # Add the complete multipart call
-        self.stubber.add_response(
-            method='complete_multipart_upload',
-            service_response={},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': [
-                        {'ETag': 'etag-1', 'PartNumber': 1},
-                        {'ETag': 'etag-2', 'PartNumber': 2},
-                        {'ETag': 'etag-3', 'PartNumber': 3}
-                    ]
-                }
-            }
-        )
+        # Add the metadata paramter to the operations that require it:
+        # CreateMultipartUpload
+        for stubbed_response in filtered_responses:
+            stubbed_response['expected_params']['Metadata'] = {'foo': 'bar'}
+        for stubbed_response in stubbed_responses:
+            self.stubber.add_response(**stubbed_response)
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
         self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            self.sent_bodies,
+            [self.content[0:4], self.content[4:8], self.content[8:]])

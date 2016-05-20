@@ -78,7 +78,24 @@ class StreamWithError(object):
         return self._stream.read(n)
 
 
-class FileSizeProvider(object):
+class UnseekableStream(object):
+    def __init__(self, stream): 
+        self._stream = stream
+
+    def read(self, amount=None):
+        return self._stream.read(amount)
+
+    def close(self):
+        self._stream.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        return self.close()
+
+
+class FileSizeProvider(BaseSubscriber):
     def __init__(self, file_size):
         self.file_size = file_size
 

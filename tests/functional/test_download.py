@@ -62,22 +62,19 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
     def method(self):
         return self.manager.download
 
-    @property
-    def call_kwargs(self):
+    def create_call_kwargs(self):
         return {
             'bucket': self.bucket,
             'key': self.key,
             'fileobj': self.filename
         }
 
-    @property
-    def invalid_extra_args(self):
+    def create_invalid_extra_args(self):
         return {
             'Foo': 'bar'
         }
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [
             {
                 'method': 'head_object',
@@ -93,8 +90,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             }
         ]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         # Note that last read is from the empty sentinel indicating
         # that the stream is done.
         return [
@@ -102,7 +98,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         ]
 
     def add_head_object_response(self, expected_params=None):
-        head_response = self.stubbed_responses[0]
+        head_response = self.create_stubbed_responses()[0]
         if expected_params:
             head_response['expected_params'] = expected_params
         self.stubber.add_response(**head_response)
@@ -111,7 +107,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             self, expected_params=None, expected_ranges=None):
         # Add all get_object responses needed to complete the download.
         # Should account for both ranged and nonranged downloads.
-        for i, stubbed_response in enumerate(self.stubbed_responses[1:]):
+        for i, stubbed_response in enumerate(
+                self.create_stubbed_responses()[1:]):
             if expected_params:
                 stubbed_response['expected_params'] = copy.deepcopy(
                     expected_params)
@@ -140,7 +137,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.add_head_object_response()
         self.add_successful_get_object_responses()
 
-        future = self.manager.download(**self.call_kwargs)
+        future = self.manager.download(**self.create_call_kwargs())
         future.result()
         # Make sure the file exists
         self.assertTrue(os.path.exists(self.filename))
@@ -154,7 +151,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # Throw an error on the download
         self.stubber.add_client_error('get_object')
 
-        future = self.manager.download(**self.call_kwargs)
+        future = self.manager.download(**self.create_call_kwargs())
 
         with self.assertRaises(ClientError):
             future.result()
@@ -167,7 +164,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.add_head_object_response()
         self.add_successful_get_object_responses()
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['fileobj'] = os.path.join(
             self.tempdir, 'missing-directory', 'myfile')
         with self.assertRaises(IOError):
@@ -181,7 +178,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # as normal after the retry.
         self.add_successful_get_object_responses()
 
-        future = self.manager.download(**self.call_kwargs)
+        future = self.manager.download(**self.create_call_kwargs())
         future.result()
 
         # The retry should have been consumed and the process should have
@@ -199,7 +196,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # Add responses that fill up the maximum number of retries.
         self.add_n_retryable_get_object_responses(max_retries)
 
-        future = self.manager.download(**self.call_kwargs)
+        future = self.manager.download(**self.create_call_kwargs())
 
         # A retry exceeded error should have happened.
         with self.assertRaises(RetriesExceededError):
@@ -223,7 +220,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         new_chunk_size = 3
         self.set_stream_chunk_size(new_chunk_size)
         future = self.manager.download(
-            subscribers=[recorder_subscriber], **self.call_kwargs)
+            subscribers=[recorder_subscriber], **self.create_call_kwargs())
         future.result()
 
         # Ensure that there is no more remaining responses and that contents
@@ -249,7 +246,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
     def test_can_provide_file_size(self):
         self.add_successful_get_object_responses()
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['subscribers'] = [FileSizeProvider(len(self.content))]
 
         future = self.manager.download(**call_kwargs)
@@ -302,8 +299,7 @@ class TestRangedDownload(BaseDownloadTest):
             max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [
             {
                 'method': 'head_object',
@@ -331,8 +327,7 @@ class TestRangedDownload(BaseDownloadTest):
             }
         ]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         return [
             {'bytes_transferred': 4},
             {'bytes_transferred': 4},

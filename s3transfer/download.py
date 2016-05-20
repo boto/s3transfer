@@ -24,6 +24,7 @@ from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import invoke_progress_callbacks
+from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import StreamReaderProgress
 from s3transfer.tasks import Task
@@ -136,7 +137,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
         ranged_downloads = []
         for i in range(num_parts):
             # Calculate the range parameter
-            range_parameter = self._calculate_range_param(
+            range_parameter = calculate_range_parameter(
                 part_size, i, num_parts)
 
             # Inject the Range parameter to the parameters to be passed in

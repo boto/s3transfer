@@ -12,7 +12,10 @@
 # language governing permissions and limitations under the License.
 import math
 
-from s3transfer.tasks import Task, TaskSubmitter
+from s3transfer.tasks import Task
+from s3transfer.tasks import TaskSubmitter
+from s3transfer.tasks import CreateMultipartUploadTask
+from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
 
 
@@ -165,31 +168,6 @@ class PutObjectTask(Task):
             client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
 
 
-class CreateMultipartUploadTask(Task):
-    """Task to initiate a multipart upload"""
-    def _main(self, client, bucket, key, extra_args):
-        """
-        :param client: The client to use when calling PutObject
-        :param bucket: The name of the bucket to upload to
-        :param key: The name of the key to upload to
-        :param extra_args: A dictionary of any extra arguments that may be
-            used in the intialization.
-
-        :returns: The upload id of the multipart upload
-        """
-        # Create the multipart upload.
-        response = client.create_multipart_upload(
-            Bucket=bucket, Key=key, **extra_args)
-        upload_id = response['UploadId']
-
-        # Add a cleanup if the multipart upload fails at any point.
-        self._transfer_coordinator.add_failure_cleanup(
-            client.abort_multipart_upload, Bucket=bucket, Key=key,
-            UploadId=upload_id
-        )
-        return upload_id
-
-
 class UploadPartTask(Task):
     """Task to upload a part in a multipart upload"""
     def _main(self, client, fileobj, bucket, key, upload_id, part_number,
@@ -225,23 +203,3 @@ class UploadPartTask(Task):
                 Body=body, **extra_args)
         etag = response['ETag']
         return {'ETag': etag, 'PartNumber': part_number}
-
-
-class CompleteMultipartUploadTask(Task):
-    """Task to complete a multipart upload"""
-    def _main(self, client, bucket, key, upload_id, parts):
-        """
-        :param client: The client to use when calling PutObject
-        :param bucket: The name of the bucket to upload to
-        :param key: The name of the key to upload to
-        :param upload_id: The id of the upload
-        :param parts: A list of parts to use to complete the multipart upload::
-
-            [{'Etag': etag_value, 'PartNumber': part_number}, ...]
-
-            Each element in the list consists of a return value from
-            ``UploadPartTask.main()``.
-        """
-        client.complete_multipart_upload(
-            Bucket=bucket, Key=key, UploadId=upload_id,
-            MultipartUpload={'Parts': parts})

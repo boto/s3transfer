@@ -22,6 +22,7 @@ from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import invoke_progress_callbacks
+from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import CallArgs
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import OSUtils
@@ -100,6 +101,28 @@ class TestInvokeProgressCallbacks(unittest.TestCase):
         recording_subscriber = RecordingSubscriber()
         invoke_progress_callbacks([recording_subscriber.on_progress], 0)
         self.assertEqual(len(recording_subscriber.on_progress_calls), 0)
+
+
+class TestCalculateRangeParameter(unittest.TestCase):
+    def setUp(self):
+        self.part_size = 5
+        self.part_index = 1
+        self.num_parts = 3
+
+    def test_calculate_range_paramter(self):
+        range_val = calculate_range_parameter(
+            self.part_size, self.part_index, self.num_parts)
+        self.assertEqual(range_val, 'bytes=5-9')
+
+    def test_last_part_with_no_total_size(self):
+        range_val = calculate_range_parameter(
+            self.part_size, self.part_index, num_parts=2)
+        self.assertEqual(range_val, 'bytes=5-')
+
+    def test_last_part_with_total_size(self):
+        range_val = calculate_range_parameter(
+            self.part_size, self.part_index, num_parts=2, total_size=8)
+        self.assertEqual(range_val, 'bytes=5-7')
 
 
 class BaseUtilsTest(unittest.TestCase):

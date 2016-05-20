@@ -18,6 +18,7 @@ from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
 from s3transfer.download import DownloadTaskSubmitter
 from s3transfer.upload import UploadTaskSubmitter
+from s3transfer.copies import CopyTaskSubmitter
 
 
 MB = 1024 * 1024
@@ -98,6 +99,17 @@ class TransferManager(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+    ]
+
+    ALLOWED_COPY_ARGS = ALLOWED_UPLOAD_ARGS + [
+        'CopySourceIfMatch',
+        'CopySourceIfModifiedSince',
+        'CopySourceIfNoneMatch',
+        'CopySourceIfUnmodifiedSince',
+        'CopySourceSSECustomerAlgorithm',
+        'CopySourceSSECustomerKey',
+        'CopySourceSSECustomerKeyMD5',
+        'MetadataDirective'
     ]
 
     def __init__(self, client, config=None):
@@ -199,6 +211,59 @@ class TransferManager(object):
             client=self._client, osutil=self._osutil, config=self._config,
             executor=self._executor, io_executor=self._io_executor)
         return download_submitter(call_args)
+
+    def copy(self, copy_source, bucket, key, extra_args=None,
+             subscribers=None, source_client=None):
+        """Copies a file in S3
+
+        :type copy_source: dict
+        :param copy_source: The name of the source bucket, key name of the
+            source object, and optional version ID of the source object. The
+            dictionary format is:
+            ``{'Bucket': 'bucket', 'Key': 'key', 'VersionId': 'id'}``. Note
+            that the ``VersionId`` key is optional and may be omitted.
+
+        :type bucket: str
+        :param bucket: The name of the bucket to copy to
+
+        :type key: str
+        :param key: The name of the key to copy to
+
+        :type extra_args: dict
+        :param extra_args: Extra arguments that may be passed to the
+            client operation
+
+        :type subscribers: a list of subscribers
+        :param subscribers: The list of subscribers to be invoked in the
+            order provided based on the event emit during the process of
+            the transfer request.
+
+        :type source_client: botocore or boto3 Client
+        :param source_client: The client to be used for operation that
+            may happen at the source object. For example, this client is
+            used for the head_object that determines the size of the copy.
+            If no client is provided, the transfer manager's client is used
+            as the client for the source object.
+
+        :rtype: s3transfer.futures.TransferFuture
+        :returns: Transfer future representing the copy
+        """
+        if extra_args is None:
+            extra_args = {}
+        if subscribers is None:
+            subscribers = []
+        if source_client is None:
+            source_client = self._client
+        self._validate_all_known_args(extra_args, self.ALLOWED_COPY_ARGS)
+        call_args = CallArgs(
+            copy_source=copy_source, bucket=bucket, key=key,
+            extra_args=extra_args, subscribers=subscribers,
+            source_client=source_client
+        )
+        copy_submitter = CopyTaskSubmitter(
+            client=self._client, osutil=self._osutil, config=self._config,
+            executor=self._executor)
+        return copy_submitter(call_args)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:

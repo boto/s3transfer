@@ -81,26 +81,22 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
     def method(self):
         return self.manager.upload
 
-    @property
-    def call_kwargs(self):
+    def create_call_kwargs(self):
         return {
             'fileobj': self.filename,
             'bucket': self.bucket,
             'key': self.key
         }
 
-    @property
-    def invalid_extra_args(self):
+    def create_invalid_extra_args(self):
         return {
             'Foo': 'bar'
         }
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [{'method': 'put_object', 'service_response': {}}]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         return [{'bytes_transferred': 10}]
 
 
@@ -158,8 +154,7 @@ class TestMultipartUpload(BaseUploadTest):
             max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [
             {'method': 'create_multipart_upload',
              'service_response': {'UploadId': 'my-upload-id'}},
@@ -172,8 +167,7 @@ class TestMultipartUpload(BaseUploadTest):
             {'method': 'complete_multipart_upload', 'service_response': {}}
         ]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         return [
             {'bytes_transferred': 4},
             {'bytes_transferred': 4},

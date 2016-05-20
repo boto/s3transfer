@@ -264,7 +264,13 @@ class TestTransferCoordinator(unittest.TestCase):
         self.assertEqual(cleanup_invocations, ['cleanup called'])
 
 
-class TestBoundedExecutor(unittest.TestCase):
+class BaseBoundedExecutorTest(unittest.TestCase):
+    def sleep_then_add_to_list(self, sleep_times, sleep_amt):
+        time.sleep(sleep_amt)
+        sleep_times.append(sleep_amt)
+
+
+class TestBoundedExecutor(BaseBoundedExecutorTest):
     def test_submit_single_task(self):
         executor = BoundedExecutor(0, 1)
         args = (1, 2)
@@ -275,10 +281,6 @@ class TestBoundedExecutor(unittest.TestCase):
         self.assertIsInstance(future, Future)
         # Ensure the callable got executed.
         self.assertEqual(future.result(), (args, kwargs))
-
-    def sleep_then_add_to_list(self, sleep_times, sleep_amt):
-        time.sleep(sleep_amt)
-        sleep_times.append(sleep_amt)
 
     def test_executor_blocks_on_full_queue(self):
         executor = BoundedExecutor(1, 2)
@@ -319,3 +321,79 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown returns immediately even if the task is
         # not done, which it should not be because it it slow.
         self.assertFalse(slow_task.done())
+
+
+class TestBoundedExecutorWithTags(BaseBoundedExecutorTest):
+    def setUp(self):
+        self.default_tag = 'my-tag'
+        self.default_tag_size = 1
+        self.tag_max_sizes = {self.default_tag: self.default_tag_size}
+
+    def test_submit_single_task(self):
+        executor = BoundedExecutor(0, 1, self.tag_max_sizes)
+        args = (1, 2)
+        kwargs = {'foo': 'bar', 'future_tag': self.default_tag}
+        # Ensure we can submit a callable with args and kwargs
+        future = executor.submit(return_call_args, *args, **kwargs)
+        # Ensure what we get back is a Future
+        self.assertIsInstance(future, Future)
+        # Ensure the callable got executed.
+        self.assertEqual(future.result(), (args, {'foo': 'bar'}))
+
+    def test_executor_blocks_on_max_tag_size(self):
+        # The executor is unbounded but their is a tag size set
+        executor = BoundedExecutor(0, 2, self.tag_max_sizes)
+        sleep_times = []
+        slow_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0.05,
+            future_tag=self.default_tag)
+        fast_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0,
+            future_tag=self.default_tag)
+        # Ensure that fast task did not get executed until the slow task
+        # was executed because the max size for that only allows one
+        # task to be executed at a time.
+        wait([slow_task, fast_task])
+        self.assertEqual(sleep_times, [0.05, 0])
+
+    def test_executor_does_not_block_nontagged_tasks_at_max_tag_size(self):
+        # The executor is unbounded but their is a tag size set
+        executor = BoundedExecutor(0, 3, self.tag_max_sizes)
+        sleep_times = []
+        # First submit a task to sleep for a period of time.
+        slow_tagged_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0.05,
+            future_tag=self.default_tag)
+        # Submit a second nontagged task. This should not be blocked by
+        # the max tag limit and complete first.
+        nontagged_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0.025)
+        # Submit a third tagged task that should get blocked by the first
+        # slow tagged task, even though it is faster than the second submitted
+        # task and finish last as a result.
+        fast_tagged_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0,
+            future_tag=self.default_tag)
+
+        wait([slow_tagged_task, nontagged_task, fast_tagged_task])
+        self.assertEqual(sleep_times, [0.025, 0.05, 0])
+
+    def test_tags_account_toward_max_queue_size(self):
+        # Create an executor that has a max size of 1
+        executor = BoundedExecutor(1, 2, self.tag_max_sizes)
+        sleep_times = []
+        slow_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0.05)
+        # The fact that this task is tagged should not affect the result of
+        # having to wait for the first task due to the total max size of the
+        # executor.
+        fast_task = executor.submit(
+            self.sleep_then_add_to_list, sleep_times, 0,
+            future_tag=self.default_tag)
+        # Ensure that fast task did not get executed until the slow task
+        # was executed because the executor only allows one
+        # task to be executed at a time, even though the fast task was tagged
+        # and the slow one was not. They should both be equally accounted
+        # toward the max size of the executor for all threads.
+        wait([slow_task, fast_task])
+        self.assertEqual(sleep_times, [0.05, 0])

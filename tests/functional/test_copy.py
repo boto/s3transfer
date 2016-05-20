@@ -45,22 +45,19 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
     def method(self):
         return self.manager.copy
 
-    @property
-    def call_kwargs(self):
+    def create_call_kwargs(self):
         return {
             'copy_source': self.copy_source,
             'bucket': self.bucket,
             'key': self.key,
         }
 
-    @property
-    def invalid_extra_args(self):
+    def create_invalid_extra_args(self):
         return {
             'Foo': 'bar'
         }
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [
             {
                 'method': 'head_object',
@@ -74,8 +71,7 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
             }
         ]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         return [
             {'bytes_transferred': len(self.content)},
         ]
@@ -83,7 +79,7 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
     def add_head_object_response(self, expected_params=None, stubber=None):
         if not stubber:
             stubber = self.stubber
-        head_response = self.stubbed_responses[0]
+        head_response = self.create_stubbed_responses()[0]
         if expected_params:
             head_response['expected_params'] = expected_params
         stubber.add_response(**head_response)
@@ -94,7 +90,7 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 
         # Add all responses needed to do the copy of the object.
         # Should account for both ranged and nonranged downloads.
-        stubbed_responses = self.stubbed_responses[1:]
+        stubbed_responses = self.create_stubbed_responses()[1:]
 
         # If the length of copy responses is greater than one then it is
         # a multipart copy.
@@ -127,7 +123,7 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
     def test_can_provide_file_size(self):
         self.add_successful_copy_responses()
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['subscribers'] = [FileSizeProvider(len(self.content))]
 
         future = self.manager.copy(**call_kwargs)
@@ -148,14 +144,14 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         self.add_head_object_response(expected_params=expected_params)
         self.add_successful_copy_responses()
 
-        future = self.manager.copy(**self.call_kwargs)
+        future = self.manager.copy(**self.create_call_kwargs())
         future.result()
         self.stubber.assert_no_pending_responses()
 
     def test_invalid_copy_source(self):
         self.copy_source = ['bucket', 'key']
         with self.assertRaises(TypeError):
-            self.manager.copy(**self.call_kwargs)
+            self.manager.copy(**self.create_call_kwargs())
 
     def test_provide_copy_source_client(self):
         source_client = self.session.create_client(
@@ -168,7 +164,7 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         self.add_head_object_response(stubber=source_stubber)
         self.add_successful_copy_responses()
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['source_client'] = source_client
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -196,7 +192,7 @@ class TestNonMultipartCopy(BaseCopyTest):
         self.add_successful_copy_responses(
             expected_copy_params=expected_copy_object)
 
-        future = self.manager.copy(**self.call_kwargs)
+        future = self.manager.copy(**self.create_call_kwargs())
         future.result()
         self.stubber.assert_no_pending_responses()
 
@@ -218,7 +214,7 @@ class TestNonMultipartCopy(BaseCopyTest):
         self.add_successful_copy_responses(
             expected_copy_params=expected_copy_object)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -243,7 +239,7 @@ class TestNonMultipartCopy(BaseCopyTest):
         self.add_successful_copy_responses(
             expected_copy_params=expected_copy_object)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -259,8 +255,7 @@ class TestMultipartCopy(BaseCopyTest):
             max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         return [
             {
                 'method': 'head_object',
@@ -304,8 +299,7 @@ class TestMultipartCopy(BaseCopyTest):
             }
         ]
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         # Note that last read is from the empty sentinel indicating
         # that the stream is done.
         return [
@@ -315,7 +309,7 @@ class TestMultipartCopy(BaseCopyTest):
         ]
 
     def add_create_multipart_upload_response(self):
-        self.stubber.add_response(**self.stubbed_responses[1])
+        self.stubber.add_response(**self.create_stubbed_responses()[1])
 
     def _get_expected_params(self):
         upload_id = 'my-upload-id'
@@ -386,7 +380,7 @@ class TestMultipartCopy(BaseCopyTest):
         self.add_head_object_response(expected_params=head_params)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        future = self.manager.copy(**self.call_kwargs)
+        future = self.manager.copy(**self.create_call_kwargs())
         future.result()
         self.stubber.assert_no_pending_responses()
 
@@ -403,7 +397,7 @@ class TestMultipartCopy(BaseCopyTest):
             add_copy_kwargs, ['create_mpu', 'copy'], self.extra_args)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -417,7 +411,7 @@ class TestMultipartCopy(BaseCopyTest):
         self.add_head_object_response(expected_params=head_params)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -433,7 +427,7 @@ class TestMultipartCopy(BaseCopyTest):
             add_copy_kwargs, ['create_mpu'], self.extra_args)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -451,7 +445,7 @@ class TestMultipartCopy(BaseCopyTest):
             add_copy_kwargs, ['create_mpu', 'copy'], self.extra_args)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -472,7 +466,7 @@ class TestMultipartCopy(BaseCopyTest):
             add_copy_kwargs, ['copy'], self.extra_args)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
-        call_kwargs = self.call_kwargs
+        call_kwargs = self.create_call_kwargs()
         call_kwargs['extra_args'] = self.extra_args
         future = self.manager.copy(**call_kwargs)
         future.result()
@@ -497,7 +491,7 @@ class TestMultipartCopy(BaseCopyTest):
             }
         )
 
-        future = self.manager.copy(**self.call_kwargs)
+        future = self.manager.copy(**self.create_call_kwargs())
         with self.assertRaisesRegexp(ClientError, 'ArbitraryFailure'):
             future.result()
         self.stubber.assert_no_pending_responses()

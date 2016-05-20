@@ -225,19 +225,16 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         """The transfer manager method to invoke i.e. upload()"""
         raise NotImplementedError('method is not implemented')
 
-    @property
-    def call_kwargs(self):
+    def create_call_kwargs(self):
         """The kwargs to be passed to the transfer manager method"""
-        raise NotImplementedError('call_kwargs is not implemented')
+        raise NotImplementedError('create_call_kwargs is not implemented')
 
-    @property
-    def invalid_extra_args(self):
+    def create_invalid_extra_args(self):
         """A value for extra_args that will cause validation errors"""
         raise NotImplementedError(
-            'invalid_extra_args is not implemented')
+            'create_invalid_extra_args is not implemented')
 
-    @property
-    def stubbed_responses(self):
+    def create_stubbed_responses(self):
         """A list of stubbed responses that will cause the request to succeed
 
         The elements of this list is a dictionary that will be used as key
@@ -246,10 +243,9 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
             [{'method': 'put_object', 'service_response': {}}]
         """
         raise NotImplementedError(
-            'stubbed_responses is not implemented')
+            'create_stubbed_responses is not implemented')
 
-    @property
-    def expected_progress_callback_info(self):
+    def create_expected_progress_callback_info(self):
         """A list of kwargs expected to be passed to each progress callback
 
         Note that the future kwargs does not need to be added to each
@@ -267,23 +263,23 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         values.
         """
         raise NotImplementedError(
-            'expected_progress_callback_info is not implemented')
+            'create_expected_progress_callback_info is not implemented')
 
     def test_invalid_extra_args(self):
         with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):
             self.method(
-                extra_args=self.invalid_extra_args,
-                **self.call_kwargs
+                extra_args=self.create_invalid_extra_args(),
+                **self.create_call_kwargs()
             )
 
     def test_for_callback_kwargs_correctness(self):
         # Add the stubbed responses before invoking the method
-        for stubbed_response in self.stubbed_responses:
+        for stubbed_response in self.create_stubbed_responses():
             self.stubber.add_response(**stubbed_response)
 
         subscriber = RecordingSubscriber()
         future = self.method(
-            subscribers=[subscriber], **self.call_kwargs)
+            subscribers=[subscriber], **self.create_call_kwargs())
         # We call shutdown instead of result on future because the future
         # could be finished but the done callback could still be going.
         # The manager's shutdown method ensures everything completes.
@@ -291,7 +287,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
 
         # Assert the various subscribers were called with the
         # expected kwargs
-        expected_progress_calls = self.expected_progress_callback_info
+        expected_progress_calls = self.create_expected_progress_callback_info()
         for expected_progress_call in expected_progress_calls:
             expected_progress_call['future'] = future
 

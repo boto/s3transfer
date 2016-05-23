@@ -179,8 +179,60 @@ class OSUtils(object):
         rename_file(current_filename, new_filename)
 
 
+class DeferredOpenFile(object):
+    OPEN_METHOD = open
+
+    def __init__(self, filename, start_byte=0):
+        """A class that defers the opening of a file till needed
+
+        This is useful for deffering opening of a file till it is needed
+        in a separate thread, as there is a limit of how many open files
+        there can be in a single thread for most operating systems. The
+        file gets opened in the following methods: ``read()``, ``seek()``,
+        and ``__enter__()``
+
+        :type filename: str
+        :param filename: The name of the file to open
+
+        :type start_byte: int
+        :param start_byte: The byte to seek to when the file is opened.
+        """
+        self._filename = filename
+        self._fileobj = None
+        self._start_byte = start_byte
+
+    def _open_if_needed(self):
+        if self._fileobj is None:
+            self._fileobj = self.OPEN_METHOD(self._filename, 'rb')
+            if self._start_byte != 0:
+                self._fileobj.seek(self._start_byte)
+
+    def read(self, amount=None):
+        self._open_if_needed()
+        return self._fileobj.read(amount)
+
+    def seek(self, where):
+        self._open_if_needed()
+        self._fileobj.seek(where)
+
+    def tell(self):
+        if self._fileobj is None:
+            return self._start_byte
+        return self._fileobj.tell()
+
+    def close(self):
+        self._fileobj.close()
+
+    def __enter__(self):
+        self._open_if_needed()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
+
+
 class ReadFileChunk(object):
-    def __init__(self, fileobj, start_byte, chunk_size, full_file_size,
+    def __init__(self, fileobj, chunk_size, full_file_size,
                  callbacks=None, enable_callbacks=True):
         """
 
@@ -189,13 +241,10 @@ class ReadFileChunk(object):
             |___________________________________________________|
             0          |                 |                 full_file_size
                        |----chunk_size---|
-                 start_byte
+                    f.tell()
 
         :type fileobj: file
         :param fileobj: File like object
-
-        :type start_byte: int
-        :param start_byte: The first byte from which to start reading.
 
         :type chunk_size: int
         :param chunk_size: The max chunk size to read.  Trying to read
@@ -212,10 +261,10 @@ class ReadFileChunk(object):
 
         """
         self._fileobj = fileobj
-        self._start_byte = start_byte
+        self._start_byte = self._fileobj.tell()
         self._size = self._calculate_file_size(
             self._fileobj, requested_size=chunk_size,
-            start_byte=start_byte, actual_file_size=full_file_size)
+            start_byte=self._start_byte, actual_file_size=full_file_size)
         self._fileobj.seek(self._start_byte)
         self._amount_read = 0
         self._callbacks = callbacks
@@ -251,10 +300,9 @@ class ReadFileChunk(object):
         :return: A new instance of ``ReadFileChunk``
 
         """
-        f = open(filename, 'rb')
-        file_size = os.fstat(f.fileno()).st_size
-        return cls(f, start_byte, chunk_size, file_size, callbacks,
-                   enable_callbacks)
+        file_size = os.path.getsize(filename)
+        f = DeferredOpenFile(filename=filename, start_byte=start_byte)
+        return cls(f, chunk_size, file_size, callbacks, enable_callbacks)
 
     def _calculate_file_size(self, fileobj, requested_size, start_byte,
                              actual_file_size):

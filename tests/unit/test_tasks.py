@@ -10,19 +10,22 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import time
 from concurrent import futures
 from functools import partial
 
 from tests import unittest
 from tests import RecordingSubscriber
 from tests import BaseTaskTest
-from s3transfer.futures import TransferFuture
+from tests import BaseSubmissionTaskTest
 from s3transfer.futures import TransferCoordinator
 from s3transfer.tasks import Task
-from s3transfer.tasks import TaskSubmitter
+from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
+from s3transfer.utils import get_callbacks
 from s3transfer.utils import CallArgs
+from s3transfer.utils import FunctionContainer
 
 
 class TaskFailureException(Exception):
@@ -30,7 +33,14 @@ class TaskFailureException(Exception):
 
 
 class SuccessTask(Task):
-    def _main(self, return_value='success'):
+    def _main(self, return_value='success', callbacks=None,
+              failure_cleanups=None):
+        if callbacks:
+            for callback in callbacks:
+                callback()
+        if failure_cleanups:
+            for failure_cleanup in failure_cleanups:
+                self._transfer_coordinator.add_failure_cleanup(failure_cleanup)
         return return_value
 
 
@@ -44,38 +54,240 @@ class ReturnKwargsTask(Task):
         return kwargs
 
 
-class NOOPTaskSubmitter(TaskSubmitter):
-    def _submit(self, transfer_future, transfer_coordinator):
+class SubmitMoreTasksTask(Task):
+    def _main(self, executor, tasks_to_submit):
+        for task_to_submit in tasks_to_submit:
+            self._submit_task(executor, task_to_submit)
+
+
+class NOOPSubmissionTask(SubmissionTask):
+    def _submit(self, transfer_future, **kwargs):
         pass
 
 
-class TestTaskSubmitter(unittest.TestCase):
+class ExceptionSubmissionTask(SubmissionTask):
+    def _submit(self, transfer_future, executor=None, tasks_to_submit=None):
+        if executor and tasks_to_submit:
+            for task_to_submit in tasks_to_submit:
+                self._submit_task(executor, task_to_submit)
+            # We want to sleep for a small of time to allow the provided tasks
+            # to be executed before the task exception when submitting is
+            # raised.
+            time.sleep(0.05)
+        raise TaskFailureException()
+
+
+class TestSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
-        self.client = object()
-        self.config = object()
-        self.osutil = object()
-        self.executor = object()
+        super(TestSubmissionTask, self).setUp()
+        self.executor = futures.ThreadPoolExecutor(5)
         self.call_args = CallArgs(subscribers=[])
+        self.transfer_future = self.get_transfer_future(self.call_args)
+        self.main_kwargs = {'transfer_future': self.transfer_future}
 
-    def test_return_value(self):
-        task_submitter = NOOPTaskSubmitter(
-            self.client, self.config, self.osutil, self.executor)
-        future = task_submitter(self.call_args)
+    def test_sets_running_status(self):
+        submission_task = self.get_task(
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+        # Status should be queued until submission task has been ran.
+        self.assertEqual(self.transfer_coordinator.status, 'queued')
 
-        # Make sure a TransferFuture is returned
-        self.assertIsInstance(future, TransferFuture)
-        # Make sure the call args are associated to the TransferFuture.
-        self.assertIs(future.meta.call_args, self.call_args)
+        submission_task()
+        # Once submission task has been ran, the status should now be running.
+        self.assertEqual(self.transfer_coordinator.status, 'running')
 
     def test_on_queued_callbacks(self):
-        task_submitter = NOOPTaskSubmitter(
-            self.client, self.config, self.osutil, self.executor)
+        submission_task = self.get_task(
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
 
         subscriber = RecordingSubscriber()
-        call_args = CallArgs(subscribers=[subscriber])
-        future = task_submitter(call_args)
+        self.call_args.subscribers.append(subscriber)
+        submission_task()
         # Make sure the on_queued callback of the subscriber is called.
-        self.assertEqual(subscriber.on_queued_calls, [{'future': future}])
+        self.assertEqual(
+            subscriber.on_queued_calls, [{'future': self.transfer_future}])
+
+    def test_sets_exception_from_submit(self):
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+        submission_task()
+
+        # Make sure the status of the future is failed
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the future propogates the exception encountered in the
+        # submission task.
+        with self.assertRaises(TaskFailureException):
+            self.transfer_future.result()
+
+    def test_calls_done_callbacks_on_exception(self):
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        subscriber = RecordingSubscriber()
+        self.call_args.subscribers.append(subscriber)
+
+        # Add the done callback to the callbacks to be invoked when the
+        # transfer is done.
+        done_callbacks = get_callbacks(self.transfer_future, 'done')
+        for done_callback in done_callbacks:
+            self.transfer_coordinator.add_done_callback(done_callback)
+        submission_task()
+
+        # Make sure the task failed to start
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the on_done callback of the subscriber is called.
+        self.assertEqual(
+            subscriber.on_done_calls, [{'future': self.transfer_future}])
+
+    def test_calls_failure_cleanups_on_exception(self):
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        # Add the callback to the callbacks to be invoked when the
+        # transfer fails.
+        invocations_of_cleanup = []
+        cleanup_callback = FunctionContainer(
+            invocations_of_cleanup.append, 'cleanup happened')
+        self.transfer_coordinator.add_failure_cleanup(cleanup_callback)
+        submission_task()
+
+        # Make sure the task failed to start
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the cleanup was called.
+        self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
+
+    def test_cleanups_only_ran_once_on_exception(self):
+        # We want to be able to handle the case where the final task completes
+        # and anounces done but there is an error in the submission task
+        # which will cause it to need to anounce done as well. In this case,
+        # we do not want the done callbacks to be invoke more than once.
+
+        final_task = self.get_task(FailureTask, is_final=True)
+        self.main_kwargs['executor'] = self.executor
+        self.main_kwargs['tasks_to_submit'] = [final_task]
+
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        subscriber = RecordingSubscriber()
+        self.call_args.subscribers.append(subscriber)
+
+        # Add the done callback to the callbacks to be invoked when the
+        # transfer is done.
+        done_callbacks = get_callbacks(self.transfer_future, 'done')
+        for done_callback in done_callbacks:
+            self.transfer_coordinator.add_done_callback(done_callback)
+
+        submission_task()
+
+        # Make sure the task failed to start
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the on_done callback of the subscriber is called only once.
+        self.assertEqual(
+            subscriber.on_done_calls, [{'future': self.transfer_future}])
+
+    def test_done_callbacks_only_ran_once_on_exception(self):
+        # We want to be able to handle the case where the final task completes
+        # and anounces done but there is an error in the submission task
+        # which will cause it to need to anounce done as well. In this case,
+        # we do not want the failure cleanups to be invoked more than once.
+
+        final_task = self.get_task(FailureTask, is_final=True)
+        self.main_kwargs['executor'] = self.executor
+        self.main_kwargs['tasks_to_submit'] = [final_task]
+
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        # Add the callback to the callbacks to be invoked when the
+        # transfer fails.
+        invocations_of_cleanup = []
+        cleanup_callback = FunctionContainer(
+            invocations_of_cleanup.append, 'cleanup happened')
+        self.transfer_coordinator.add_failure_cleanup(cleanup_callback)
+        submission_task()
+
+        # Make sure the task failed to start
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the cleanup was called only onece.
+        self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
+
+    def test_handles_cleanups_submitted_in_other_tasks(self):
+        invocations_of_cleanup = []
+        cleanup_callback = FunctionContainer(
+            invocations_of_cleanup.append, 'cleanup happened')
+        # We want the cleanup to be added in the execution of the task and
+        # still be executed by the submission task when it fails.
+        task = self.get_task(
+            SuccessTask, main_kwargs={'failure_cleanups': [cleanup_callback]})
+
+        self.main_kwargs['executor'] = self.executor
+        self.main_kwargs['tasks_to_submit'] = [task]
+
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        submission_task()
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+        # Make sure the cleanup was called even though the callback got
+        # added in a completely different task.
+        self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
+
+    def test_waits_for_tasks_submitted_by_other_tasks_on_exception(self):
+        # In this test, we want to make sure that any tasks that may be
+        # submitted in another task complete before we start performing
+        # cleanups.
+        #
+        # This is tested by doing the following:
+        #
+        # ExecutionSubmissionTask
+        #   |
+        #   +--submits-->SubmitMoreTasksTask
+        #                   |
+        #                   +--submits-->SuccessTask
+        #                                  |
+        #                                  +-->sleeps-->adds failure cleanup
+        #
+        # In the end, the failure cleanup of the SuccessTask should be ran
+        # when the ExecutionSubmissionTask fails. If the
+        # ExeceptionSubmissionTask did not run the failure cleanup it is most
+        # likely that it did not wait for the SuccessTask to complete, which
+        # it needs to because the ExeceptionSubmissionTask does not know
+        # what failure cleanups it needs to run until all spawned tasks have
+        # completed.
+        invocations_of_cleanup = []
+        sleep_callback = FunctionContainer(time.sleep, 0.06)
+        cleanup_callback = FunctionContainer(
+            invocations_of_cleanup.append, 'cleanup happened')
+
+        cleanup_task = self.get_task(
+            SuccessTask, main_kwargs={
+                'callbacks': [sleep_callback],
+                'failure_cleanups': [cleanup_callback]
+            }
+        )
+        task_for_submitting_cleanup_task = self.get_task(
+            SubmitMoreTasksTask, main_kwargs={
+                'executor': self.executor,
+                'tasks_to_submit': [cleanup_task]
+            }
+        )
+
+        self.main_kwargs['executor'] = self.executor
+        self.main_kwargs['tasks_to_submit'] = [
+            task_for_submitting_cleanup_task]
+
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+
+        submission_task()
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+        self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
 
 
 class TestTask(unittest.TestCase):
@@ -83,16 +295,11 @@ class TestTask(unittest.TestCase):
         self.transfer_coordinator = TransferCoordinator()
 
     def test_context_status_transitioning_success(self):
-        start_task = SuccessTask(self.transfer_coordinator)
-
-        # Before any task, the status should be queued.
-        self.assertEqual(self.transfer_coordinator.status, 'queued')
-
-        # Once the task is called, the status should be set to running.
-        start_task()
+        # The status should be set to running.
+        self.transfer_coordinator.set_status_to_running()
         self.assertEqual(self.transfer_coordinator.status, 'running')
 
-        # If another task is called, the status still should be running.
+        # If a task is called, the status still should be running.
         SuccessTask(self.transfer_coordinator)()
         self.assertEqual(self.transfer_coordinator.status, 'running')
 
@@ -101,6 +308,8 @@ class TestTask(unittest.TestCase):
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_context_status_transitioning_failed(self):
+        self.transfer_coordinator.set_status_to_running()
+
         SuccessTask(self.transfer_coordinator)()
         self.assertEqual(self.transfer_coordinator.status, 'running')
 

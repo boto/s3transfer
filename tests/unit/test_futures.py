@@ -18,14 +18,30 @@ from concurrent.futures import CancelledError
 
 
 from tests import unittest
+from s3transfer.futures import get_transfer_future_with_components
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
+from s3transfer.utils import FunctionContainer
 
 
 def return_call_args(*args, **kwargs):
     return args, kwargs
+
+
+class TestGetTransferFutureWithComponents(unittest.TestCase):
+    def test_get_transfer_future_with_components(self):
+        call_args = object()
+        transfer_future, components = get_transfer_future_with_components(
+            call_args)
+        # Assert all of the returned objects are of the expected type.
+        self.assertIsInstance(transfer_future, TransferFuture)
+        self.assertIsInstance(components['meta'], TransferMeta)
+        self.assertIsInstance(components['coordinator'], TransferCoordinator)
+
+        # Ensure the call args provided is attached to the transfer future.
+        self.assertEqual(call_args, transfer_future.meta.call_args)
 
 
 class TestTransferFuture(unittest.TestCase):
@@ -191,6 +207,76 @@ class TestTransferCoordinator(unittest.TestCase):
             result_list.append(cleanup())
         self.assertEqual(
             result_list, [(args, kwargs), (second_args, second_kwargs)])
+
+    def test_associated_futures(self):
+        first_future = object()
+        # Associate one future to the transfer
+        self.transfer_coordinator.add_associated_future(first_future)
+        associated_futures = self.transfer_coordinator.associated_futures
+        # The first future should be in the returned list of futures.
+        self.assertEqual(associated_futures, [first_future])
+
+        second_future = object()
+        # Associate another future to the transfer.
+        self.transfer_coordinator.add_associated_future(second_future)
+        # The association should not have mutated the returned list from
+        # before.
+        self.assertEqual(associated_futures, [first_future])
+
+        # Both futures should be in the returned list.
+        self.assertEqual(
+            self.transfer_coordinator.associated_futures,
+            [first_future, second_future])
+
+    def test_associated_futures_on_done(self):
+        future = object()
+        self.transfer_coordinator.add_associated_future(future)
+        self.assertEqual(
+            self.transfer_coordinator.associated_futures, [future])
+
+        self.transfer_coordinator.announce_done()
+        # When the transfer completes that means all of the futures have
+        # completed as well, leaving no need to keep the completed futures
+        # around as the transfer is done.
+        self.assertEqual(self.transfer_coordinator.associated_futures, [])
+
+    def test_done_callbacks_on_done(self):
+        done_callback_invocations = []
+        callback = FunctionContainer(
+            done_callback_invocations.append, 'done callback called')
+
+        # Add the done callback to the transfer.
+        self.transfer_coordinator.add_done_callback(callback)
+
+        # Announce that the transfer is done. This should invoke the done
+        # callback.
+        self.transfer_coordinator.announce_done()
+        self.assertEqual(done_callback_invocations, ['done callback called'])
+
+        # If done is announced again, we should not invoke the callback again
+        # because done has already been announced and thus the callback has
+        # been ran as well.
+        self.transfer_coordinator.announce_done()
+        self.assertEqual(done_callback_invocations, ['done callback called'])
+
+    def test_failure_cleanups_on_done(self):
+        cleanup_invocations = []
+        callback = FunctionContainer(
+            cleanup_invocations.append, 'cleanup called')
+
+        # Add the failure cleanup to the transfer.
+        self.transfer_coordinator.add_failure_cleanup(callback)
+
+        # Announce that the transfer is done. This should invoke the failure
+        # cleanup.
+        self.transfer_coordinator.announce_done()
+        self.assertEqual(cleanup_invocations, ['cleanup called'])
+
+        # If done is announced again, we should not invoke the cleanup again
+        # because done has already been announced and thus the cleanup has
+        # been ran as well.
+        self.transfer_coordinator.announce_done()
+        self.assertEqual(cleanup_invocations, ['cleanup called'])
 
 
 class TestBoundedExecutor(unittest.TestCase):

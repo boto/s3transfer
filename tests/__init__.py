@@ -27,6 +27,8 @@ from concurrent import futures
 
 from s3transfer.manager import TransferConfig
 from s3transfer.futures import TransferCoordinator
+from s3transfer.futures import TransferMeta
+from s3transfer.futures import TransferFuture
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 
@@ -195,16 +197,22 @@ class BaseTaskTest(StubbedClientTest):
         return task_cls(**kwargs)
 
 
-class BaseTaskSubmitterTest(StubbedClientTest):
+class BaseSubmissionTaskTest(BaseTaskTest):
     def setUp(self):
-        super(BaseTaskSubmitterTest, self).setUp()
+        super(BaseSubmissionTaskTest, self).setUp()
         self.config = TransferConfig()
         self.osutil = OSUtils()
         self.executor = futures.ThreadPoolExecutor(1)
 
     def tearDown(self):
-        super(BaseTaskSubmitterTest, self).tearDown()
+        super(BaseSubmissionTaskTest, self).tearDown()
         self.executor.shutdown()
+
+    def get_transfer_future(self, call_args=None):
+        return TransferFuture(
+            meta=TransferMeta(call_args),
+            coordinator=self.transfer_coordinator
+        )
 
 
 class BaseGeneralInterfaceTest(StubbedClientTest):

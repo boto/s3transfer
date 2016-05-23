@@ -11,14 +11,16 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from s3transfer.utils import unique_id
+from s3transfer.utils import get_callbacks
 from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
-from s3transfer.download import DownloadTaskSubmitter
-from s3transfer.upload import UploadTaskSubmitter
-from s3transfer.copies import CopyTaskSubmitter
+from s3transfer.futures import get_transfer_future_with_components
+from s3transfer.download import DownloadSubmissionTask
+from s3transfer.upload import UploadSubmissionTask
+from s3transfer.copies import CopySubmissionTask
 
 
 MB = 1024 * 1024
@@ -27,9 +29,11 @@ MB = 1024 * 1024
 class TransferConfig(object):
     def __init__(self,
                  multipart_threshold=8 * MB,
-                 max_concurrency=10,
                  multipart_chunksize=8 * MB,
-                 max_queue_size=0,
+                 max_request_concurrency=10,
+                 max_submission_concurrency=5,
+                 max_request_queue_size=0,
+                 max_submission_queue_size=0,
                  max_io_queue_size=1000,
                  num_download_attempts=5):
         """Configurations for the transfer mangager
@@ -37,15 +41,27 @@ class TransferConfig(object):
         :param multipart_threshold: The threshold for which multipart
             transfers occur.
 
-        :param max_concurrency: The maximum number or requests that
-            can happen at a time.
+        :param max_request_concurrency: The maximum number of S3 API
+            transfer-related requests that can happen at a time.
+
+        :param max_submission_concurrency: The maximum number of threads
+            processing a call to a TransferManager method. Processing a
+            call usually entails determining which S3 API requests that need
+            to be enqueued, but does **not** entail making any of the
+            S3 API data transfering requests needed to perform the transfer.
+            The threads controlled by ``max_request_concurrency`` is
+            responsible for that.
 
         :param multipart_chunksize: The size of each transfer if a request
             becomes a multipart transfer.
 
-        :param max_queue_size: The maximum amount of requests that
-            can be queued at a time. A value of zero means that there
+        :param max_request_queue_size: The maximum amount of S3 API requests
+            that can be queued at a time. A value of zero means that there
             is no maximum.
+
+        :param max_submission_queue_size: The maximum amount of
+            TransferManager method calls that can be queued at a time. A value
+            of zero means that there is no maximum.
 
         :param max_io_queue_size: The maximum amount of read parts that
             can be queued to be written to disk per download. A value of zero
@@ -63,9 +79,11 @@ class TransferConfig(object):
             number of exceptions retried by botocore.
         """
         self.multipart_threshold = multipart_threshold
-        self.max_concurrency = max_concurrency
         self.multipart_chunksize = multipart_chunksize
-        self.max_queue_size = max_queue_size
+        self.max_request_concurrency = max_request_concurrency
+        self.max_submission_concurrency = max_submission_concurrency
+        self.max_request_queue_size = max_request_queue_size
+        self.max_submission_queue_size = max_submission_queue_size
         self.max_io_queue_size = max_io_queue_size
         self.num_download_attempts = num_download_attempts
 
@@ -123,10 +141,20 @@ class TransferManager(object):
         if config is None:
             self._config = TransferConfig()
         self._osutil = OSUtils()
-        self._executor = BoundedExecutor(
-            max_size=self._config.max_queue_size,
-            max_num_threads=self._config.max_concurrency
+
+        # The executor responsible for making S3 API transfer requests
+        self._request_executor = BoundedExecutor(
+            max_size=self._config.max_request_queue_size,
+            max_num_threads=self._config.max_request_concurrency
         )
+
+        # The executor responsible for submitting the necessary tasks to
+        # perform the desired transfer
+        self._submission_executor = BoundedExecutor(
+            max_size=self._config.max_submission_queue_size,
+            max_num_threads=self._config.max_submission_concurrency
+        )
+
         # There is one thread available for writing to disk. It will handle
         # downloads for all files.
         self._io_executor = BoundedExecutor(
@@ -168,10 +196,7 @@ class TransferManager(object):
             fileobj=fileobj, bucket=bucket, key=key, extra_args=extra_args,
             subscribers=subscribers
         )
-        upload_submitter = UploadTaskSubmitter(
-            client=self._client, osutil=self._osutil, config=self._config,
-            executor=self._executor)
-        return upload_submitter(call_args)
+        return self._submit_transfer(call_args, UploadSubmissionTask)
 
     def download(self, bucket, key, fileobj, extra_args=None,
                  subscribers=None):
@@ -207,10 +232,8 @@ class TransferManager(object):
             bucket=bucket, key=key, fileobj=fileobj, extra_args=extra_args,
             subscribers=subscribers
         )
-        download_submitter = DownloadTaskSubmitter(
-            client=self._client, osutil=self._osutil, config=self._config,
-            executor=self._executor, io_executor=self._io_executor)
-        return download_submitter(call_args)
+        return self._submit_transfer(call_args, DownloadSubmissionTask,
+                                     {'io_executor': self._io_executor})
 
     def copy(self, copy_source, bucket, key, extra_args=None,
              subscribers=None, source_client=None):
@@ -260,10 +283,7 @@ class TransferManager(object):
             extra_args=extra_args, subscribers=subscribers,
             source_client=source_client
         )
-        copy_submitter = CopyTaskSubmitter(
-            client=self._client, osutil=self._osutil, config=self._config,
-            executor=self._executor)
-        return copy_submitter(call_args)
+        return self._submit_transfer(call_args, CopySubmissionTask)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:
@@ -272,6 +292,46 @@ class TransferManager(object):
                     "Invalid extra_args key '%s', "
                     "must be one of: %s" % (
                         kwarg, ', '.join(allowed)))
+
+    def _submit_transfer(self, call_args, submission_task_cls,
+                         extra_main_kwargs=None):
+        if not extra_main_kwargs:
+            extra_main_kwargs = {}
+
+        # Create a TransferFuture to return back to the user
+        transfer_future, components = get_transfer_future_with_components(
+            call_args)
+
+        # Add any provided done callbacks to the created transfer future
+        # to be invoked on the transfer future being complete.
+        for callback in get_callbacks(transfer_future, 'done'):
+            components['coordinator'].add_done_callback(callback)
+
+        # Get the main kwargs needed to instantiate the submission task
+        main_kwargs = self._get_submission_task_main_kwargs(
+            transfer_future, extra_main_kwargs)
+
+        # Submit a SubmissionTask that will submit all of the necessary
+        # tasks needed to complete the S3 transfer.
+        self._submission_executor.submit(
+            submission_task_cls(
+                transfer_coordinator=components['coordinator'],
+                main_kwargs=main_kwargs
+            )
+        )
+        return transfer_future
+
+    def _get_submission_task_main_kwargs(
+            self, transfer_future, extra_main_kwargs):
+        main_kwargs = {
+            'client': self._client,
+            'config': self._config,
+            'osutil': self._osutil,
+            'request_executor': self._request_executor,
+            'transfer_future': transfer_future
+        }
+        main_kwargs.update(extra_main_kwargs)
+        return main_kwargs
 
     def _register_handlers(self):
         # Register handlers to enable/disable callbacks on uploads.
@@ -288,5 +348,6 @@ class TransferManager(object):
 
         It will wait till all requests complete before it complete shuts down.
         """
-        self._executor.shutdown()
+        self._submission_executor.shutdown()
+        self._request_executor.shutdown()
         self._io_executor.shutdown()

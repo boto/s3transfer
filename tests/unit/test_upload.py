@@ -17,9 +17,9 @@ import shutil
 import mock
 
 from tests import BaseTaskTest
-from tests import BaseTaskSubmitterTest
+from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
-from s3transfer.upload import UploadTaskSubmitter
+from s3transfer.upload import UploadSubmissionTask
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
 from s3transfer.utils import CallArgs
@@ -61,13 +61,9 @@ class BaseUploadTaskTest(BaseTaskTest):
             self.sent_bodies.append(params['Body'].read())
 
 
-class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
+class TestUploadSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
-        super(TestUploadTaskSubmitter, self).setUp()
-        self.submitter = UploadTaskSubmitter(
-            client=self.client, config=self.config,
-            osutil=self.osutil, executor=self.executor
-        )
+        super(TestUploadSubmissionTask, self).setUp()
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
         self.content = b'my content'
@@ -86,8 +82,20 @@ class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
         self.client.meta.events.register(
             'before-parameter-build.s3.*', self.collect_body)
 
+        self.call_args = self.get_call_args()
+        self.transfer_future = self.get_transfer_future(self.call_args)
+        self.submission_main_kwargs = {
+            'client': self.client,
+            'config': self.config,
+            'osutil': self.osutil,
+            'request_executor': self.executor,
+            'transfer_future': self.transfer_future
+        }
+        self.submission_task = self.get_task(
+            UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+
     def tearDown(self):
-        super(TestUploadTaskSubmitter, self).tearDown()
+        super(TestUploadSubmissionTask, self).tearDown()
         shutil.rmtree(self.tempdir)
 
     def collect_body(self, params, **kwargs):
@@ -104,8 +112,7 @@ class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
         return CallArgs(**default_call_args)
 
     def test_provide_file_size_on_put(self):
-        self.subscribers.append(FileSizeProvider(len(self.content)))
-        call_args = self.get_call_args()
+        self.call_args.subscribers.append(FileSizeProvider(len(self.content)))
         self.stubber.add_response(
             method='put_object',
             service_response={},
@@ -117,13 +124,12 @@ class TestUploadTaskSubmitter(BaseTaskSubmitterTest):
 
         # With this submitter, it will fail to stat the file if a transfer
         # size is not provided.
-        self.submitter = UploadTaskSubmitter(
-            client=self.client, config=self.config,
-            osutil=OSUtilsExceptionOnFileSize(), executor=self.executor
-        )
+        self.submission_main_kwargs['osutil'] = OSUtilsExceptionOnFileSize()
 
-        future = self.submitter(call_args)
-        future.result()
+        self.submission_task = self.get_task(
+            UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+        self.submission_task()
+        self.transfer_future.result()
         self.stubber.assert_no_pending_responses()
         self.assertEqual(self.sent_bodies, [self.content])
 

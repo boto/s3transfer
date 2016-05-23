@@ -33,7 +33,7 @@ from s3transfer.download import GetObjectTask
 class BaseDownloadTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseDownloadTest, self).setUp()
-        self.config = TransferConfig(max_concurrency=1)
+        self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
         # Create a temporary directory to write to
@@ -167,8 +167,9 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         call_kwargs = self.create_call_kwargs()
         call_kwargs['fileobj'] = os.path.join(
             self.tempdir, 'missing-directory', 'myfile')
+        future = self.manager.download(**call_kwargs)
         with self.assertRaises(IOError):
-            self.manager.download(**call_kwargs)
+            future.result()
 
     def test_retries_and_succeeds(self):
         self.add_head_object_response()
@@ -296,7 +297,8 @@ class TestRangedDownload(BaseDownloadTest):
     def setUp(self):
         super(TestRangedDownload, self).setUp()
         self.config = TransferConfig(
-            max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
+            max_request_concurrency=1, multipart_threshold=1,
+            multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
     def create_stubbed_responses(self):

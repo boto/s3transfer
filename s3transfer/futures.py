@@ -11,8 +11,33 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from concurrent import futures
-import functools
+import copy
+import logging
 import threading
+
+from s3transfer.utils import FunctionContainer
+
+
+logger = logging.getLogger(__name__)
+
+
+def get_transfer_future_with_components(call_args):
+    """Creates a new transfer future along with its components
+
+    :type call_args: s3transfer.utils.CallArgs
+    :param call_args: The call arguments associated to the request
+
+    :rtype: (s3transfer.futures.TransferFuture, dict)
+    :returns: The transfer future associated with the submition and dictionary
+        with the components of the transfer future such as its metadata and
+        coordinator.
+    """
+    components = {
+        'meta': TransferMeta(call_args),
+        'coordinator': TransferCoordinator()
+    }
+    transfer_future = TransferFuture(**components)
+    return transfer_future, components
 
 
 class TransferFuture(object):
@@ -99,9 +124,27 @@ class TransferCoordinator(object):
         self._status = 'queued'
         self._result = None
         self._exception = None
+        self._associated_futures = []
         self._failure_cleanups = []
+        self._done_callbacks = []
         self._done_event = threading.Event()
         self._lock = threading.Lock()
+        self._associated_futures_lock = threading.Lock()
+        self._done_callbacks_lock = threading.Lock()
+        self._failure_cleanups_lock = threading.Lock()
+
+    @property
+    def associated_futures(self):
+        """The list of futures associated to the inprogress TransferFuture
+
+        Once the transfer finishes this list becomes empty as the transfer
+        is considered done and there should be no running futures left.
+        """
+        with self._associated_futures_lock:
+            # We return a copy of the list because we do not want to
+            # processing the returned list while another thread is adding
+            # more futures to the actual list.
+            return copy.copy(self._associated_futures)
 
     @property
     def failure_cleanups(self):
@@ -175,19 +218,71 @@ class TransferCoordinator(object):
         """
         return self.status in ['failed', 'cancelled', 'success']
 
-    def add_failure_cleanup(self, function, *args, **kwargs):
-        """Adds a callback to call upon failure"""
-        with self._lock:
-            self._failure_cleanups.append(
-                functools.partial(function, *args, **kwargs)
+    def add_associated_future(self, future):
+        """Adds a future to be associated with the TransferFuture"""
+        with self._associated_futures_lock:
+            self._associated_futures.append(future)
+
+    def add_done_callback(self, function, *args, **kwargs):
+        """Add a done callback to be invoked when transfer is done"""
+        with self._done_callbacks_lock:
+            self._done_callbacks.append(
+                FunctionContainer(function, *args, **kwargs)
             )
 
-    def announce_done(self):
-        """Announce that future is done running
+    def add_failure_cleanup(self, function, *args, **kwargs):
+        """Adds a callback to call upon failure"""
+        with self._failure_cleanups_lock:
+            self._failure_cleanups.append(
+                FunctionContainer(function, *args, **kwargs))
 
-        This allows the result() to be unblocked.
+    def announce_done(self):
+        """Announce that future is done running and run associated callbacks
+
+        This will run any failure cleanups if the transfer failed if not
+        they have not been run, allows the result() to be unblocked, and will
+        run any done callbacks associated to the TransferFuture if they have
+        not already been ran.
         """
+        if self.status != 'success':
+            self._run_failure_cleanups()
         self._done_event.set()
+        self._remove_associated_futures()
+        self._run_done_callbacks()
+
+    def _remove_associated_futures(self):
+        # Once the process is done, we want to empty the list so we do
+        # not hold onto too many completed futures.
+        with self._associated_futures_lock:
+            self._associated_futures = []
+
+    def _run_done_callbacks(self):
+        # Run the callbacks and remove the callbacks from the internal
+        # list so they do not get ran again if done is announced more than
+        # once.
+        with self._done_callbacks_lock:
+            self._run_callbacks(self._done_callbacks)
+            self._done_callbacks = []
+
+    def _run_failure_cleanups(self):
+        # Run the cleanup callbacks and remove the callbacks from the internal
+        # list so they do not get ran again if done is announced more than
+        # once.
+        with self._failure_cleanups_lock:
+            self._run_callbacks(self.failure_cleanups)
+            self._failure_cleanups = []
+
+    def _run_callbacks(self, callbacks):
+        for callback in callbacks:
+            self._run_callback(callback)
+
+    def _run_callback(self, callback):
+        try:
+            callback()
+        # We do not want a callback interrupting the process, especially
+        # in the failure cleanups. So log and catch, the excpetion.
+        except Exception:
+            logger.debug("Exception raised in %s." % callback, exc_info=True)
 
 
 class BoundedExecutor(object):

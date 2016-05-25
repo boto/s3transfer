@@ -19,6 +19,7 @@ from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
+from s3transfer.utils import ReadFileChunk
 
 
 def get_upload_input_manager_cls(transfer_future):
@@ -31,12 +32,17 @@ def get_upload_input_manager_cls(transfer_future):
     :returns: The appropriate class to use for managing a specific type of
         input for uploads.
     """
+    upload_manager_resolver_chain = [
+        UploadFilenameInputManager,
+        UploadSeekableInputManager
+    ]
+
     fileobj = transfer_future.meta.call_args.fileobj
-    if isinstance(fileobj, six.string_types):
-        return UploadFilenameInputManager
-    else:
-        raise RuntimeError(
-            '%s must be a filename.' % fileobj)
+    for upload_manager_cls in upload_manager_resolver_chain:
+        if upload_manager_cls.is_compatible(fileobj):
+            return upload_manager_cls
+    raise RuntimeError(
+        'Input %s of type: %s is not supported.' % (fileobj, type(fileobj)))
 
 
 class UploadInputManager(object):
@@ -54,6 +60,18 @@ class UploadInputManager(object):
     that may be accepted. All implementations must subclass and override
     public methods from this class.
     """
+    @classmethod
+    def is_compatible(cls, upload_source):
+        """Determines if the source for the upload is compatible with manager
+
+        :param upload_source: The source for which the upload will pull data
+            from.
+
+        :returns: True if the manager can handle the type of source specified
+            otherwise returns False.
+        """
+        raise NotImplementedError('must implement _is_compatible()')
+
     def provide_transfer_size(self, transfer_future):
         """Provides the transfer size of an upload
 
@@ -114,6 +132,10 @@ class UploadFilenameInputManager(UploadInputManager):
     def __init__(self, osutil):
         self._osutil = osutil
 
+    @classmethod
+    def is_compatible(cls, upload_source):
+        return isinstance(upload_source, six.string_types)
+
     def provide_transfer_size(self, transfer_future):
         transfer_future.meta.provide_transfer_size(
             self._osutil.get_file_size(
@@ -132,18 +154,70 @@ class UploadFilenameInputManager(UploadInputManager):
     def yield_upload_part_bodies(self, transfer_future, config):
         part_size = config.multipart_chunksize
         num_parts = self._get_num_parts(transfer_future, part_size)
+        fileobj = transfer_future.meta.call_args.fileobj
+        callbacks = get_callbacks(transfer_future, 'progress')
         for part_number in range(1, num_parts + 1):
-            fileobj = transfer_future.meta.call_args.fileobj
-            callbacks = get_callbacks(transfer_future, 'progress')
-            fileobj = self._osutil.open_file_chunk_reader(
+            read_file_chunk = self._osutil.open_file_chunk_reader(
                 filename=fileobj, start_byte=part_size * (part_number - 1),
                 size=part_size, callbacks=callbacks
             )
-            yield part_number, fileobj
+            yield part_number, read_file_chunk
 
     def _get_num_parts(self, transfer_future, part_size):
         return int(
             math.ceil(transfer_future.meta.size / float(part_size)))
+
+
+class UploadSeekableInputManager(UploadFilenameInputManager):
+    """Upload utility for am open file object"""
+    @classmethod
+    def is_compatible(cls, upload_source):
+        return (
+            hasattr(upload_source, 'seek') and hasattr(upload_source, 'tell')
+        )
+
+    def provide_transfer_size(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        # To determine size, first determine the starting position
+        # Seek to the end and then find the difference in the length
+        # between the end and start positions.
+        start_position = fileobj.tell()
+        fileobj.seek(0, 2)
+        end_position = fileobj.tell()
+        fileobj.seek(start_position)
+        transfer_future.meta.provide_transfer_size(
+            end_position - start_position)
+
+    def get_put_object_body(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        callbacks = get_callbacks(transfer_future, 'progress')
+        transfer_size = transfer_future.meta.size
+        return ReadFileChunk(
+            fileobj=fileobj, chunk_size=transfer_size,
+            full_file_size=transfer_size, callbacks=callbacks,
+            enable_callbacks=False
+        )
+
+    def yield_upload_part_bodies(self, transfer_future, config):
+        part_size = config.multipart_chunksize
+        num_parts = self._get_num_parts(transfer_future, part_size)
+        fileobj = transfer_future.meta.call_args.fileobj
+        callbacks = get_callbacks(transfer_future, 'progress')
+        for part_number in range(1, num_parts + 1):
+            # Note: It is unfortunate that in order to do a multithreaded
+            # multipart upload we cannot simply copy the filelike object
+            # since there is not really a mechanism in python (i.e. os.dup
+            # points to the same OS filehandle which causes concurrency
+            # issues). So instead we need to read from the fileobj and
+            # chunk the data out to seperate file-like objects in memory.
+            data = fileobj.read(part_size)
+            wrapped_data = six.BytesIO(data)
+            read_file_chunk = ReadFileChunk(
+                fileobj=wrapped_data, chunk_size=len(data),
+                full_file_size=transfer_future.meta.size,
+                callbacks=callbacks, enable_callbacks=False
+            )
+            yield part_number, read_file_chunk
 
 
 class UploadSubmissionTask(SubmissionTask):

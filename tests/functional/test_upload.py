@@ -152,6 +152,20 @@ class TestNonMultipartUpload(BaseUploadTest):
         self.stubber.assert_no_pending_responses()
         self.assertEqual(self.sent_bodies, [self.content])
 
+    def test_upload_for_fileobj(self):
+        expected_params = {
+            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Key': self.key
+        }
+        self.add_successful_upload_responses(
+            expected_upload_params=expected_params)
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(
+                f, self.bucket, self.key, self.extra_args)
+            future.result()
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(self.sent_bodies, [self.content])
+
     def test_sigv4_progress_callbacks_invoked_once(self):
         # Reset the client and manager to use sigv4
         self.reset_stubber_with_new_client(
@@ -280,11 +294,20 @@ class TestMultipartUpload(BaseUploadTest):
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
         self.stubber.assert_no_pending_responses()
+
+    def test_upload_for_fileobj(self):
+        add_upload_kwargs = self._get_expected_params()
+        self.add_successful_upload_responses(**add_upload_kwargs)
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(
+                f, self.bucket, self.key, self.extra_args)
+            future.result()
+        self.stubber.assert_no_pending_responses()
         self.assertEqual(
             self.sent_bodies,
             [self.content[0:4], self.content[4:8], self.content[8:]])
 
-    def test_upload_failure_invokes_abort(self):   
+    def test_upload_failure_invokes_abort(self):
         self.stubber.add_response(
             method='create_multipart_upload',
             service_response={

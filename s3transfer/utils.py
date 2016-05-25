@@ -204,8 +204,7 @@ class DeferredOpenFile(object):
     def _open_if_needed(self):
         if self._fileobj is None:
             self._fileobj = self.OPEN_METHOD(self._filename, 'rb')
-            if self._start_byte != 0:
-                self._fileobj.seek(self._start_byte)
+            self._fileobj.seek(self._start_byte)
 
     def read(self, amount=None):
         self._open_if_needed()
@@ -266,7 +265,6 @@ class ReadFileChunk(object):
         self._size = self._calculate_file_size(
             self._fileobj, requested_size=chunk_size,
             start_byte=self._start_byte, actual_file_size=full_file_size)
-        self._fileobj.seek(self._start_byte)
         self._amount_read = 0
         self._callbacks = callbacks
         if callbacks is None:

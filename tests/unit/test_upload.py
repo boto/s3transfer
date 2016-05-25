@@ -23,6 +23,7 @@ from tests import RecordingSubscriber
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import get_upload_input_manager_cls
 from s3transfer.upload import UploadFilenameInputManager
+from s3transfer.upload import UploadSeekableInputManager
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
@@ -74,6 +75,14 @@ class TestGetUploadManagerClsTest(BaseUploadTest):
         self.assertIs(
             get_upload_input_manager_cls(future), UploadFilenameInputManager)
 
+    def test_for_seekable(self):
+        with open(self.filename, 'rb') as f:
+            call_args = CallArgs(fileobj=f)
+            future = self.get_transfer_future(call_args)
+            self.assertIs(
+                get_upload_input_manager_cls(future),
+                UploadSeekableInputManager)
+
 
 class BaseUploadInputManagerTest(BaseUploadTest):
     def setUp(self):
@@ -102,6 +111,12 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         self.call_args = CallArgs(
             fileobj=self.filename, subscribers=self.subscribers)
         self.future = self.get_transfer_future(self.call_args)
+
+    def test_is_compatible(self):
+        self.assertTrue(
+            self.upload_input_manager.is_compatible(
+                self.future.meta.call_args.fileobj)
+        )
 
     def test_provide_transfer_size(self):
         self.upload_input_manager.provide_transfer_size(self.future)
@@ -163,6 +178,17 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         self.assertEqual(
             self.recording_subscriber.calculate_bytes_seen(),
             len(self.content))
+
+
+class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
+    def setUp(self):
+        super(TestUploadSeekableInputManager, self).setUp()
+        self.upload_input_manager = UploadSeekableInputManager(self.osutil)
+        self.fileobj = open(self.filename, 'rb')
+        self.addCleanup(self.fileobj.close)
+        self.call_args = CallArgs(
+            fileobj=self.fileobj, subscribers=self.subscribers)
+        self.future = self.get_transfer_future(self.call_args)
 
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):

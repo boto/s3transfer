@@ -99,20 +99,53 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
     def create_expected_progress_callback_info(self):
         return [{'bytes_transferred': 10}]
 
+    def add_successful_upload_responses(
+            self, expected_upload_params=None, expected_create_mpu_params=None,
+            expected_complete_mpu_params=None):
+
+        stubbed_responses = self.create_stubbed_responses()
+
+        # If the length of copy responses is greater than one then it is
+        # a multipart upload.
+        upload_responses = stubbed_responses[0:1]
+        if len(stubbed_responses) > 1:
+            upload_responses = stubbed_responses[1:-1]
+
+        # Add the expected create multipart upload params.
+        if expected_create_mpu_params:
+            stubbed_responses[0][
+                'expected_params'] = expected_create_mpu_params
+
+        # Add any expected copy parameters.
+        if expected_upload_params:
+            for i, upload_response in enumerate(upload_responses):
+                if isinstance(expected_upload_params, list):
+                    upload_response[
+                        'expected_params'] = expected_upload_params[i]
+                else:
+                    upload_response['expected_params'] = expected_upload_params
+
+        # Add the expected complete multipart upload params.
+        if expected_complete_mpu_params:
+            stubbed_responses[-1][
+                'expected_params'] = expected_complete_mpu_params
+
+        # Add the responses to the stubber.
+        for stubbed_response in stubbed_responses:
+            self.stubber.add_response(**stubbed_response)
+
 
 class TestNonMultipartUpload(BaseUploadTest):
     __test__ = True
 
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'
-        self.stubber.add_response(
-            method='put_object',
-            service_response={},
-            expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket,
-                'Key': self.key, 'RequestPayer': 'requester'
-            }
-        )
+        expected_params = {
+            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Key': self.key, 'RequestPayer': 'requester'
+        }
+        self.add_successful_upload_responses(
+            expected_upload_params=expected_params)
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
@@ -127,14 +160,14 @@ class TestNonMultipartUpload(BaseUploadTest):
             'before-parameter-build.s3.*', self.collect_body)
         self._manager = TransferManager(self.client, self.config)
 
-        self.stubber.add_response(
-            method='put_object',
-            service_response={},
-            expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket,
-                'Key': self.key
-            }
-        )
+        # Add the expected params
+        expected_params = {
+            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Key': self.key
+        }
+        self.add_successful_upload_responses(
+            expected_upload_params=expected_params)
+
         subscriber = RecordingSubscriber()
         future = self.manager.upload(
             self.filename, self.bucket, self.key, subscribers=[subscriber])
@@ -154,11 +187,12 @@ class TestMultipartUpload(BaseUploadTest):
             max_request_concurrency=1, multipart_threshold=1,
             multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
+        self.multipart_id = 'my-upload-id'
 
     def create_stubbed_responses(self):
         return [
             {'method': 'create_multipart_upload',
-             'service_response': {'UploadId': 'my-upload-id'}},
+             'service_response': {'UploadId': self.multipart_id}},
             {'method': 'upload_part',
              'service_response': {'ETag': 'etag-1'}},
             {'method': 'upload_part',
@@ -175,75 +209,72 @@ class TestMultipartUpload(BaseUploadTest):
             {'bytes_transferred': 2}
         ]
 
+    def _get_expected_params(self):
+        # Add expected parameters for the create multipart
+        expected_create_mpu_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+
+        expected_upload_params = []
+        # Add expected parameters to the copy part
+        num_parts = 3
+        for i in range(num_parts):
+            expected_upload_params.append(
+                {
+                    'Bucket': self.bucket,
+                    'Key': self.key,
+                    'UploadId': self.multipart_id,
+                    'Body': mock.ANY,
+                    'PartNumber': i + 1,
+                }
+            )
+
+        # Add expected parameters for the complete multipart
+        expected_complete_mpu_params = {
+            'Bucket': self.bucket,
+            'Key': self.key, 'UploadId': self.multipart_id,
+            'MultipartUpload': {
+                'Parts': [
+                    {'ETag': 'etag-1', 'PartNumber': 1},
+                    {'ETag': 'etag-2', 'PartNumber': 2},
+                    {'ETag': 'etag-3', 'PartNumber': 3}
+                ]
+            }
+        }
+
+        return {
+            'expected_create_mpu_params': expected_create_mpu_params,
+            'expected_upload_params': expected_upload_params,
+            'expected_complete_mpu_params': expected_complete_mpu_params,
+        }
+
+    def _add_params_to_expected_params(
+            self, add_upload_kwargs, operation_types, new_params):
+        # Helper method for adding any additional params to the typical
+        # default expect parameters.
+        expected_params_to_update = []
+        for operation_type in operation_types:
+            add_upload_kwargs_key = 'expected_' + operation_type + '_params'
+            expected_params = add_upload_kwargs[add_upload_kwargs_key]
+            if isinstance(expected_params, list):
+                expected_params_to_update.extend(expected_params)
+            else:
+                expected_params_to_update.append(expected_params)
+
+        for expected_params in expected_params_to_update:
+            expected_params.update(new_params)
+
     def test_upload(self):
         # Set the threshold for multipart upload to something small
         # to trigger multipart.
         self.extra_args['RequestPayer'] = 'requester'
 
-        upload_id = 'my-multipart-id'
-        self.stubber.add_response(
-            method='create_multipart_upload',
-            service_response={
-                'UploadId': upload_id
-            },
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'RequestPayer': 'requester'
-            }
-        )
-
-        # Add the PartUpload calls. There should be three in all based on the
-        # chunksize
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-1'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 1, 'RequestPayer': 'requester'
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-2'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 2, 'RequestPayer': 'requester'
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-3'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 3, 'RequestPayer': 'requester'
-            }
-        )
-
-        # Add the complete multipart call
-        self.stubber.add_response(
-            method='complete_multipart_upload',
-            service_response={},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': [
-                        {'ETag': 'etag-1', 'PartNumber': 1},
-                        {'ETag': 'etag-2', 'PartNumber': 2},
-                        {'ETag': 'etag-3', 'PartNumber': 3}
-                    ]
-                }
-            }
-        )
+        # Add requester pays to expected upload args
+        add_upload_kwargs = self._get_expected_params()
+        self._add_params_to_expected_params(
+            add_upload_kwargs, ['create_mpu', 'upload'], self.extra_args)
+        self.add_successful_upload_responses(**add_upload_kwargs)
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
@@ -253,12 +284,11 @@ class TestMultipartUpload(BaseUploadTest):
             self.sent_bodies,
             [self.content[0:4], self.content[4:8], self.content[8:]])
 
-    def test_upload_failure_invokes_abort(self):
-        upload_id = 'my-multipart-id'
+    def test_upload_failure_invokes_abort(self):   
         self.stubber.add_response(
             method='create_multipart_upload',
             service_response={
-                'UploadId': upload_id
+                'UploadId': self.multipart_id
             },
             expected_params={
                 'Bucket': self.bucket,
@@ -272,7 +302,7 @@ class TestMultipartUpload(BaseUploadTest):
             },
             expected_params={
                 'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
+                'Key': self.key, 'UploadId': self.multipart_id,
                 'PartNumber': 1
             }
         )
@@ -285,7 +315,7 @@ class TestMultipartUpload(BaseUploadTest):
             service_response={},
             expected_params={
                 'Bucket': self.bucket,
-                'Key': self.key, 'UploadId': upload_id
+                'Key': self.key, 'UploadId': self.multipart_id
             }
         )
 
@@ -299,70 +329,11 @@ class TestMultipartUpload(BaseUploadTest):
     def test_upload_passes_select_extra_args(self):
         self.extra_args['Metadata'] = {'foo': 'bar'}
 
-        upload_id = 'my-multipart-id'
-        self.stubber.add_response(
-            method='create_multipart_upload',
-            service_response={
-                'UploadId': upload_id
-            },
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'Metadata': {'foo': 'bar'}
-            }
-        )
-
-        # Add the PartUpload calls. There should be three in all based on the
-        # chunksize and should not include the metadata
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-1'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 1
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-2'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 2
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={
-                'ETag': 'etag-3'
-            },
-            expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
-                'Key': self.key, 'UploadId': upload_id,
-                'PartNumber': 3
-            }
-        )
-
-        # Add the complete multipart call
-        self.stubber.add_response(
-            method='complete_multipart_upload',
-            service_response={},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key, 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': [
-                        {'ETag': 'etag-1', 'PartNumber': 1},
-                        {'ETag': 'etag-2', 'PartNumber': 2},
-                        {'ETag': 'etag-3', 'PartNumber': 3}
-                    ]
-                }
-            }
-        )
+        add_upload_kwargs = self._get_expected_params()
+        # Add metadata to expected create multipart upload call
+        self._add_params_to_expected_params(
+            add_upload_kwargs, ['create_mpu'], self.extra_args)
+        self.add_successful_upload_responses(**add_upload_kwargs)
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)

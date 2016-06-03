@@ -221,7 +221,8 @@ class DeferredOpenFile(object):
         return self._fileobj.tell()
 
     def close(self):
-        self._fileobj.close()
+        if self._fileobj:
+            self._fileobj.close()
 
     def __enter__(self):
         self._open_if_needed()

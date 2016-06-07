@@ -275,6 +275,31 @@ class TestMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_upload_part_bodies_were_correct()
 
+    def test_limits_in_memory_chunks_for_fileobj(self):
+        # Limit the maximum in memory chunks to one but make number of
+        # threads more than one. This means that the upload will have to
+        # happen sequentially despite having many threads available because
+        # data is sequentially partitioned into chunks in memory and since
+        # there can only every be one in memory chunk, each upload part will
+        # have to happen one at a time.
+        self.config.max_request_concurrency = 10
+        self.config.max_in_memory_upload_chunks = 1
+        self._manager = TransferManager(self.client, self.config)
+
+        # Add some default stubbed responses.
+        # Note that these defaults assume that the stubbed responses happen
+        # in sequential order which is what we want.
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(
+                f, self.bucket, self.key, self.extra_args)
+            future.result()
+        # Ensure the contents and client calls were as expected.
+        self.assert_expected_client_calls_were_correct()
+        self.assert_upload_part_bodies_were_correct()
+
     def test_upload_failure_invokes_abort(self):
         self.stubber.add_response(
             method='create_multipart_upload',

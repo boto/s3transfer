@@ -37,7 +37,8 @@ class TransferConfig(object):
                  max_request_queue_size=0,
                  max_submission_queue_size=0,
                  max_io_queue_size=1000,
-                 num_download_attempts=5):
+                 num_download_attempts=5,
+                 max_in_memory_upload_chunks=10):
         """Configurations for the transfer mangager
 
         :param multipart_threshold: The threshold for which multipart
@@ -79,6 +80,16 @@ class TransferConfig(object):
             are already retried by botocore (this default is 5). The
             ``num_download_attempts`` does not take into account the
             number of exceptions retried by botocore.
+
+        :param max_in_memory_upload_chunks: The number of chunks that can
+            be stored in memory at a time for all ongoing uploads. This
+            pertains to chunks of data that need to be stored in memory
+            during an upload if the data is sourced from a file-like object.
+            The total expected memory footprint due to in-memory upload
+            chunks is roughly equal to:
+
+                max_in_memory_upload_chunks * multipart_chunksize
+
         """
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
@@ -88,6 +99,7 @@ class TransferConfig(object):
         self.max_submission_queue_size = max_submission_queue_size
         self.max_io_queue_size = max_io_queue_size
         self.num_download_attempts = num_download_attempts
+        self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
 
 
 class TransferManager(object):
@@ -147,7 +159,10 @@ class TransferManager(object):
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
             max_size=self._config.max_request_queue_size,
-            max_num_threads=self._config.max_request_concurrency
+            max_num_threads=self._config.max_request_concurrency,
+            tag_max_sizes={
+                'in_memory_upload': self._config.max_in_memory_upload_chunks
+            }
         )
 
         # The executor responsible for submitting the necessary tasks to
@@ -170,7 +185,8 @@ class TransferManager(object):
 
         :type fileobj: str or seekable file-like object
         :param fileobj: The name of a file to upload or a seekable file-like
-            object to upload.
+            object to upload. It is recommended to use a filename because
+            file-like objects may result in higher memory usage.
 
         :type bucket: str
         :param bucket: The name of the bucket to upload to

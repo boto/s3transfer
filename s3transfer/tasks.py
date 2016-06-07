@@ -196,12 +196,12 @@ class Task(object):
             kwargs[key] = result
         return kwargs
 
-    def _submit_task(self, executor, task):
+    def _submit_task(self, executor, task, future_tag=None):
         logger.debug(
             "Submitting task %s to executor %s from task %s." % (
                 task, executor, self)
         )
-        future = executor.submit(task)
+        future = executor.submit(task, future_tag=future_tag)
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.
         self._transfer_coordinator.add_associated_future(future)

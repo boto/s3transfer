@@ -18,7 +18,6 @@ from concurrent.futures import CancelledError
 
 
 from tests import unittest
-from s3transfer.futures import get_transfer_future_with_components
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -28,20 +27,6 @@ from s3transfer.utils import FunctionContainer
 
 def return_call_args(*args, **kwargs):
     return args, kwargs
-
-
-class TestGetTransferFutureWithComponents(unittest.TestCase):
-    def test_get_transfer_future_with_components(self):
-        call_args = object()
-        transfer_future, components = get_transfer_future_with_components(
-            call_args)
-        # Assert all of the returned objects are of the expected type.
-        self.assertIsInstance(transfer_future, TransferFuture)
-        self.assertIsInstance(components['meta'], TransferMeta)
-        self.assertIsInstance(components['coordinator'], TransferCoordinator)
-
-        # Ensure the call args provided is attached to the transfer future.
-        self.assertEqual(call_args, transfer_future.meta.call_args)
 
 
 class TestTransferFuture(unittest.TestCase):

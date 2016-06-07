@@ -31,6 +31,7 @@ from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferFuture
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
+from s3transfer.utils import CallArgs
 
 
 def assert_files_equal(first, second):
@@ -273,6 +274,28 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         raise NotImplementedError(
             'create_expected_progress_callback_info is not implemented')
 
+    def _setup_default_stubbed_responses(self):
+        for stubbed_response in self.create_stubbed_responses():
+            self.stubber.add_response(**stubbed_response)
+
+    def test_returns_future_with_meta(self):
+        self._setup_default_stubbed_responses()
+        future = self.method(**self.create_call_kwargs())
+        # Assert the return value is a future with metadata associated to it.
+        self.assertIsInstance(future, TransferFuture)
+        self.assertIsInstance(future.meta, TransferMeta)
+
+    def test_returns_correct_call_args(self):
+        self._setup_default_stubbed_responses()
+        call_kwargs = self.create_call_kwargs()
+        future = self.method(**call_kwargs)
+        # Assert that there are call args associated to the metadata
+        self.assertIsInstance(future.meta.call_args, CallArgs)
+        # Assert that all of the arguments passed to the method exist and
+        # are of the correct value in call_args.
+        for param, value in call_kwargs.items():
+            self.assertEqual(value, getattr(future.meta.call_args, param))
+
     def test_invalid_extra_args(self):
         with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):
             self.method(
@@ -282,8 +305,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
 
     def test_for_callback_kwargs_correctness(self):
         # Add the stubbed responses before invoking the method
-        for stubbed_response in self.create_stubbed_responses():
-            self.stubber.add_response(**stubbed_response)
+        self._setup_default_stubbed_responses()
 
         subscriber = RecordingSubscriber()
         future = self.method(

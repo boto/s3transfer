@@ -17,7 +17,9 @@ from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.futures import BoundedExecutor
-from s3transfer.futures import get_transfer_future_with_components
+from s3transfer.futures import TransferFuture
+from s3transfer.futures import TransferMeta
+from s3transfer.futures import TransferCoordinator
 from s3transfer.download import DownloadSubmissionTask
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.copies import CopySubmissionTask
@@ -299,7 +301,7 @@ class TransferManager(object):
             extra_main_kwargs = {}
 
         # Create a TransferFuture to return back to the user
-        transfer_future, components = get_transfer_future_with_components(
+        transfer_future, components = self._get_future_with_components(
             call_args)
 
         # Add any provided done callbacks to the created transfer future
@@ -320,6 +322,15 @@ class TransferManager(object):
             )
         )
         return transfer_future
+
+    def _get_future_with_components(self, call_args):
+        # Creates a new transfer future along with its components
+        components = {
+            'meta': TransferMeta(call_args),
+            'coordinator': TransferCoordinator()
+        }
+        transfer_future = TransferFuture(**components)
+        return transfer_future, components
 
     def _get_submission_task_main_kwargs(
             self, transfer_future, extra_main_kwargs):

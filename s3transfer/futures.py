@@ -21,25 +21,6 @@ from s3transfer.utils import FunctionContainer
 logger = logging.getLogger(__name__)
 
 
-def get_transfer_future_with_components(call_args):
-    """Creates a new transfer future along with its components
-
-    :type call_args: s3transfer.utils.CallArgs
-    :param call_args: The call arguments associated to the request
-
-    :rtype: (s3transfer.futures.TransferFuture, dict)
-    :returns: The transfer future associated with the submition and dictionary
-        with the components of the transfer future such as its metadata and
-        coordinator.
-    """
-    components = {
-        'meta': TransferMeta(call_args),
-        'coordinator': TransferCoordinator()
-    }
-    transfer_future = TransferFuture(**components)
-    return transfer_future, components
-
-
 class TransferFuture(object):
     def __init__(self, meta=None, coordinator=None):
         """The future associated to a submitted transfer request

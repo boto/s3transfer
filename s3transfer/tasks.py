@@ -77,6 +77,32 @@ class Task(object):
 
         self._is_final = is_final
 
+    def __repr__(self):
+        # These are the general main_kwarg parameters that we want to
+        # display in the repr.
+        params_to_display = [
+            'bucket', 'key', 'part_number', 'final_filename',
+            'transfer_future', 'offset', 'extra_args'
+        ]
+        main_kwargs_to_display = self._get_kwargs_with_params_to_include(
+            self._main_kwargs, params_to_display)
+        return '%s(%s)' % (self.__class__.__name__, main_kwargs_to_display)
+
+    def _get_kwargs_with_params_to_include(self, kwargs, include):
+        filtered_kwargs = {}
+        for param in include:
+            if param in kwargs:
+                filtered_kwargs[param] = kwargs[param]
+        return filtered_kwargs
+
+    def _get_kwargs_with_params_to_exclude(self, kwargs, exclude):
+        filtered_kwargs = {}
+        for param, value in kwargs.items():
+            if param in exclude:
+                continue
+            filtered_kwargs[param] = value
+        return filtered_kwargs
+
     def __call__(self):
         """The callable to use when submitting a Task to an executor"""
         try:
@@ -91,12 +117,7 @@ class Task(object):
             # task to the TransferFuture had failed) then execute the task's
             # main() method.
             if not self._transfer_coordinator.done():
-                return_value = self._main(**kwargs)
-                # If the task is the final task, then set the TransferFuture's
-                # value to the return value from main().
-                if self._is_final:
-                    self._transfer_coordinator.set_result(return_value)
-                return return_value
+                return self._execute_main(kwargs)
         except Exception as e:
             self._log_and_set_exception(e)
         finally:
@@ -108,6 +129,24 @@ class Task(object):
                 # If this is the final task announce that it is done if results
                 # are waiting on its completion.
                 self._transfer_coordinator.announce_done()
+
+    def _execute_main(self, kwargs):
+        # Do not display keyword args that should not be printed, especially
+        # if they are going to make the logs hard to follow.
+        params_to_exclude = ['data']
+        kwargs_to_display = self._get_kwargs_with_params_to_exclude(
+            kwargs, params_to_exclude)
+        # Log what is about to be executed.
+        logger.debug(
+            "Executing task %s with kwargs %s" % (self, kwargs_to_display)
+        )
+
+        return_value = self._main(**kwargs)
+        # If the task is the final task, then set the TransferFuture's
+        # value to the return value from main().
+        if self._is_final:
+            self._transfer_coordinator.set_result(return_value)
+        return return_value
 
     def _log_and_set_exception(self, exception):
         # If an exception is ever thrown than set the exception for the
@@ -158,6 +197,10 @@ class Task(object):
         return kwargs
 
     def _submit_task(self, executor, task):
+        logger.debug(
+            "Submitting task %s to executor %s from task %s." % (
+                task, executor, self)
+        )
         future = executor.submit(task)
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.

@@ -294,6 +294,20 @@ class TestTask(unittest.TestCase):
     def setUp(self):
         self.transfer_coordinator = TransferCoordinator()
 
+    def test_repr(self):
+        main_kwargs = {
+            'bucket': 'mybucket',
+            'param_to_not_include': 'foo'
+        }
+        task = ReturnKwargsTask(
+            self.transfer_coordinator, main_kwargs=main_kwargs)
+        # The repr should not include the other parameter because it is not
+        # a desired parameter to include.
+        self.assertEqual(
+            repr(task),
+            'ReturnKwargsTask(%s)' % {'bucket': 'mybucket'}
+        )
+
     def test_context_status_transitioning_success(self):
         # The status should be set to running.
         self.transfer_coordinator.set_status_to_running()

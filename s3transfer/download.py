@@ -237,7 +237,7 @@ class DownloadSubmissionTask(SubmissionTask):
 
 
 class GetObjectTask(Task):
-    STREAM_CHUNK_SIZE = 8 * 1024
+    STREAM_CHUNK_SIZE = 64 * 1024
 
     def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
               max_attempts, io_executor, start_index=0):

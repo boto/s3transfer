@@ -138,7 +138,10 @@ class TransferCoordinator(object):
 
         The currently supported states are:
             * queued - Has yet to start
-            * running - Is inprogress
+            * running - Is inprogress. In-progress as of now means that
+              the SubmissionTask that runs the transfer is being executed. So
+              there is no guarantee any transfer requests had been made to
+              S3 if this state is reached.
             * cancelled - Was cancelled
             * failed - An exception other than CancelledError was thrown
             * success - No exceptions were thrown and is done.

@@ -22,7 +22,7 @@ from s3transfer.manager import TransferConfig
 class BaseCopyTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseCopyTest, self).setUp()
-        self.config = TransferConfig(max_concurrency=1)
+        self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
         # Initialize some default arguments
@@ -150,8 +150,9 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 
     def test_invalid_copy_source(self):
         self.copy_source = ['bucket', 'key']
+        future = self.manager.copy(**self.create_call_kwargs())
         with self.assertRaises(TypeError):
-            self.manager.copy(**self.create_call_kwargs())
+            future.result()
 
     def test_provide_copy_source_client(self):
         source_client = self.session.create_client(
@@ -252,7 +253,8 @@ class TestMultipartCopy(BaseCopyTest):
     def setUp(self):
         super(TestMultipartCopy, self).setUp()
         self.config = TransferConfig(
-            max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
+            max_request_concurrency=1, multipart_threshold=1,
+            multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
     def create_stubbed_responses(self):

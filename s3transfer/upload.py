@@ -13,14 +13,15 @@
 import math
 
 from s3transfer.tasks import Task
-from s3transfer.tasks import TaskSubmitter
+from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
 
 
-class UploadTaskSubmitter(TaskSubmitter):
-    """Task submitter for requesting an upload"""
+class UploadSubmissionTask(SubmissionTask):
+    """Task for submitting tasks to execute an upload"""
+
     UPLOAD_PART_ARGS = [
         'SSECustomerKey',
         'SSECustomerAlgorithm',
@@ -28,56 +29,77 @@ class UploadTaskSubmitter(TaskSubmitter):
         'RequestPayer',
     ]
 
-    def _submit(self, transfer_future, transfer_coordinator):
-        # Determine the size if it was not provided
+    def _submit(self, client, config, osutil, request_executor,
+                transfer_future):
+        """
+        :param client: The client associated with the transfer manager
+
+        :type config: s3transfer.manager.TransferConfig
+        :param config: The transfer config associated with the transfer
+            manager
+
+        :type osutil: s3transfer.utils.OSUtil
+        :param osutil: The os utility associated to the transfer manager
+
+        :type request_executor: s3transfer.futures.BoundedExecutor
+        :param request_executor: The request executor associated with the
+            transfer manager
+
+        :type transfer_future: s3transfer.futures.TransferFuture
+        :param transfer_future: The transfer future associated with the
+            transfer request that tasks are being submitted for
+        """
         if transfer_future.meta.size is None:
             transfer_future.meta.provide_transfer_size(
-                self._osutil.get_file_size(
+                osutil.get_file_size(
                     transfer_future.meta.call_args.fileobj))
 
         # If it is greater than threshold do a multipart upload, otherwise
         # do a regular put object.
-        if transfer_future.meta.size < self._config.multipart_threshold:
-            self._submit_upload_request(transfer_future, transfer_coordinator)
+        if transfer_future.meta.size < config.multipart_threshold:
+            self._submit_upload_request(
+                client, config, osutil, request_executor, transfer_future)
         else:
             self._submit_multipart_request(
-                transfer_future, transfer_coordinator)
+                client, config, osutil, request_executor, transfer_future)
 
-    def _submit_upload_request(self, transfer_future, transfer_coordinator):
+    def _submit_upload_request(self, client, config, osutil, request_executor,
+                               transfer_future):
         call_args = transfer_future.meta.call_args
 
-        # Get the needed callbacks for the task
+        # Get the needed progress callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
-        done_callbacks = get_callbacks(transfer_future, 'done')
 
         # Submit the request of a single upload.
-        self._executor.submit(
+        self._submit_task(
+            request_executor,
             PutObjectTask(
-                transfer_coordinator=transfer_coordinator,
+                transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
-                    'client': self._client,
+                    'client': client,
                     'fileobj': call_args.fileobj,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': call_args.extra_args,
-                    'osutil': self._osutil,
+                    'osutil': osutil,
                     'size': transfer_future.meta.size,
                     'progress_callbacks': progress_callbacks
                 },
-                done_callbacks=done_callbacks,
                 is_final=True
             )
         )
 
-    def _submit_multipart_request(self, transfer_future, transfer_coordinator):
+    def _submit_multipart_request(self, client, config, osutil,
+                                  request_executor, transfer_future):
         call_args = transfer_future.meta.call_args
 
         # Submit the request to create a multipart upload.
-        create_multipart_future = self._executor.submit(
+        create_multipart_future = self._submit_task(
+            request_executor,
             CreateMultipartUploadTask(
-                transfer_coordinator=transfer_coordinator,
+                transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
-                    'client': self._client,
+                    'client': client,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': call_args.extra_args,
@@ -87,7 +109,7 @@ class UploadTaskSubmitter(TaskSubmitter):
 
         # Determine how many parts are needed based on filesize and
         # desired chunksize.
-        part_size = self._config.multipart_chunksize
+        part_size = config.multipart_chunksize
         num_parts = int(
             math.ceil(transfer_future.meta.size / float(part_size)))
 
@@ -98,17 +120,18 @@ class UploadTaskSubmitter(TaskSubmitter):
 
         for part_number in range(1, num_parts + 1):
             part_futures.append(
-                self._executor.submit(
+                self._submit_task(
+                    request_executor,
                     UploadPartTask(
-                        transfer_coordinator=transfer_coordinator,
+                        transfer_coordinator=self._transfer_coordinator,
                         main_kwargs={
-                            'client': self._client,
+                            'client': client,
                             'fileobj': call_args.fileobj,
                             'bucket': call_args.bucket,
                             'key': call_args.key,
                             'part_number': part_number,
                             'extra_args': extra_part_args,
-                            'osutil': self._osutil,
+                            'osutil': osutil,
                             'part_size': part_size,
                             'progress_callbacks': progress_callbacks
                         },
@@ -120,12 +143,12 @@ class UploadTaskSubmitter(TaskSubmitter):
             )
 
         # Submit the request to complete the multipart upload.
-        done_callbacks = get_callbacks(transfer_future, 'done')
-        self._executor.submit(
+        self._submit_task(
+            request_executor,
             CompleteMultipartUploadTask(
-                transfer_coordinator=transfer_coordinator,
+                transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
-                    'client': self._client,
+                    'client': client,
                     'bucket': call_args.bucket,
                     'key': call_args.key
                 },
@@ -133,7 +156,6 @@ class UploadTaskSubmitter(TaskSubmitter):
                     'upload_id': create_multipart_future,
                     'parts': part_futures
                 },
-                done_callbacks=done_callbacks,
                 is_final=True
             )
         )

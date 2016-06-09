@@ -28,7 +28,7 @@ from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import StreamReaderProgress
 from s3transfer.tasks import Task
-from s3transfer.tasks import TaskSubmitter
+from s3transfer.tasks import SubmissionTask
 
 
 logger = logging.getLogger(__name__)
@@ -38,17 +38,37 @@ S3_RETRYABLE_ERRORS = (
 )
 
 
-class DownloadTaskSubmitter(TaskSubmitter):
-    def __init__(self, client, config, osutil, executor, io_executor):
-        super(DownloadTaskSubmitter, self).__init__(
-            client, config, osutil, executor)
-        self._io_executor = io_executor
+class DownloadSubmissionTask(SubmissionTask):
+    """Task for submitting tasks to execute a download"""
 
-    def _submit(self, transfer_future, transfer_coordinator):
+    def _submit(self, client, config, osutil, request_executor, io_executor,
+                transfer_future):
+        """
+        :param client: The client associated with the transfer manager
+
+        :type config: s3transfer.manager.TransferConfig
+        :param config: The transfer config associated with the transfer
+            manager
+
+        :type osutil: s3transfer.utils.OSUtil
+        :param osutil: The os utility associated to the transfer manager
+
+        :type request_executor: s3transfer.futures.BoundedExecutor
+        :param request_executor: The request executor associated with the
+            transfer manager
+
+        :type io_executor: s3transfer.futures.BoundedExecutor
+        :param io_executor: The io executor associated with the
+            transfer manager
+
+        :type transfer_future: s3transfer.futures.TransferFuture
+        :param transfer_future: The transfer future associated with the
+            transfer request that tasks are being submitted for
+        """
         if transfer_future.meta.size is None:
             # If a size was not provided figure out the size for the
             # user.
-            response = self._client.head_object(
+            response = client.head_object(
                 Bucket=transfer_future.meta.call_args.bucket,
                 Key=transfer_future.meta.call_args.key,
                 **transfer_future.meta.call_args.extra_args
@@ -63,76 +83,76 @@ class DownloadTaskSubmitter(TaskSubmitter):
         )
         # If it is greater than threshold do a ranged download, otherwise
         # do a regular GetObject download.
-        if transfer_future.meta.size < self._config.multipart_threshold:
+        if transfer_future.meta.size < config.multipart_threshold:
             self._submit_download_request(
-                temp_filename, transfer_future, transfer_coordinator)
+                client, config, osutil, request_executor, io_executor,
+                temp_filename, transfer_future)
         else:
             self._submit_ranged_download_request(
-                temp_filename, transfer_future, transfer_coordinator)
+                client, config, osutil, request_executor, io_executor,
+                temp_filename, transfer_future)
 
-    def _submit_download_request(
-            self, temp_filename, transfer_future, transfer_coordinator):
+    def _submit_download_request(self, client, config, osutil,
+                                 request_executor, io_executor, temp_filename,
+                                 transfer_future):
         call_args = transfer_future.meta.call_args
 
         # Get a handle to the temp file
-        temp_fileobj = self._get_io_file_handle(
-            temp_filename, transfer_coordinator)
+        temp_fileobj = self._get_io_file_handle(temp_filename, osutil)
 
         # Get the needed callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
-        done_callbacks = get_callbacks(transfer_future, 'done')
 
         # Before starting any tasks for downloads set up a cleanup function
         # that will make sure that the temporary file always gets
         # cleaned up.
-        transfer_coordinator.add_failure_cleanup(
-            self._osutil.remove_file, temp_filename)
+        self._transfer_coordinator.add_failure_cleanup(
+            osutil.remove_file, temp_filename)
 
         # Submit the task to download the object.
-        download_future = self._executor.submit(
+        download_future = self._submit_task(
+            request_executor,
             GetObjectTask(
-                transfer_coordinator=transfer_coordinator,
+                transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
-                    'client': self._client,
+                    'client': client,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'fileobj': temp_fileobj,
                     'extra_args': call_args.extra_args,
                     'callbacks': progress_callbacks,
-                    'max_attempts': self._config.num_download_attempts,
-                    'io_executor': self._io_executor
+                    'max_attempts': config.num_download_attempts,
+                    'io_executor': io_executor
                 }
             )
         )
 
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            temp_fileobj, call_args.fileobj, transfer_coordinator,
-            [download_future], done_callbacks
-        )
+            osutil, request_executor, io_executor, temp_fileobj,
+            call_args.fileobj, [download_future])
 
-    def _submit_ranged_download_request(
-            self, temp_filename, transfer_future, transfer_coordinator):
+    def _submit_ranged_download_request(self, client, config, osutil,
+                                        request_executor, io_executor,
+                                        temp_filename, transfer_future):
         call_args = transfer_future.meta.call_args
 
-        # Get the needed callbacks for the task
+        # Get the needed progress callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
-        done_callbacks = get_callbacks(transfer_future, 'done')
 
         # Get a handle to the temp file
-        temp_fileobj = self._get_io_file_handle(
-            temp_filename, transfer_coordinator)
+        temp_fileobj = self._get_io_file_handle(temp_filename, osutil)
 
         # Determine the number of parts
-        part_size = self._config.multipart_chunksize
+        part_size = config.multipart_chunksize
         num_parts = int(
             math.ceil(transfer_future.meta.size / float(part_size)))
 
         # Before starting any tasks for downloads set up a cleanup function
         # that will make sure that the temporary file always gets
         # cleaned up.
-        transfer_coordinator.add_failure_cleanup(
-            self._osutil.remove_file, temp_filename)
+        self._transfer_coordinator.add_failure_cleanup(
+            osutil.remove_file, temp_filename)
 
         ranged_downloads = []
         for i in range(num_parts):
@@ -146,18 +166,19 @@ class DownloadTaskSubmitter(TaskSubmitter):
             extra_args.update(call_args.extra_args)
             # Submit the ranged downloads
             ranged_downloads.append(
-                self._executor.submit(
+                self._submit_task(
+                    request_executor,
                     GetObjectTask(
-                        transfer_coordinator=transfer_coordinator,
+                        transfer_coordinator=self._transfer_coordinator,
                         main_kwargs={
-                            'client': self._client,
+                            'client': client,
                             'bucket': call_args.bucket,
                             'key': call_args.key,
                             'fileobj': temp_fileobj,
                             'extra_args': extra_args,
                             'callbacks': progress_callbacks,
-                            'max_attempts': self._config.num_download_attempts,
-                            'io_executor': self._io_executor,
+                            'max_attempts': config.num_download_attempts,
+                            'io_executor': io_executor,
                             'start_index': i * part_size
                         }
                     )
@@ -165,40 +186,38 @@ class DownloadTaskSubmitter(TaskSubmitter):
             )
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            temp_fileobj, call_args.fileobj, transfer_coordinator,
-            ranged_downloads, done_callbacks
-        )
+            osutil, request_executor, io_executor, temp_fileobj,
+            call_args.fileobj, ranged_downloads)
 
-    def _get_io_file_handle(self, filename, transfer_coordinator):
-        f = self._osutil.open(filename, 'wb')
-        transfer_coordinator.add_failure_cleanup(f.close)
+    def _get_io_file_handle(self, filename, osutil):
+        f = osutil.open(filename, 'wb')
+        self._transfer_coordinator.add_failure_cleanup(f.close)
         return f
 
-    def _complete_download(self, fileobj, final_filename,
-                           transfer_coordinator, download_futures,
-                           done_callbacks):
+    def _complete_download(self, osutil, request_executor, io_executor,
+                           fileobj, final_filename, download_futures):
         # A task to rename the file from the temporary file to its final
         # location. This should be the last task needed to complete the
         # download.
         rename_task = IORenameFileTask(
-            transfer_coordinator=transfer_coordinator,
+            transfer_coordinator=self._transfer_coordinator,
             main_kwargs={
                 'fileobj': fileobj,
                 'final_filename': final_filename,
-                'osutil': self._osutil
+                'osutil': osutil
             },
-            done_callbacks=done_callbacks,
             is_final=True
         )
         submit_rename_task = FunctionContainer(
-            self._io_executor.submit, rename_task)
+            self._submit_task, io_executor, rename_task)
 
         # Submit a task to wait for all of the downloads to complete
         # and submit their downloaded content to the io executor before
         # submitting the renaming task to the io executor.
-        self._executor.submit(
+        self._submit_task(
+            request_executor,
             JoinFuturesTask(
-                transfer_coordinator=transfer_coordinator,
+                transfer_coordinator=self._transfer_coordinator,
                 pending_main_kwargs={
                     'futures_to_wait_on': download_futures
                 },
@@ -218,7 +237,7 @@ class DownloadTaskSubmitter(TaskSubmitter):
 
 
 class GetObjectTask(Task):
-    STREAM_CHUNK_SIZE = 8 * 1024
+    STREAM_CHUNK_SIZE = 64 * 1024
 
     def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
               max_attempts, io_executor, start_index=0):
@@ -252,7 +271,8 @@ class GetObjectTask(Task):
                     # or error somewhere else, stop trying to submit more
                     # data to be written and break out of the download.
                     if not self._transfer_coordinator.done():
-                        io_executor.submit(
+                        self._submit_task(
+                            io_executor,
                             IOWriteTask(
                                 self._transfer_coordinator,
                                 main_kwargs={

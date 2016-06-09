@@ -28,7 +28,7 @@ from s3transfer.manager import TransferConfig
 class BaseUploadTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseUploadTest, self).setUp()
-        self.config = TransferConfig(max_concurrency=1)
+        self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
         # Create a temporary directory with files to read from
@@ -151,7 +151,8 @@ class TestMultipartUpload(BaseUploadTest):
     def setUp(self):
         super(TestMultipartUpload, self).setUp()
         self.config = TransferConfig(
-            max_concurrency=1, multipart_threshold=1, multipart_chunksize=4)
+            max_request_concurrency=1, multipart_threshold=1,
+            multipart_chunksize=4)
         self._manager = TransferManager(self.client, self.config)
 
     def create_stubbed_responses(self):

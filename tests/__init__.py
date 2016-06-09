@@ -281,6 +281,10 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
     def test_returns_future_with_meta(self):
         self._setup_default_stubbed_responses()
         future = self.method(**self.create_call_kwargs())
+        # The result is called so we ensure that the entire process executes
+        # before we try to clean up resources in the tearDown.
+        future.result()
+
         # Assert the return value is a future with metadata associated to it.
         self.assertIsInstance(future, TransferFuture)
         self.assertIsInstance(future.meta, TransferMeta)
@@ -289,6 +293,10 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         self._setup_default_stubbed_responses()
         call_kwargs = self.create_call_kwargs()
         future = self.method(**call_kwargs)
+        # The result is called so we ensure that the entire process executes
+        # before we try to clean up resources in the tearDown.
+        future.result()
+
         # Assert that there are call args associated to the metadata
         self.assertIsInstance(future.meta.call_args, CallArgs)
         # Assert that all of the arguments passed to the method exist and

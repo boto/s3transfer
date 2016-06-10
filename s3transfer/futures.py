@@ -28,7 +28,7 @@ class TransferFuture(object):
 
         :type meta: TransferMeta
         :param meta: The metadata associated to the request. This object
-            is visible to the requester..
+            is visible to the requester.
 
         :type coordinator: TransferCoordinator
         :param coordinator: The coordinator associated to the request. This
@@ -61,7 +61,14 @@ class TransferFuture(object):
         TransferFuture failed, it will raise the exception associated to the
         failure.
         """
-        return self._coordinator.result()
+        try:
+            # Usually the result() method blocks until the transfer is done,
+            # however if a KeyboardInterrupt is raised we want want to exit
+            # out of this and propogate the exception.
+            return self._coordinator.result()
+        except KeyboardInterrupt as e:
+            self.cancel()
+            raise e
 
     def cancel(self):
         """Cancels the request associated with the TransferFuture"""
@@ -170,14 +177,25 @@ class TransferCoordinator(object):
                 self._exception = exception
                 self._status = 'failed'
 
-    def result(self):
+    def result(self, sleep_intervals=0.2):
         """Waits until TransferFuture is done and returns the result
 
         If the TransferFuture succeeded, it will return the result. If the
         TransferFuture failed, it will raise the exception associated to the
         failure.
+
+        :type sleep_intervals: int or float
+        :param sleep_intervals: The amount of time to sleep each interval
+            while waiting for the transfer to complete.
         """
-        self._done_event.wait()
+        # We add an interval to sleep because we want to allow the wait
+        # to be interrupted just in case a KeyboardInterrupt happened.
+        # Doing a wait() with no time to sleep cannot be interrupted.
+        while not self._done_event.is_set():
+            self._done_event.wait(sleep_intervals)
+
+        # Once done waiting, raise an exception if present or return the
+        # final result.
         with self._lock:
             if self._exception:
                 raise self._exception

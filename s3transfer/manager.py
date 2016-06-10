@@ -10,6 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import threading
+import time
+
 from s3transfer.utils import unique_id
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import disable_upload_callbacks
@@ -162,6 +165,7 @@ class TransferManager(object):
         if config is None:
             self._config = TransferConfig()
         self._osutil = OSUtils()
+        self._canceler = TransferCoordinatorCanceler()
 
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
@@ -349,9 +353,16 @@ class TransferManager(object):
 
     def _get_future_with_components(self, call_args):
         # Creates a new transfer future along with its components
+        transfer_coordinator = TransferCoordinator()
+        # Track the transfer coordinator for transfers to manage.
+        self._canceler.add_transfer_coordinator(transfer_coordinator)
+        # Also make sure that the transfer coordinator is removed once
+        # the transfer completes so it does not stick around in memory.
+        transfer_coordinator.add_done_callback(
+            self._canceler.remove_transfer_coordinator, transfer_coordinator)
         components = {
             'meta': TransferMeta(call_args),
-            'coordinator': TransferCoordinator()
+            'coordinator': transfer_coordinator
         }
         transfer_future = TransferFuture(**components)
         return transfer_future, components
@@ -378,11 +389,106 @@ class TransferManager(object):
         self._client.meta.events.register_last(
             event_name, enable_upload_callbacks, unique_id=enable_id)
 
-    def shutdown(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *args):
+        cancel = False
+        # If a exception was raised in the context handler, signal to cancel
+        # all of the inprogress futures in the shutdown.
+        if exc_type:
+            cancel = True
+        self.shutdown(cancel)
+
+    def shutdown(self, cancel=False):
         """Shutdown the TransferManager
 
-        It will wait till all requests complete before it complete shuts down.
+        It will wait till all transfers complete before it completely shuts
+        down.
+
+        :type cancel: boolean
+        :param cancel: If True, calls TransferFuture.cancel() for
+            all in-progress in transfers. This is useful if you want the
+            shutdown to happen quicker.
         """
-        self._submission_executor.shutdown()
-        self._request_executor.shutdown()
-        self._io_executor.shutdown()
+        if cancel:
+            # Cancel all in-flight transfers if requested, before waiting
+            # for them to complete.
+            self._canceler.cancel()
+        try:
+            # Wait until there are no more in-progress transfers. This is
+            # wrapped in a try statement because this can be interrupted
+            # with a KeyboardInterrupt that needs to be caught.
+            self._canceler.wait()
+        finally:
+            # If not errors were raised in the try block, the cancel should
+            # have no coordinators it needs to run cancel on. If there was
+            # an error raised in the try statement we want to cancel all of
+            # the inflight transfers before shutting down to speed that
+            # process up.
+            self._canceler.cancel()
+            # Shutdown all of the executors.
+            self._submission_executor.shutdown()
+            self._request_executor.shutdown()
+            self._io_executor.shutdown()
+
+
+class TransferCoordinatorCanceler(object):
+    def __init__(self):
+        """Abstraction to control the cancelation of all transfers
+
+        This abstraction allows the manager to wait for inprogress transfers
+        to complete and cancel all inprogress transfers.
+        """
+        self._lock = threading.Lock()
+        self._active_transfer_coordinators = set()
+
+    def add_transfer_coordinator(self, transfer_coordinator):
+        """Adds a transfer coordinator of a transfer to be canceled if needed
+
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The transfer coordinator for the
+            particular transfer
+        """
+        with self._lock:
+            self._active_transfer_coordinators.add(transfer_coordinator)
+
+    def remove_transfer_coordinator(self, transfer_coordinator):
+        """Remove a transfer coordinator from cancelation consideration
+
+        Typically, this method is invoked by the transfer coordinator itself
+        to remove its self when it completes its transfer.
+
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The transfer coordinator for the
+            particular transfer
+        """
+        with self._lock:
+            self._active_transfer_coordinators.remove(transfer_coordinator)
+
+    def cancel(self):
+        """Cancels all inprogress transfers
+
+        This cancels the inprogress transfers by calling cancel() on all
+        tracked transfer coordinators.
+        """
+        with self._lock:
+            for transfer_coordinator in self._active_transfer_coordinators:
+                transfer_coordinator.cancel()
+
+    def wait(self, sleep_intervals=0.2):
+        """Wait until there are no more inprogress transfers
+
+        :type sleep_interval: int or float
+        :param sleep_interval: The amount of time to sleep each interval
+            while waiting for all inprogress transfers to complete.
+        """
+        while self._has_inprogress_transfers():
+            time.sleep(sleep_intervals)
+
+    def _has_inprogress_transfers(self):
+        with self._lock:
+            for transfer_coordinator in self._active_transfer_coordinators:
+                if not transfer_coordinator.done():
+                    return True
+            return False

@@ -14,10 +14,10 @@ import os
 import tempfile
 import shutil
 
-import mock
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from botocore.awsrequest import AWSRequest
+from botocore.stub import ANY
 
 from tests import BaseGeneralInterfaceTest
 from tests import RecordingSubscriber
@@ -141,7 +141,7 @@ class TestNonMultipartUpload(BaseUploadTest):
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'
         expected_params = {
-            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Body': ANY, 'Bucket': self.bucket,
             'Key': self.key, 'RequestPayer': 'requester'
         }
         self.add_successful_upload_responses(
@@ -154,7 +154,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
     def test_upload_for_fileobj(self):
         expected_params = {
-            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Body': ANY, 'Bucket': self.bucket,
             'Key': self.key
         }
         self.add_successful_upload_responses(
@@ -176,7 +176,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
         # Add the expected params
         expected_params = {
-            'Body': mock.ANY, 'Bucket': self.bucket,
+            'Body': ANY, 'Bucket': self.bucket,
             'Key': self.key
         }
         self.add_successful_upload_responses(
@@ -239,7 +239,7 @@ class TestMultipartUpload(BaseUploadTest):
                     'Bucket': self.bucket,
                     'Key': self.key,
                     'UploadId': self.multipart_id,
-                    'Body': mock.ANY,
+                    'Body': ANY,
                     'PartNumber': i + 1,
                 }
             )
@@ -324,7 +324,7 @@ class TestMultipartUpload(BaseUploadTest):
                 'ETag': 'etag-1'
             },
             expected_params={
-                'Bucket': self.bucket, 'Body': mock.ANY,
+                'Bucket': self.bucket, 'Body': ANY,
                 'Key': self.key, 'UploadId': self.multipart_id,
                 'PartNumber': 1
             }

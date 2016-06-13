@@ -14,7 +14,7 @@ import os
 import tempfile
 import shutil
 
-import mock
+from botocore.stub import ANY
 
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
@@ -247,7 +247,7 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
             method='put_object',
             service_response={},
             expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket,
+                'Body': ANY, 'Bucket': self.bucket,
                 'Key': self.key
             }
         )
@@ -282,7 +282,7 @@ class TestPutObjectTask(BaseUploadTest):
                 method='put_object',
                 service_response={},
                 expected_params={
-                    'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
+                    'Body': ANY, 'Bucket': self.bucket, 'Key': self.key,
                     'Metadata': {'foo': 'bar'}
                 }
             )
@@ -314,7 +314,7 @@ class TestUploadPartTask(BaseUploadTest):
                 method='upload_part',
                 service_response={'ETag': etag},
                 expected_params={
-                    'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
+                    'Body': ANY, 'Bucket': self.bucket, 'Key': self.key,
                     'UploadId': upload_id, 'PartNumber': part_number,
                     'RequestPayer': 'requester'
                 }

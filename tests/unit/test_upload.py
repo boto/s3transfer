@@ -21,7 +21,6 @@ from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
 from s3transfer.manager import TransferConfig
-from s3transfer.upload import get_upload_input_manager_cls
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
 from s3transfer.upload import UploadSubmissionTask
@@ -65,23 +64,6 @@ class BaseUploadTest(BaseTaskTest):
     def collect_body(self, params, **kwargs):
         if 'Body' in params:
             self.sent_bodies.append(params['Body'].read())
-
-
-class TestGetUploadManagerClsTest(BaseUploadTest):
-    def test_for_filename(self):
-        call_args = CallArgs(fileobj=self.filename)
-        future = self.get_transfer_future(call_args)
-        # Ensure the correct class was returned for filenames
-        self.assertIs(
-            get_upload_input_manager_cls(future), UploadFilenameInputManager)
-
-    def test_for_seekable(self):
-        with open(self.filename, 'rb') as f:
-            call_args = CallArgs(fileobj=f)
-            future = self.get_transfer_future(call_args)
-            self.assertIs(
-                get_upload_input_manager_cls(future),
-                UploadSeekableInputManager)
 
 
 class BaseUploadInputManagerTest(BaseUploadTest):

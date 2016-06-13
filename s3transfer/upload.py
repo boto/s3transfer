@@ -22,29 +22,6 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import ReadFileChunk
 
 
-def get_upload_input_manager_cls(transfer_future):
-    """Retieves a class for managing input for an upload based on file type
-
-    :type transfer_future: s3transfer.futures.TransferFuture
-    :param transfer_future: The transfer future for the request
-
-    :rtype: class of UploadInputManager
-    :returns: The appropriate class to use for managing a specific type of
-        input for uploads.
-    """
-    upload_manager_resolver_chain = [
-        UploadFilenameInputManager,
-        UploadSeekableInputManager
-    ]
-
-    fileobj = transfer_future.meta.call_args.fileobj
-    for upload_manager_cls in upload_manager_resolver_chain:
-        if upload_manager_cls.is_compatible(fileobj):
-            return upload_manager_cls
-    raise RuntimeError(
-        'Input %s of type: %s is not supported.' % (fileobj, type(fileobj)))
-
-
 class UploadInputManager(object):
     """Base manager class for handling various types of files for uploads
 
@@ -230,6 +207,29 @@ class UploadSubmissionTask(SubmissionTask):
         'RequestPayer',
     ]
 
+    def _get_upload_input_manager_cls(self, transfer_future):
+        """Retieves a class for managing input for an upload based on file type
+
+        :type transfer_future: s3transfer.futures.TransferFuture
+        :param transfer_future: The transfer future for the request
+
+        :rtype: class of UploadInputManager
+        :returns: The appropriate class to use for managing a specific type of
+            input for uploads.
+        """
+        upload_manager_resolver_chain = [
+            UploadFilenameInputManager,
+            UploadSeekableInputManager
+        ]
+
+        fileobj = transfer_future.meta.call_args.fileobj
+        for upload_manager_cls in upload_manager_resolver_chain:
+            if upload_manager_cls.is_compatible(fileobj):
+                return upload_manager_cls
+        raise RuntimeError(
+            'Input %s of type: %s is not supported.' % (
+                fileobj, type(fileobj)))
+
     def _submit(self, client, config, osutil, request_executor,
                 transfer_future):
         """
@@ -250,7 +250,7 @@ class UploadSubmissionTask(SubmissionTask):
         :param transfer_future: The transfer future associated with the
             transfer request that tasks are being submitted for
         """
-        upload_input_manager = get_upload_input_manager_cls(
+        upload_input_manager = self._get_upload_input_manager_cls(
             transfer_future)(osutil)
 
         # Determine the size if it was not provided

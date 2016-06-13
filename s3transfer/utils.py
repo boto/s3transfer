@@ -236,7 +236,7 @@ class ReadFileChunk(object):
                  callbacks=None, enable_callbacks=True):
         """
 
-        Given a file object shown below:
+        Given a file object shown below::
 
             |___________________________________________________|
             0          |                 |                 full_file_size

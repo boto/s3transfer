@@ -105,7 +105,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
 
         stubbed_responses = self.create_stubbed_responses()
 
-        # If the length of copy responses is greater than one then it is
+        # If the length of upload responses is greater than one then it is
         # a multipart upload.
         upload_responses = stubbed_responses[0:1]
         if len(stubbed_responses) > 1:
@@ -116,7 +116,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
             stubbed_responses[0][
                 'expected_params'] = expected_create_mpu_params
 
-        # Add any expected copy parameters.
+        # Add any expected upload parameters.
         if expected_upload_params:
             for i, upload_response in enumerate(upload_responses):
                 if isinstance(expected_upload_params, list):
@@ -231,7 +231,7 @@ class TestMultipartUpload(BaseUploadTest):
         }
 
         expected_upload_params = []
-        # Add expected parameters to the copy part
+        # Add expected parameters to the upload part
         num_parts = 3
         for i in range(num_parts):
             expected_upload_params.append(

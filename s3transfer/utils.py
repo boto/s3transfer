@@ -163,6 +163,12 @@ class OSUtils(object):
                                            size, callbacks,
                                            enable_callbacks=False)
 
+    def open_file_chunk_reader_from_fileobj(self, fileobj, chunk_size,
+                                            full_file_size, callbacks):
+        return ReadFileChunk(
+            fileobj, chunk_size, full_file_size,
+            callbacks=callbacks, enable_callbacks=False)
+
     def open(self, filename, mode):
         return open(filename, mode)
 
@@ -299,8 +305,9 @@ class ReadFileChunk(object):
         :return: A new instance of ``ReadFileChunk``
 
         """
-        file_size = os.path.getsize(filename)
-        f = DeferredOpenFile(filename=filename, start_byte=start_byte)
+        f = open(filename, 'rb')
+        f.seek(start_byte)
+        file_size = os.fstat(f.fileno()).st_size
         return cls(f, chunk_size, file_size, callbacks, enable_callbacks)
 
     def _calculate_file_size(self, fileobj, requested_size, start_byte,

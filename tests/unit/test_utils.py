@@ -158,6 +158,18 @@ class TestOSUtils(BaseUtilsTest):
         # Callbacks should be disabled depspite being passed in.
         self.assertEqual(self.amounts_seen, [])
 
+    def test_open_file_chunk_reader_from_fileobj(self):
+        with open(self.filename, 'rb') as f:
+            reader = OSUtils().open_file_chunk_reader_from_fileobj(
+                f, len(self.content), len(self.content), [self.callback])
+
+            # The returned reader should be a ReadFileChunk.
+            self.assertIsInstance(reader, ReadFileChunk)
+            # The content of the reader should be correct.
+            self.assertEqual(reader.read(), self.content)
+            # Callbacks should be disabled depspite being passed in.
+            self.assertEqual(self.amounts_seen, [])
+
     def test_open_file(self):
         fileobj = OSUtils().open(os.path.join(self.tempdir, 'foo'), 'w')
         self.assertTrue(hasattr(fileobj, 'write'))

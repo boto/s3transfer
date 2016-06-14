@@ -19,7 +19,7 @@ from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
-from s3transfer.utils import ReadFileChunk
+from s3transfer.utils import DeferredOpenFile
 
 
 class UploadInputManager(object):
@@ -122,23 +122,42 @@ class UploadFilenameInputManager(UploadInputManager):
         return transfer_future.meta.size >= config.multipart_threshold
 
     def get_put_object_body(self, transfer_future):
-        fileobj = transfer_future.meta.call_args.fileobj
+        # Get a file-like object for the given input
+        fileobj = self._get_put_object_fileobj(
+            transfer_future.meta.call_args.fileobj)
         callbacks = get_callbacks(transfer_future, 'progress')
-        return self._osutil.open_file_chunk_reader(
-            filename=fileobj, start_byte=0, size=transfer_future.meta.size,
+        size = transfer_future.meta.size
+        # Return the file-like object wrapped into a ReadFileChunk to get
+        # progress.
+        return self._osutil.open_file_chunk_reader_from_fileobj(
+            fileobj=fileobj, chunk_size=size, full_file_size=size,
             callbacks=callbacks)
 
     def yield_upload_part_bodies(self, transfer_future, config):
         part_size = config.multipart_chunksize
+        full_file_size = transfer_future.meta.size
         num_parts = self._get_num_parts(transfer_future, part_size)
-        fileobj = transfer_future.meta.call_args.fileobj
         callbacks = get_callbacks(transfer_future, 'progress')
         for part_number in range(1, num_parts + 1):
-            read_file_chunk = self._osutil.open_file_chunk_reader(
-                filename=fileobj, start_byte=part_size * (part_number - 1),
-                size=part_size, callbacks=callbacks
-            )
+            start_byte = part_size * (part_number - 1)
+            # Get a file-like object for that part and the size of the full
+            # file size for the associated file-like object for that part.
+            fileobj, full_size = self._get_upload_part_fileobj_with_full_size(
+                transfer_future.meta.call_args.fileobj, start_byte=start_byte,
+                part_size=part_size, full_file_size=full_file_size)
+            # Wrap the file-like object into a ReadFileChunk to get progress.
+            read_file_chunk = self._osutil.open_file_chunk_reader_from_fileobj(
+                fileobj=fileobj, chunk_size=part_size,
+                full_file_size=full_size, callbacks=callbacks)
             yield part_number, read_file_chunk
+
+    def _get_put_object_fileobj(self, fileobj):
+        return DeferredOpenFile(fileobj, 0)
+
+    def _get_upload_part_fileobj_with_full_size(self, fileobj, **kwargs):
+        start_byte = kwargs['start_byte']
+        full_size = kwargs['full_file_size']
+        return DeferredOpenFile(fileobj, start_byte), full_size
 
     def _get_num_parts(self, transfer_future, part_size):
         return int(
@@ -165,36 +184,23 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
         transfer_future.meta.provide_transfer_size(
             end_position - start_position)
 
-    def get_put_object_body(self, transfer_future):
-        fileobj = transfer_future.meta.call_args.fileobj
-        callbacks = get_callbacks(transfer_future, 'progress')
-        transfer_size = transfer_future.meta.size
-        return ReadFileChunk(
-            fileobj=fileobj, chunk_size=transfer_size,
-            full_file_size=transfer_size, callbacks=callbacks,
-            enable_callbacks=False
-        )
+    def _get_upload_part_fileobj_with_full_size(self, fileobj, **kwargs):
+        # Note: It is unfortunate that in order to do a multithreaded
+        # multipart upload we cannot simply copy the filelike object
+        # since there is not really a mechanism in python (i.e. os.dup
+        # points to the same OS filehandle which causes concurrency
+        # issues). So instead we need to read from the fileobj and
+        # chunk the data out to seperate file-like objects in memory.
+        data = fileobj.read(kwargs['part_size'])
+        # We return the length of the data instead of the full_file_size
+        # because we partitioned the data into seperate BytesIO objects
+        # meaning the BytesIO object has no knowledge of its start position
+        # relative the input source nor access to the rest of the input
+        # source. So we must treat it as its own standalone file.
+        return six.BytesIO(data), len(data)
 
-    def yield_upload_part_bodies(self, transfer_future, config):
-        part_size = config.multipart_chunksize
-        num_parts = self._get_num_parts(transfer_future, part_size)
-        fileobj = transfer_future.meta.call_args.fileobj
-        callbacks = get_callbacks(transfer_future, 'progress')
-        for part_number in range(1, num_parts + 1):
-            # Note: It is unfortunate that in order to do a multithreaded
-            # multipart upload we cannot simply copy the filelike object
-            # since there is not really a mechanism in python (i.e. os.dup
-            # points to the same OS filehandle which causes concurrency
-            # issues). So instead we need to read from the fileobj and
-            # chunk the data out to seperate file-like objects in memory.
-            data = fileobj.read(part_size)
-            wrapped_data = six.BytesIO(data)
-            read_file_chunk = ReadFileChunk(
-                fileobj=wrapped_data, chunk_size=len(data),
-                full_file_size=transfer_future.meta.size,
-                callbacks=callbacks, enable_callbacks=False
-            )
-            yield part_number, read_file_chunk
+    def _get_put_object_fileobj(self, fileobj):
+        return fileobj
 
 
 class UploadSubmissionTask(SubmissionTask):

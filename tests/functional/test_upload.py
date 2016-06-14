@@ -99,72 +99,49 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
     def create_expected_progress_callback_info(self):
         return [{'bytes_transferred': 10}]
 
-    def add_successful_upload_responses(
-            self, expected_upload_params=None, expected_create_mpu_params=None,
-            expected_complete_mpu_params=None):
-
-        stubbed_responses = self.create_stubbed_responses()
-
-        # If the length of upload responses is greater than one then it is
-        # a multipart upload.
-        upload_responses = stubbed_responses[0:1]
-        if len(stubbed_responses) > 1:
-            upload_responses = stubbed_responses[1:-1]
-
-        # Add the expected create multipart upload params.
-        if expected_create_mpu_params:
-            stubbed_responses[0][
-                'expected_params'] = expected_create_mpu_params
-
-        # Add any expected upload parameters.
-        if expected_upload_params:
-            for i, upload_response in enumerate(upload_responses):
-                if isinstance(expected_upload_params, list):
-                    upload_response[
-                        'expected_params'] = expected_upload_params[i]
-                else:
-                    upload_response['expected_params'] = expected_upload_params
-
-        # Add the expected complete multipart upload params.
-        if expected_complete_mpu_params:
-            stubbed_responses[-1][
-                'expected_params'] = expected_complete_mpu_params
-
-        # Add the responses to the stubber.
-        for stubbed_response in stubbed_responses:
-            self.stubber.add_response(**stubbed_response)
+    def assert_expected_client_calls_were_correct(self):
+        # We assert that expected client calls were made by ensuring that
+        # there are no more pending responses. If there are no more pending
+        # responses, then all stubbed responses were consumed.
+        self.stubber.assert_no_pending_responses()
 
 
 class TestNonMultipartUpload(BaseUploadTest):
     __test__ = True
 
+    def add_put_object_response_with_default_expected_params(
+            self, extra_expected_params=None):
+        expected_params = {
+            'Body': ANY, 'Bucket': self.bucket, 'Key': self.key
+        }
+        if extra_expected_params:
+            expected_params.update(extra_expected_params)
+        upload_response = self.create_stubbed_responses()[0]
+        upload_response['expected_params'] = expected_params
+        self.stubber.add_response(**upload_response)
+
+    def assert_put_object_body_was_correct(self):
+        self.assertEqual(self.sent_bodies, [self.content])
+
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'
-        expected_params = {
-            'Body': ANY, 'Bucket': self.bucket,
-            'Key': self.key, 'RequestPayer': 'requester'
-        }
-        self.add_successful_upload_responses(
-            expected_upload_params=expected_params)
+        self.add_put_object_response_with_default_expected_params(
+            extra_expected_params={'RequestPayer': 'requester'}
+        )
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
-        self.stubber.assert_no_pending_responses()
-        self.assertEqual(self.sent_bodies, [self.content])
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
 
     def test_upload_for_fileobj(self):
-        expected_params = {
-            'Body': ANY, 'Bucket': self.bucket,
-            'Key': self.key
-        }
-        self.add_successful_upload_responses(
-            expected_upload_params=expected_params)
+        self.add_put_object_response_with_default_expected_params()
         with open(self.filename, 'rb') as f:
             future = self.manager.upload(
                 f, self.bucket, self.key, self.extra_args)
             future.result()
-        self.stubber.assert_no_pending_responses()
-        self.assertEqual(self.sent_bodies, [self.content])
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
 
     def test_sigv4_progress_callbacks_invoked_once(self):
         # Reset the client and manager to use sigv4
@@ -174,19 +151,14 @@ class TestNonMultipartUpload(BaseUploadTest):
             'before-parameter-build.s3.*', self.collect_body)
         self._manager = TransferManager(self.client, self.config)
 
-        # Add the expected params
-        expected_params = {
-            'Body': ANY, 'Bucket': self.bucket,
-            'Key': self.key
-        }
-        self.add_successful_upload_responses(
-            expected_upload_params=expected_params)
+        # Add the stubbed response.
+        self.add_put_object_response_with_default_expected_params()
 
         subscriber = RecordingSubscriber()
         future = self.manager.upload(
             self.filename, self.bucket, self.key, subscribers=[subscriber])
         future.result()
-        self.stubber.assert_no_pending_responses()
+        self.assert_expected_client_calls_were_correct()
 
         # The amount of bytes seen should be the same as the file size
         self.assertEqual(subscriber.calculate_bytes_seen(), len(self.content))
@@ -197,9 +169,10 @@ class TestMultipartUpload(BaseUploadTest):
 
     def setUp(self):
         super(TestMultipartUpload, self).setUp()
+        self.chunksize = 4
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
-            multipart_chunksize=4)
+            multipart_chunksize=self.chunksize)
         self._manager = TransferManager(self.client, self.config)
         self.multipart_id = 'my-upload-id'
 
@@ -223,29 +196,45 @@ class TestMultipartUpload(BaseUploadTest):
             {'bytes_transferred': 2}
         ]
 
-    def _get_expected_params(self):
-        # Add expected parameters for the create multipart
-        expected_create_mpu_params = {
-            'Bucket': self.bucket,
-            'Key': self.key,
-        }
+    def assert_upload_part_bodies_were_correct(self):
+        expected_contents = []
+        for i in range(0, len(self.content), self.chunksize):
+            end_i = i + self.chunksize
+            if end_i > len(self.content):
+                expected_contents.append(self.content[i:])
+            else:
+                expected_contents.append(self.content[i:end_i])
+        self.assertEqual(self.sent_bodies, expected_contents)
 
-        expected_upload_params = []
-        # Add expected parameters to the upload part
+    def add_create_multipart_response_with_default_expected_params(
+            self, extra_expected_params=None):
+        expected_params = {'Bucket': self.bucket, 'Key': self.key}
+        if extra_expected_params:
+            expected_params.update(extra_expected_params)
+        response = self.create_stubbed_responses()[0]
+        response['expected_params'] = expected_params
+        self.stubber.add_response(**response)
+
+    def add_upload_part_responses_with_default_expected_params(
+            self, extra_expected_params=None):
         num_parts = 3
+        upload_part_responses = self.create_stubbed_responses()[1:-1]
         for i in range(num_parts):
-            expected_upload_params.append(
-                {
-                    'Bucket': self.bucket,
-                    'Key': self.key,
-                    'UploadId': self.multipart_id,
-                    'Body': ANY,
-                    'PartNumber': i + 1,
-                }
-            )
+            upload_part_response = upload_part_responses[i]
+            expected_params = {
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'UploadId': self.multipart_id,
+                'Body': ANY,
+                'PartNumber': i + 1,
+            }
+            if extra_expected_params:
+                expected_params.update(extra_expected_params)
+            upload_part_response['expected_params'] = expected_params
+            self.stubber.add_response(**upload_part_response)
 
-        # Add expected parameters for the complete multipart
-        expected_complete_mpu_params = {
+    def add_complete_multipart_response_with_default_expected_params(self):
+        expected_params = {
             'Bucket': self.bucket,
             'Key': self.key, 'UploadId': self.multipart_id,
             'MultipartUpload': {
@@ -256,56 +245,35 @@ class TestMultipartUpload(BaseUploadTest):
                 ]
             }
         }
-
-        return {
-            'expected_create_mpu_params': expected_create_mpu_params,
-            'expected_upload_params': expected_upload_params,
-            'expected_complete_mpu_params': expected_complete_mpu_params,
-        }
-
-    def _add_params_to_expected_params(
-            self, add_upload_kwargs, operation_types, new_params):
-        # Helper method for adding any additional params to the typical
-        # default expect parameters.
-        expected_params_to_update = []
-        for operation_type in operation_types:
-            add_upload_kwargs_key = 'expected_' + operation_type + '_params'
-            expected_params = add_upload_kwargs[add_upload_kwargs_key]
-            if isinstance(expected_params, list):
-                expected_params_to_update.extend(expected_params)
-            else:
-                expected_params_to_update.append(expected_params)
-
-        for expected_params in expected_params_to_update:
-            expected_params.update(new_params)
+        response = self.create_stubbed_responses()[-1]
+        response['expected_params'] = expected_params
+        self.stubber.add_response(**response)
 
     def test_upload(self):
-        # Set the threshold for multipart upload to something small
-        # to trigger multipart.
         self.extra_args['RequestPayer'] = 'requester'
 
-        # Add requester pays to expected upload args
-        add_upload_kwargs = self._get_expected_params()
-        self._add_params_to_expected_params(
-            add_upload_kwargs, ['create_mpu', 'upload'], self.extra_args)
-        self.add_successful_upload_responses(**add_upload_kwargs)
+        # Add requester pays to the create multipart upload and upload parts.
+        self.add_create_multipart_response_with_default_expected_params(
+            extra_expected_params={'RequestPayer': 'requester'})
+        self.add_upload_part_responses_with_default_expected_params(
+            extra_expected_params={'RequestPayer': 'requester'})
+        self.add_complete_multipart_response_with_default_expected_params()
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
-        self.stubber.assert_no_pending_responses()
+        self.assert_expected_client_calls_were_correct()
 
     def test_upload_for_fileobj(self):
-        add_upload_kwargs = self._get_expected_params()
-        self.add_successful_upload_responses(**add_upload_kwargs)
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
         with open(self.filename, 'rb') as f:
             future = self.manager.upload(
                 f, self.bucket, self.key, self.extra_args)
             future.result()
-        self.stubber.assert_no_pending_responses()
-        self.assertEqual(
-            self.sent_bodies,
-            [self.content[0:4], self.content[4:8], self.content[8:]])
+        self.assert_expected_client_calls_were_correct()
+        self.assert_upload_part_bodies_were_correct()
 
     def test_upload_failure_invokes_abort(self):
         self.stubber.add_response(
@@ -347,18 +315,18 @@ class TestMultipartUpload(BaseUploadTest):
         # a cancelled error or something.
         with self.assertRaises(ClientError):
             future.result()
-        self.stubber.assert_no_pending_responses()
+        self.assert_expected_client_calls_were_correct()
 
     def test_upload_passes_select_extra_args(self):
         self.extra_args['Metadata'] = {'foo': 'bar'}
 
-        add_upload_kwargs = self._get_expected_params()
         # Add metadata to expected create multipart upload call
-        self._add_params_to_expected_params(
-            add_upload_kwargs, ['create_mpu'], self.extra_args)
-        self.add_successful_upload_responses(**add_upload_kwargs)
+        self.add_create_multipart_response_with_default_expected_params(
+            extra_expected_params={'Metadata': {'foo': 'bar'}})
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)
         future.result()
-        self.stubber.assert_no_pending_responses()
+        self.assert_expected_client_calls_were_correct()

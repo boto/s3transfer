@@ -205,6 +205,10 @@ class TestDefferedOpenFile(BaseUtilsTest):
         self.open_called_count = 0
         self.deferred_open_file.OPEN_METHOD = self.counting_open_method
 
+    def tearDown(self):
+        self.deferred_open_file.close()
+        super(TestDefferedOpenFile, self).tearDown()
+
     def counting_open_method(self, filename, mode):
         self.open_called_count += 1
         return open(filename, mode)

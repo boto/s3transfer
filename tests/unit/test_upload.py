@@ -167,10 +167,13 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
         super(TestUploadSeekableInputManager, self).setUp()
         self.upload_input_manager = UploadSeekableInputManager(self.osutil)
         self.fileobj = open(self.filename, 'rb')
-        self.addCleanup(self.fileobj.close)
         self.call_args = CallArgs(
             fileobj=self.fileobj, subscribers=self.subscribers)
         self.future = self.get_transfer_future(self.call_args)
+
+    def tearDown(self):
+        self.fileobj.close()
+        super(TestUploadSeekableInputManager, self).tearDown()
 
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):

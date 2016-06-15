@@ -26,6 +26,7 @@ from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import CallArgs
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import OSUtils
+from s3transfer.utils import DeferredOpenFile
 from s3transfer.utils import ReadFileChunk
 from s3transfer.utils import StreamReaderProgress
 
@@ -157,6 +158,18 @@ class TestOSUtils(BaseUtilsTest):
         # Callbacks should be disabled depspite being passed in.
         self.assertEqual(self.amounts_seen, [])
 
+    def test_open_file_chunk_reader_from_fileobj(self):
+        with open(self.filename, 'rb') as f:
+            reader = OSUtils().open_file_chunk_reader_from_fileobj(
+                f, len(self.content), len(self.content), [self.callback])
+
+            # The returned reader should be a ReadFileChunk.
+            self.assertIsInstance(reader, ReadFileChunk)
+            # The content of the reader should be correct.
+            self.assertEqual(reader.read(), self.content)
+            # Callbacks should be disabled depspite being passed in.
+            self.assertEqual(self.amounts_seen, [])
+
     def test_open_file(self):
         fileobj = OSUtils().open(os.path.join(self.tempdir, 'foo'), 'w')
         self.assertTrue(hasattr(fileobj, 'write'))
@@ -179,6 +192,55 @@ class TestOSUtils(BaseUtilsTest):
         OSUtils().rename_file(self.filename, new_filename)
         self.assertFalse(os.path.exists(self.filename))
         self.assertTrue(os.path.exists(new_filename))
+
+
+class TestDefferedOpenFile(BaseUtilsTest):
+    def setUp(self):
+        super(TestDefferedOpenFile, self).setUp()
+        self.filename = os.path.join(self.tempdir, 'foo')
+        self.contents = b'my contents'
+        with open(self.filename, 'wb') as f:
+            f.write(self.contents)
+        self.deferred_open_file = DeferredOpenFile(self.filename)
+        self.open_called_count = 0
+        self.deferred_open_file.OPEN_METHOD = self.counting_open_method
+
+    def counting_open_method(self, filename, mode):
+        self.open_called_count += 1
+        return open(filename, mode)
+
+    def test_instantiation_does_not_open_file(self):
+        deferred_open_file = DeferredOpenFile(self.filename)
+        self.open_called_count = 0
+        deferred_open_file.OPEN_METHOD = self.counting_open_method
+        self.assertEqual(self.open_called_count, 0)
+
+    def test_read(self):
+        content = self.deferred_open_file.read(2)
+        self.assertEqual(content, self.contents[0:2])
+        content = self.deferred_open_file.read(2)
+        self.assertEqual(content, self.contents[2:4])
+        self.assertEqual(self.open_called_count, 1)
+
+    def test_seek(self):
+        self.deferred_open_file.seek(2)
+        content = self.deferred_open_file.read(2)
+        self.assertEqual(content, self.contents[2:4])
+        self.assertEqual(self.open_called_count, 1)
+
+    def test_tell(self):
+        self.deferred_open_file.tell()
+        # tell() should not have opened the file if it has not been seeked
+        # or read because we know the start bytes upfront.
+        self.assertEqual(self.open_called_count, 0)
+
+        self.deferred_open_file.seek(2)
+        self.assertEqual(self.deferred_open_file.tell(), 2)
+        self.assertEqual(self.open_called_count, 1)
+
+    def test_context_handler(self):
+        with self.deferred_open_file:
+            self.assertEqual(self.open_called_count, 1)
 
 
 class TestReadFileChunk(BaseUtilsTest):

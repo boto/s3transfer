@@ -43,6 +43,26 @@ class TestUpload(BaseTransferManagerIntegTest):
         future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
 
+    def test_upload_open_file_below_threshold(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+        filename = self.files.create_file_with_size(
+            '1mb.txt', filesize=1024 * 1024)
+        with open(filename, 'rb') as f:
+            future = transfer_manager.upload(f, self.bucket_name, '1mb.txt')
+            self.addCleanup(self.delete_object, '1mb.txt')
+            future.result()
+        self.assertTrue(self.object_exists('1mb.txt'))
+
+    def test_upload_open_file_above_threshold(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+        filename = self.files.create_file_with_size(
+            '20mb.txt', filesize=20 * 1024 * 1024)
+        with open(filename, 'rb') as f:
+            future = transfer_manager.upload(f, self.bucket_name, '20mb.txt')
+            self.addCleanup(self.delete_object, '20mb.txt')
+            future.result()
+        self.assertTrue(self.object_exists('20mb.txt'))
+
     def test_progress_subscribers_on_upload(self):
         subscriber = RecordingSubscriber()
         transfer_manager = self.create_transfer_manager(self.config)

@@ -168,8 +168,9 @@ class TransferManager(object):
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
         """Uploads a file to S3
 
-        :type fileobj: str
-        :param fileobj: The name of a file to upload.
+        :type fileobj: str or seekable file-like object
+        :param fileobj: The name of a file to upload or a seekable file-like
+            object to upload.
 
         :type bucket: str
         :param bucket: The name of the bucket to upload to

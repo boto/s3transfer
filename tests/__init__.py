@@ -197,6 +197,12 @@ class BaseTaskTest(StubbedClientTest):
             kwargs['transfer_coordinator'] = self.transfer_coordinator
         return task_cls(**kwargs)
 
+    def get_transfer_future(self, call_args=None):
+        return TransferFuture(
+            meta=TransferMeta(call_args),
+            coordinator=self.transfer_coordinator
+        )
+
 
 class BaseSubmissionTaskTest(BaseTaskTest):
     def setUp(self):
@@ -208,12 +214,6 @@ class BaseSubmissionTaskTest(BaseTaskTest):
     def tearDown(self):
         super(BaseSubmissionTaskTest, self).tearDown()
         self.executor.shutdown()
-
-    def get_transfer_future(self, call_args=None):
-        return TransferFuture(
-            meta=TransferMeta(call_args),
-            coordinator=self.transfer_coordinator
-        )
 
 
 class BaseGeneralInterfaceTest(StubbedClientTest):

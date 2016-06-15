@@ -14,11 +14,15 @@ import os
 import tempfile
 import shutil
 
-import mock
+from botocore.stub import ANY
 
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
+from tests import RecordingSubscriber
+from s3transfer.manager import TransferConfig
+from s3transfer.upload import UploadFilenameInputManager
+from s3transfer.upload import UploadSeekableInputManager
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
@@ -32,9 +36,9 @@ class OSUtilsExceptionOnFileSize(OSUtils):
             "The file %s should not have been stated" % filename)
 
 
-class BaseUploadTaskTest(BaseTaskTest):
+class BaseUploadTest(BaseTaskTest):
     def setUp(self):
-        super(BaseUploadTaskTest, self).setUp()
+        super(BaseUploadTest, self).setUp()
         self.bucket = 'mybucket'
         self.key = 'foo'
         self.osutil = OSUtils()
@@ -42,6 +46,7 @@ class BaseUploadTaskTest(BaseTaskTest):
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
         self.content = b'my content'
+        self.subscribers = []
 
         with open(self.filename, 'wb') as f:
             f.write(self.content)
@@ -53,12 +58,119 @@ class BaseUploadTaskTest(BaseTaskTest):
             'before-parameter-build.s3.*', self.collect_body)
 
     def tearDown(self):
-        super(BaseUploadTaskTest, self).tearDown()
+        super(BaseUploadTest, self).tearDown()
         shutil.rmtree(self.tempdir)
 
     def collect_body(self, params, **kwargs):
         if 'Body' in params:
             self.sent_bodies.append(params['Body'].read())
+
+
+class BaseUploadInputManagerTest(BaseUploadTest):
+    def setUp(self):
+        super(BaseUploadInputManagerTest, self).setUp()
+        self.osutil = OSUtils()
+        self.config = TransferConfig()
+        self.recording_subscriber = RecordingSubscriber()
+        self.subscribers.append(self.recording_subscriber)
+
+    def _get_expected_body_for_part(self, part_number):
+        # A helper method for retrieving the expected body for a specific
+        # part number of the data
+        total_size = len(self.content)
+        chunk_size = self.config.multipart_chunksize
+        start_index = (part_number - 1) * chunk_size
+        end_index = part_number * chunk_size
+        if end_index >= total_size:
+            return self.content[start_index:]
+        return self.content[start_index:end_index]
+
+
+class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
+    def setUp(self):
+        super(TestUploadFilenameInputManager, self).setUp()
+        self.upload_input_manager = UploadFilenameInputManager(self.osutil)
+        self.call_args = CallArgs(
+            fileobj=self.filename, subscribers=self.subscribers)
+        self.future = self.get_transfer_future(self.call_args)
+
+    def test_is_compatible(self):
+        self.assertTrue(
+            self.upload_input_manager.is_compatible(
+                self.future.meta.call_args.fileobj)
+        )
+
+    def test_provide_transfer_size(self):
+        self.upload_input_manager.provide_transfer_size(self.future)
+        # The provided file size should be equal to size of the contents of
+        # the file.
+        self.assertEqual(self.future.meta.size, len(self.content))
+
+    def test_requires_multipart_upload(self):
+        self.future.meta.provide_transfer_size(len(self.content))
+        # With the default multipart threshold, the length of the content
+        # should be smaller than the threshold thus not requiring a multipart
+        # transfer.
+        self.assertFalse(
+            self.upload_input_manager.requires_multipart_upload(
+                self.future, self.config))
+        # Decreasing the threshold to that of the length of the content of
+        # the file should trigger the need for a multipart upload.
+        self.config.multipart_threshold = len(self.content)
+        self.assertTrue(
+            self.upload_input_manager.requires_multipart_upload(
+                self.future, self.config))
+
+    def test_get_put_object_body(self):
+        self.future.meta.provide_transfer_size(len(self.content))
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future)
+        read_file_chunk.enable_callback()
+        # The file-like object provided back should be the same as the content
+        # of the file.
+        self.assertEqual(read_file_chunk.read(), self.content)
+        # The file-like object should also have been wrapped with the
+        # on_queued callbacks to track the amount of bytes being transferred.
+        self.assertEqual(
+            self.recording_subscriber.calculate_bytes_seen(),
+            len(self.content))
+
+    def test_yield_upload_part_bodies(self):
+        # Adjust the chunk size to something more grainular for testing.
+        self.config.multipart_chunksize = 4
+        self.future.meta.provide_transfer_size(len(self.content))
+
+        # Get an iterator that will yield all of the bodies and their
+        # respective part number.
+        part_iterator = self.upload_input_manager.yield_upload_part_bodies(
+            self.future, self.config)
+        expected_part_number = 1
+        for part_number, read_file_chunk in part_iterator:
+            # Ensure that the part number is as expected
+            self.assertEqual(part_number, expected_part_number)
+            read_file_chunk.enable_callback()
+            # Ensure that the body is correct for that part.
+            self.assertEqual(
+                read_file_chunk.read(),
+                self._get_expected_body_for_part(part_number))
+            expected_part_number += 1
+
+        # All of the file-like object should also have been wrapped with the
+        # on_queued callbacks to track the amount of bytes being transferred.
+        self.assertEqual(
+            self.recording_subscriber.calculate_bytes_seen(),
+            len(self.content))
+
+
+class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
+    def setUp(self):
+        super(TestUploadSeekableInputManager, self).setUp()
+        self.upload_input_manager = UploadSeekableInputManager(self.osutil)
+        self.fileobj = open(self.filename, 'rb')
+        self.addCleanup(self.fileobj.close)
+        self.call_args = CallArgs(
+            fileobj=self.fileobj, subscribers=self.subscribers)
+        self.future = self.get_transfer_future(self.call_args)
 
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):
@@ -117,7 +229,7 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
             method='put_object',
             service_response={},
             expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket,
+                'Body': ANY, 'Bucket': self.bucket,
                 'Key': self.key
             }
         )
@@ -134,66 +246,62 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         self.assertEqual(self.sent_bodies, [self.content])
 
 
-class TestPutObjectTask(BaseUploadTaskTest):
+class TestPutObjectTask(BaseUploadTest):
     def test_main(self):
         extra_args = {'Metadata': {'foo': 'bar'}}
-        task = self.get_task(
-            PutObjectTask,
-            main_kwargs={
-                'client': self.client,
-                'fileobj': self.filename,
-                'bucket': self.bucket,
-                'key': self.key,
-                'extra_args': extra_args,
-                'osutil': self.osutil,
-                'size': len(self.content),
-                'progress_callbacks': []
-            }
-        )
-        self.stubber.add_response(
-            method='put_object',
-            service_response={},
-            expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
-                'Metadata': {'foo': 'bar'}
-            }
-        )
-        task()
-        self.stubber.assert_no_pending_responses()
-        self.assertEqual(self.sent_bodies, [self.content])
+        with open(self.filename, 'rb') as fileobj:
+            task = self.get_task(
+                PutObjectTask,
+                main_kwargs={
+                    'client': self.client,
+                    'fileobj': fileobj,
+                    'bucket': self.bucket,
+                    'key': self.key,
+                    'extra_args': extra_args
+                }
+            )
+            self.stubber.add_response(
+                method='put_object',
+                service_response={},
+                expected_params={
+                    'Body': ANY, 'Bucket': self.bucket, 'Key': self.key,
+                    'Metadata': {'foo': 'bar'}
+                }
+            )
+            task()
+            self.stubber.assert_no_pending_responses()
+            self.assertEqual(self.sent_bodies, [self.content])
 
 
-class TestUploadPartTask(BaseUploadTaskTest):
+class TestUploadPartTask(BaseUploadTest):
     def test_main(self):
         extra_args = {'RequestPayer': 'requester'}
         upload_id = 'my-id'
         part_number = 1
         etag = 'foo'
-        task = self.get_task(
-            UploadPartTask,
-            main_kwargs={
-                'client': self.client,
-                'fileobj': self.filename,
-                'bucket': self.bucket,
-                'key': self.key,
-                'upload_id': upload_id,
-                'part_number': part_number,
-                'extra_args': extra_args,
-                'osutil': self.osutil,
-                'part_size': len(self.content),
-                'progress_callbacks': []
-            }
-        )
-        self.stubber.add_response(
-            method='upload_part',
-            service_response={'ETag': etag},
-            expected_params={
-                'Body': mock.ANY, 'Bucket': self.bucket, 'Key': self.key,
-                'UploadId': upload_id, 'PartNumber': part_number,
-                'RequestPayer': 'requester'
-            }
-        )
-        rval = task()
-        self.stubber.assert_no_pending_responses()
-        self.assertEqual(rval, {'ETag': etag, 'PartNumber': part_number})
-        self.assertEqual(self.sent_bodies, [self.content])
+        with open(self.filename, 'rb') as fileobj:
+            task = self.get_task(
+                UploadPartTask,
+                main_kwargs={
+                    'client': self.client,
+                    'fileobj': fileobj,
+                    'bucket': self.bucket,
+                    'key': self.key,
+                    'upload_id': upload_id,
+                    'part_number': part_number,
+                    'extra_args': extra_args
+                }
+            )
+            self.stubber.add_response(
+                method='upload_part',
+                service_response={'ETag': etag},
+                expected_params={
+                    'Body': ANY, 'Bucket': self.bucket, 'Key': self.key,
+                    'UploadId': upload_id, 'PartNumber': part_number,
+                    'RequestPayer': 'requester'
+                }
+            )
+            rval = task()
+            self.stubber.assert_no_pending_responses()
+            self.assertEqual(rval, {'ETag': etag, 'PartNumber': part_number})
+            self.assertEqual(self.sent_bodies, [self.content])

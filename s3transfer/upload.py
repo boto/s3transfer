@@ -14,6 +14,7 @@ import math
 
 from botocore.compat import six
 
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
@@ -407,7 +408,7 @@ class UploadSubmissionTask(SubmissionTask):
     def _get_upload_future_tag(self, upload_input_manager, operation_name):
         future_tag = None
         if upload_input_manager.stores_body_in_memory(operation_name):
-            future_tag = 'in_memory_upload'
+            future_tag = IN_MEMORY_UPLOAD_TAG
         return future_tag
 
 

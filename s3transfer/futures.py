@@ -297,12 +297,12 @@ class BoundedExecutor(object):
         """
         self._max_num_threads = max_num_threads
         self._executor = self.EXECUTOR_CLS(max_workers=self._max_num_threads)
-        self._tags_to_track = ['all']
+        self._tags_to_track = [ALL_TAG]
         self._max_sizes = {
-            'all': max_size
+            ALL_TAG: max_size
         }
         self._currently_running_futures = {
-            'all': set()
+            ALL_TAG: set()
         }
         if tag_max_sizes:
             for tag, max_size in tag_max_sizes.items():
@@ -339,10 +339,10 @@ class BoundedExecutor(object):
     def _get_tags_to_operate_on(self, tag):
         # No matter the tag provided, each future is included under the 'all'
         # tag to represent its membership in the set of all running futures.
-        tag_to_operate_on = ['all']
+        tag_to_operate_on = [ALL_TAG]
         # Only add the tag to the set of the tags to operate on if the tag
         # is not equal to all and the tag is being tracked for max sizes.
-        if tag != 'all' and tag in self._tags_to_track:
+        if tag is not ALL_TAG and tag in self._tags_to_track:
             tag_to_operate_on.append(tag)
         return tag_to_operate_on
 
@@ -372,3 +372,12 @@ class BoundedExecutor(object):
             # track of how many futures are currently being ran.
             if self._max_sizes[tag] != 0:
                 self._currently_running_futures[tag].add(future)
+
+
+class FutureTag(object):
+    def __init__(self, name):
+        self.name = name
+
+
+ALL_TAG = FutureTag('all')
+IN_MEMORY_UPLOAD_TAG = FutureTag('in_memory_upload')

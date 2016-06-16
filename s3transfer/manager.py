@@ -16,6 +16,7 @@ from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
@@ -161,7 +162,7 @@ class TransferManager(object):
             max_size=self._config.max_request_queue_size,
             max_num_threads=self._config.max_request_concurrency,
             tag_max_sizes={
-                'in_memory_upload': self._config.max_in_memory_upload_chunks
+                IN_MEMORY_UPLOAD_TAG: self._config.max_in_memory_upload_chunks
             }
         )
 

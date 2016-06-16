@@ -21,6 +21,7 @@ from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
 from tests import RecordingExecutor
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
@@ -183,7 +184,7 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def tearDown(self):
         self.fileobj.close()
         super(TestUploadSeekableInputManager, self).tearDown()
-    
+
     def test_stores_bodies_in_memory_upload_part(self):
         self.assertTrue(
             self.upload_input_manager.stores_body_in_memory('upload_part'))
@@ -368,7 +369,7 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         # Make sure tags to limit all of the upload part tasks were
         # were associated when submitted to the executor as these tasks will
         # have chunks of data stored with them in memory.
-        self.assert_tag_value_for_upload_parts('in_memory_upload')
+        self.assert_tag_value_for_upload_parts(IN_MEMORY_UPLOAD_TAG)
 
 
 class TestPutObjectTask(BaseUploadTest):

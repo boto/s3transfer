@@ -22,9 +22,11 @@ from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.download import DownloadFilenameOutputManager
+from s3transfer.download import DownloadSeekableOutputManager
 from s3transfer.download import GetObjectTask
 from s3transfer.download import IOWriteTask
 from s3transfer.download import IORenameFileTask
+from s3transfer.download import CompleteDownloadNOOPTask
 from s3transfer.futures import BoundedExecutor
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
@@ -69,12 +71,10 @@ class CancelledStreamWrapper(object):
         self._count += 1
 
 
-class TestDownloadFilenameOutputManager(BaseTaskTest):
+class BaseDownloadOutputManagerTest(BaseTaskTest):
     def setUp(self):
-        super(TestDownloadFilenameOutputManager, self).setUp()
+        super(BaseDownloadOutputManagerTest, self).setUp()
         self.osutil = OSUtils()
-        self.download_output_manager = DownloadFilenameOutputManager(
-            self.osutil, self.transfer_coordinator)
 
         # Create a file to write to
         self.tempdir = tempfile.mkdtemp()
@@ -84,8 +84,15 @@ class TestDownloadFilenameOutputManager(BaseTaskTest):
         self.future = self.get_transfer_future(self.call_args)
 
     def tearDown(self):
-        super(TestDownloadFilenameOutputManager, self).tearDown()
+        super(BaseDownloadOutputManagerTest, self).tearDown()
         shutil.rmtree(self.tempdir)
+
+
+class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadFilenameOutputManager, self).setUp()
+        self.download_output_manager = DownloadFilenameOutputManager(
+            self.osutil, self.transfer_coordinator)
 
     def test_is_compatible(self):
         self.assertTrue(
@@ -119,6 +126,40 @@ class TestDownloadFilenameOutputManager(BaseTaskTest):
         # the final filename
         with open(self.filename, 'rb') as f:
             self.assertEqual(f.read(), ref_contents)
+
+
+class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadSeekableOutputManager, self).setUp()
+        self.download_output_manager = DownloadSeekableOutputManager(
+            self.osutil, self.transfer_coordinator)
+
+        # Create a fileobj to write to
+        self.fileobj = open(self.filename, 'wb')
+
+        self.call_args = CallArgs(fileobj=self.fileobj)
+        self.future = self.get_transfer_future(self.call_args)
+
+    def tearDown(self):
+        self.fileobj.close()
+        super(TestDownloadSeekableOutputManager, self).tearDown()
+
+    def test_is_compatible(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(self.fileobj))
+
+    def test_get_fileobj_for_io_writes(self):
+        self.assertIs(
+            self.download_output_manager.get_fileobj_for_io_writes(
+                self.future),
+            self.fileobj
+        )
+
+    def test_get_final_io_task(self):
+        self.assertIsInstance(
+            self.download_output_manager.get_final_io_task(),
+            CompleteDownloadNOOPTask
+        )
 
 
 class TestGetObjectTask(BaseTaskTest):

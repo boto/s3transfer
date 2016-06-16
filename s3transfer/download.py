@@ -131,6 +131,27 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
         return f
 
 
+class DownloadSeekableOutputManager(DownloadOutputManager):
+    @classmethod
+    def is_compatible(self, download_target):
+        return (
+            hasattr(download_target, 'seek') and
+            hasattr(download_target, 'tell')
+        )
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        # Return the fileobj provided to the future.
+        return transfer_future.meta.call_args.fileobj
+
+    def get_final_io_task(self):
+        # This task will serve the purpose of signaling when all of the io
+        # writes have finished so done callbacks can be called.
+        return CompleteDownloadNOOPTask(
+            transfer_coordinator=self._transfer_coordinator,
+            is_final=True
+        )
+
+
 class DownloadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute a download"""
 
@@ -146,6 +167,7 @@ class DownloadSubmissionTask(SubmissionTask):
         """
         download_manager_resolver_chain = [
             DownloadFilenameOutputManager,
+            DownloadSeekableOutputManager
         ]
 
         fileobj = transfer_future.meta.call_args.fileobj
@@ -431,3 +453,9 @@ class IORenameFileTask(Task):
     def _main(self, fileobj, final_filename, osutil):
         fileobj.close()
         osutil.rename_file(fileobj.name, final_filename)
+
+
+class CompleteDownloadNOOPTask(Task):
+    """A NOOP task to serve as an indicator that the download is complete"""
+    def _main(self):
+        pass

@@ -145,6 +145,19 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         possible_matches = glob.glob('%s*' % self.filename + os.extsep)
         self.assertEqual(possible_matches, [])
 
+    def test_download_for_fileobj(self):
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+
+        with open(self.filename, 'wb') as f:
+            future = self.manager.download(
+                self.bucket, self.key, f, self.extra_args)
+            future.result()
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
     def test_download_cleanup_on_failure(self):
         self.add_head_object_response()
 

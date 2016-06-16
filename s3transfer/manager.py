@@ -83,14 +83,20 @@ class TransferConfig(object):
             number of exceptions retried by botocore.
 
         :param max_in_memory_upload_chunks: The number of chunks that can
-            be stored in memory at a time for all ongoing uploads. This
-            pertains to chunks of data that need to be stored in memory
+            be stored in memory at a time for all ongoing upload requests.
+            This pertains to chunks of data that need to be stored in memory
             during an upload if the data is sourced from a file-like object.
-            The total expected memory footprint due to in-memory upload
+            The total maximum memory footprint due to a in-memory upload
             chunks is roughly equal to:
 
                 max_in_memory_upload_chunks * multipart_chunksize
+                + max_submission_concurrency * multipart_chunksize
 
+            ``max_submission_concurrency`` has an affect on this value because
+            for each thread pulling data off of a file-like object, they may
+            be waiting with a single read chunk to be submitted for upload
+            because the ``max_in_memory_upload_chunks`` value has been reached
+            by the threads making the upload request.
         """
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize

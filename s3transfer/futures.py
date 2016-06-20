@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from concurrent import futures
+from collections import namedtuple
 import copy
 import logging
 import threading
@@ -342,7 +343,7 @@ class BoundedExecutor(object):
         tag_to_operate_on = [ALL_TAG]
         # Only add the tag to the set of the tags to operate on if the tag
         # is not equal to all and the tag is being tracked for max sizes.
-        if tag is not ALL_TAG and tag in self._tags_to_track:
+        if tag != ALL_TAG and tag in self._tags_to_track:
             tag_to_operate_on.append(tag)
         return tag_to_operate_on
 
@@ -374,10 +375,7 @@ class BoundedExecutor(object):
                 self._currently_running_futures[tag].add(future)
 
 
-class FutureTag(object):
-    def __init__(self, name):
-        self.name = name
-
+FutureTag = namedtuple('FutureTag', ['name'])
 
 ALL_TAG = FutureTag('all')
 IN_MEMORY_UPLOAD_TAG = FutureTag('in_memory_upload')

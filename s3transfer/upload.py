@@ -14,6 +14,7 @@ import math
 
 from botocore.compat import six
 
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
@@ -48,6 +49,21 @@ class UploadInputManager(object):
             otherwise returns False.
         """
         raise NotImplementedError('must implement _is_compatible()')
+
+    def stores_body_in_memory(self, operation_name):
+        """Whether the body it provides are stored in-memory
+
+        :type operation_name: str
+        :param operation_name: The name of the client operation that the body
+            is being used for. Valid operation_names are ``put_object`` and
+            ``upload_part``.
+
+        :rtype: boolean
+        :returns: True if the body returned by the manager will be stored in
+            memory. False if the manager will not directly store the body in
+            memory.
+        """
+        raise NotImplemented('must implement store_body_in_memory()')
 
     def provide_transfer_size(self, transfer_future):
         """Provides the transfer size of an upload
@@ -113,6 +129,9 @@ class UploadFilenameInputManager(UploadInputManager):
     def is_compatible(cls, upload_source):
         return isinstance(upload_source, six.string_types)
 
+    def stores_body_in_memory(self, operation_name):
+        return False
+
     def provide_transfer_size(self, transfer_future):
         transfer_future.meta.provide_transfer_size(
             self._osutil.get_file_size(
@@ -171,6 +190,12 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
         return (
             hasattr(upload_source, 'seek') and hasattr(upload_source, 'tell')
         )
+
+    def stores_body_in_memory(self, operation_name):
+        if operation_name == 'put_object':
+            return False
+        else:
+            return True
 
     def provide_transfer_size(self, transfer_future):
         fileobj = transfer_future.meta.call_args.fileobj
@@ -278,6 +303,10 @@ class UploadSubmissionTask(SubmissionTask):
                                transfer_future, upload_input_manager):
         call_args = transfer_future.meta.call_args
 
+        # Get any tags that need to be associated to the put object task
+        put_object_future_tag = self._get_upload_future_tag(
+            upload_input_manager, 'put_object')
+
         # Submit the request of a single upload.
         self._submit_task(
             request_executor,
@@ -292,7 +321,8 @@ class UploadSubmissionTask(SubmissionTask):
                     'extra_args': call_args.extra_args
                 },
                 is_final=True
-            )
+            ),
+            future_tag=put_object_future_tag
         )
 
     def _submit_multipart_request(self, client, config, osutil,
@@ -318,6 +348,11 @@ class UploadSubmissionTask(SubmissionTask):
         part_futures = []
         extra_part_args = self._extra_upload_part_args(call_args.extra_args)
 
+        # Get any tags that need to be associated to the submitted task
+        # for upload the data
+        upload_part_future_tag = self._get_upload_future_tag(
+            upload_input_manager, 'upload_part')
+
         part_iterator = upload_input_manager.yield_upload_part_bodies(
             transfer_future, config)
 
@@ -338,7 +373,8 @@ class UploadSubmissionTask(SubmissionTask):
                         pending_main_kwargs={
                             'upload_id': create_multipart_future
                         }
-                    )
+                    ),
+                    future_tag=upload_part_future_tag
                 )
             )
 
@@ -368,6 +404,12 @@ class UploadSubmissionTask(SubmissionTask):
             if key in self.UPLOAD_PART_ARGS:
                 upload_parts_args[key] = value
         return upload_parts_args
+
+    def _get_upload_future_tag(self, upload_input_manager, operation_name):
+        future_tag = None
+        if upload_input_manager.stores_body_in_memory(operation_name):
+            future_tag = IN_MEMORY_UPLOAD_TAG
+        return future_tag
 
 
 class PutObjectTask(Task):

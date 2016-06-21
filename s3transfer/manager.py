@@ -16,6 +16,7 @@ from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
@@ -37,7 +38,8 @@ class TransferConfig(object):
                  max_request_queue_size=0,
                  max_submission_queue_size=0,
                  max_io_queue_size=1000,
-                 num_download_attempts=5):
+                 num_download_attempts=5,
+                 max_in_memory_upload_chunks=10):
         """Configurations for the transfer mangager
 
         :param multipart_threshold: The threshold for which multipart
@@ -79,6 +81,22 @@ class TransferConfig(object):
             are already retried by botocore (this default is 5). The
             ``num_download_attempts`` does not take into account the
             number of exceptions retried by botocore.
+
+        :param max_in_memory_upload_chunks: The number of chunks that can
+            be stored in memory at a time for all ongoing upload requests.
+            This pertains to chunks of data that need to be stored in memory
+            during an upload if the data is sourced from a file-like object.
+            The total maximum memory footprint due to a in-memory upload
+            chunks is roughly equal to:
+
+                max_in_memory_upload_chunks * multipart_chunksize
+                + max_submission_concurrency * multipart_chunksize
+
+            ``max_submission_concurrency`` has an affect on this value because
+            for each thread pulling data off of a file-like object, they may
+            be waiting with a single read chunk to be submitted for upload
+            because the ``max_in_memory_upload_chunks`` value has been reached
+            by the threads making the upload request.
         """
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
@@ -88,6 +106,7 @@ class TransferConfig(object):
         self.max_submission_queue_size = max_submission_queue_size
         self.max_io_queue_size = max_io_queue_size
         self.num_download_attempts = num_download_attempts
+        self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
 
 
 class TransferManager(object):
@@ -147,7 +166,10 @@ class TransferManager(object):
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
             max_size=self._config.max_request_queue_size,
-            max_num_threads=self._config.max_request_concurrency
+            max_num_threads=self._config.max_request_concurrency,
+            tag_max_sizes={
+                IN_MEMORY_UPLOAD_TAG: self._config.max_in_memory_upload_chunks
+            }
         )
 
         # The executor responsible for submitting the necessary tasks to
@@ -170,7 +192,8 @@ class TransferManager(object):
 
         :type fileobj: str or seekable file-like object
         :param fileobj: The name of a file to upload or a seekable file-like
-            object to upload.
+            object to upload. It is recommended to use a filename because
+            file-like objects may result in higher memory usage.
 
         :type bucket: str
         :param bucket: The name of the bucket to upload to

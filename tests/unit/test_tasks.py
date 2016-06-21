@@ -19,6 +19,7 @@ from tests import RecordingSubscriber
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from s3transfer.futures import TransferCoordinator
+from s3transfer.futures import BoundedExecutor
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
@@ -80,7 +81,7 @@ class ExceptionSubmissionTask(SubmissionTask):
 class TestSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
         super(TestSubmissionTask, self).setUp()
-        self.executor = futures.ThreadPoolExecutor(5)
+        self.executor = BoundedExecutor(0, 5)
         self.call_args = CallArgs(subscribers=[])
         self.transfer_future = self.get_transfer_future(self.call_args)
         self.main_kwargs = {'transfer_future': self.transfer_future}

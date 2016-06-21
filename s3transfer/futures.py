@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from concurrent import futures
+from collections import namedtuple
 import copy
 import logging
 import threading
@@ -272,7 +273,7 @@ class TransferCoordinator(object):
 class BoundedExecutor(object):
     EXECUTOR_CLS = futures.ThreadPoolExecutor
 
-    def __init__(self, max_size, max_num_threads):
+    def __init__(self, max_size, max_num_threads, tag_max_sizes=None):
         """An executor implentation that has a maximum queued up tasks
 
         The executor will block if the number of tasks that have been
@@ -285,11 +286,30 @@ class BoundedExecutor(object):
 
         :params max_num_threads: The maximum number of threads the executor
             uses.
+
+        :type tag_max_sizes: dict
+        :params tag_max_sizes: A dictionary where the key is the name of the
+            tag and the value is the number of inflight futures can be running
+            with that tag value. For example, a value of  ``{'my_tag': 3}``
+            will ensure that where will be at most three inflight futures
+            tagged with the value ``'my_tag'``. Note that no matter if a future
+            is tagged, the future will be accounted against the executor's
+            ``max_size`` param.
         """
-        self._max_size = max_size
         self._max_num_threads = max_num_threads
         self._executor = self.EXECUTOR_CLS(max_workers=self._max_num_threads)
-        self._currently_running_futures = set()
+        self._tags_to_track = [ALL_TAG]
+        self._max_sizes = {
+            ALL_TAG: max_size
+        }
+        self._currently_running_futures = {
+            ALL_TAG: set()
+        }
+        if tag_max_sizes:
+            for tag, max_size in tag_max_sizes.items():
+                self._tags_to_track.append(tag)
+                self._max_sizes[tag] = max_size
+                self._currently_running_futures[tag] = set()
         self._lock = threading.Lock()
 
     def submit(self, fn, *args, **kwargs):
@@ -297,32 +317,65 @@ class BoundedExecutor(object):
 
         :param fn: The function to call
         :param args: The positional arguments to use to call the function
-        :param kwargs: The keyword arguments to use to call the function
+        :param kwargs: The keyword arguments to use to call the function. You
+            can provide a tag for the submittion by providing the keyword arg
+            ``'future_tag'``.
 
         :returns: The future assocaited to the submitted task
         """
+        tag = kwargs.pop('future_tag', None)
+
         with self._lock:
-            # First determine if there are already too many futures running
-            if self._at_maximum_running_futures():
-                # If there are too many futures running, wait till some
-                # complete and save the remaining running futures as the
-                # next set to wait for.
-                self._currently_running_futures = futures.wait(
-                    self._currently_running_futures,
-                    return_when=futures.FIRST_COMPLETED
-                ).not_done
+            # Wait if there is a maximum reached
+            self._wait_for_futures_to_complete_if_needed(tag)
             # Submit the task to the executor
             future = self._executor.submit(fn, *args, **kwargs)
-            # If the queue is bounded then add the new submitted task
-            # to the list of futures to wait for. If it is not bounded,
-            # then we do not need to store the future as we are not keeping
-            # track of how many futures are currently being ran.
-            if self._max_size is not None:
-                self._currently_running_futures.add(future)
+            # Add the recently added future to the currently running futures
+            self._add_future_to_currently_running(future, tag)
         return future
 
     def shutdown(self, wait=True):
         self._executor.shutdown(wait)
 
-    def _at_maximum_running_futures(self):
-        return len(self._currently_running_futures) == self._max_size
+    def _get_tags_to_operate_on(self, tag):
+        # No matter the tag provided, each future is included under the 'all'
+        # tag to represent its membership in the set of all running futures.
+        tag_to_operate_on = [ALL_TAG]
+        # Only add the tag to the set of the tags to operate on if the tag
+        # is not equal to all and the tag is being tracked for max sizes.
+        if tag != ALL_TAG and tag in self._tags_to_track:
+            tag_to_operate_on.append(tag)
+        return tag_to_operate_on
+
+    def _at_maximum_running_futures(self, tag):
+        return len(self._currently_running_futures[tag]) == \
+            self._max_sizes[tag]
+
+    def _wait_for_futures_to_complete_if_needed(self, tag):
+        tags_to_wait_on = self._get_tags_to_operate_on(tag)
+        for tag in tags_to_wait_on:
+            # First determine if there are already too many futures running
+            if self._at_maximum_running_futures(tag):
+                # If there are too many futures running, wait till some
+                # complete and save the remaining running futures as the
+                # next set to wait for.
+                self._currently_running_futures[tag] = futures.wait(
+                        self._currently_running_futures[tag],
+                        return_when=futures.FIRST_COMPLETED
+                ).not_done
+
+    def _add_future_to_currently_running(self, future, tag):
+        tags_to_add_future_to = self._get_tags_to_operate_on(tag)
+        for tag in tags_to_add_future_to:
+            # If the queue is bounded then add the new submitted task
+            # to the list of futures to wait for. If it is not bounded,
+            # then we do not need to store the future as we are not keeping
+            # track of how many futures are currently being ran.
+            if self._max_sizes[tag] != 0:
+                self._currently_running_futures[tag].add(future)
+
+
+FutureTag = namedtuple('FutureTag', ['name'])
+
+ALL_TAG = FutureTag('all')
+IN_MEMORY_UPLOAD_TAG = FutureTag('in_memory_upload')

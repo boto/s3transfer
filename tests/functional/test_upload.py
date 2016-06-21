@@ -275,6 +275,39 @@ class TestMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_upload_part_bodies_were_correct()
 
+    def test_limits_in_memory_chunks_for_fileobj(self):
+        # Limit the maximum in memory chunks to one but make number of
+        # threads more than one. This means that the upload will have to
+        # happen sequentially despite having many threads available because
+        # data is sequentially partitioned into chunks in memory and since
+        # there can only every be one in memory chunk, each upload part will
+        # have to happen one at a time.
+        self.config.max_request_concurrency = 10
+        self.config.max_in_memory_upload_chunks = 1
+        self._manager = TransferManager(self.client, self.config)
+
+        # Add some default stubbed responses.
+        # These responses are added in order of part number so if the
+        # multipart upload is not done sequentially, which it should because
+        # we limit the in memory upload chunks to one, the stubber will
+        # raise exceptions for mismatching parameters for partNumber when
+        # once the upload() method is called on the transfer manager.
+        # If there is a mismatch, the stubber error will propogate on
+        # the future.result()
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
+        with open(self.filename, 'rb') as f:
+            future = self.manager.upload(
+                f, self.bucket, self.key, self.extra_args)
+            future.result()
+
+        # Make sure that the stubber had all of its stubbed responses consumed.
+        self.assert_expected_client_calls_were_correct()
+        # Ensure the contents were uploaded in sequentially order by checking
+        # the sent contents were in order.
+        self.assert_upload_part_bodies_were_correct()
+
     def test_upload_failure_invokes_abort(self):
         self.stubber.add_response(
             method='create_multipart_upload',

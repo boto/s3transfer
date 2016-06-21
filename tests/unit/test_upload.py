@@ -20,6 +20,8 @@ from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
+from tests import RecordingExecutor
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
@@ -100,6 +102,14 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
                 self.future.meta.call_args.fileobj)
         )
 
+    def test_stores_bodies_in_memory_put_object(self):
+        self.assertFalse(
+            self.upload_input_manager.stores_body_in_memory('put_object'))
+
+    def test_stores_bodies_in_memory_upload_part(self):
+        self.assertFalse(
+            self.upload_input_manager.stores_body_in_memory('upload_part'))
+
     def test_provide_transfer_size(self):
         self.upload_input_manager.provide_transfer_size(self.future)
         # The provided file size should be equal to size of the contents of
@@ -175,6 +185,10 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
         self.fileobj.close()
         super(TestUploadSeekableInputManager, self).tearDown()
 
+    def test_stores_bodies_in_memory_upload_part(self):
+        self.assertTrue(
+            self.upload_input_manager.stores_body_in_memory('upload_part'))
+
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
@@ -226,6 +240,46 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         default_call_args.update(kwargs)
         return CallArgs(**default_call_args)
 
+    def add_multipart_upload_stubbed_responses(self):
+        self.stubber.add_response(
+            method='create_multipart_upload',
+            service_response={'UploadId': 'my-id'}
+        )
+        self.stubber.add_response(
+            method='upload_part',
+            service_response={'ETag': 'etag-1'}
+        )
+        self.stubber.add_response(
+            method='upload_part',
+            service_response={'ETag': 'etag-2'}
+        )
+        self.stubber.add_response(
+            method='upload_part',
+            service_response={'ETag': 'etag-3'}
+        )
+        self.stubber.add_response(
+            method='complete_multipart_upload',
+            service_response={}
+        )
+
+    def wrap_executor_in_recorder(self):
+        self.executor = RecordingExecutor(self.executor)
+        self.submission_main_kwargs['request_executor'] = self.executor
+
+    def use_fileobj_in_call_args(self, fileobj):
+        self.call_args = self.get_call_args(fileobj=fileobj)
+        self.transfer_future = self.get_transfer_future(self.call_args)
+        self.submission_main_kwargs['transfer_future'] = self.transfer_future
+
+    def assert_tag_value_for_put_object(self, tag_value):
+        self.assertEqual(
+            self.executor.submissions[0]['kwargs']['future_tag'], tag_value)
+
+    def assert_tag_value_for_upload_parts(self, tag_value):
+        for submission in self.executor.submissions[1:-1]:
+            self.assertEqual(
+                submission['kwargs']['future_tag'], tag_value)
+
     def test_provide_file_size_on_put(self):
         self.call_args.subscribers.append(FileSizeProvider(len(self.content)))
         self.stubber.add_response(
@@ -247,6 +301,75 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         self.transfer_future.result()
         self.stubber.assert_no_pending_responses()
         self.assertEqual(self.sent_bodies, [self.content])
+
+    def test_submits_no_tag_for_put_object_filename(self):
+        self.wrap_executor_in_recorder()
+        self.stubber.add_response('put_object', {})
+
+        self.submission_task = self.get_task(
+            UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+        self.submission_task()
+        self.transfer_future.result()
+        self.stubber.assert_no_pending_responses()
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_value_for_put_object(None)
+
+    def test_submits_no_tag_for_multipart_filename(self):
+        self.wrap_executor_in_recorder()
+
+        # Set up for a multipart upload.
+        self.add_multipart_upload_stubbed_responses()
+        self.config.multipart_threshold = 1
+        self.config.multipart_chunksize = 4
+
+        self.submission_task = self.get_task(
+            UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+        self.submission_task()
+        self.transfer_future.result()
+        self.stubber.assert_no_pending_responses()
+
+        # Make sure no tag to limit any of the upload part tasks were
+        # were associated when submitted to the executor
+        self.assert_tag_value_for_upload_parts(None)
+
+    def test_submits_no_tag_for_put_object_fileobj(self):
+        self.wrap_executor_in_recorder()
+        self.stubber.add_response('put_object', {})
+
+        with open(self.filename, 'rb') as f:
+            self.use_fileobj_in_call_args(f)
+            self.submission_task = self.get_task(
+                UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+            self.submission_task()
+            self.transfer_future.result()
+            self.stubber.assert_no_pending_responses()
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_value_for_put_object(None)
+
+    def test_submits_tag_for_multipart_fileobj(self):
+        self.wrap_executor_in_recorder()
+
+        # Set up for a multipart upload.
+        self.add_multipart_upload_stubbed_responses()
+        self.config.multipart_threshold = 1
+        self.config.multipart_chunksize = 4
+
+        with open(self.filename, 'rb') as f:
+            self.use_fileobj_in_call_args(f)
+            self.submission_task = self.get_task(
+                UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+            self.submission_task()
+            self.transfer_future.result()
+            self.stubber.assert_no_pending_responses()
+
+        # Make sure tags to limit all of the upload part tasks were
+        # were associated when submitted to the executor as these tasks will
+        # have chunks of data stored with them in memory.
+        self.assert_tag_value_for_upload_parts(IN_MEMORY_UPLOAD_TAG)
 
 
 class TestPutObjectTask(BaseUploadTest):

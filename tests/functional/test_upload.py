@@ -287,8 +287,13 @@ class TestMultipartUpload(BaseUploadTest):
         self._manager = TransferManager(self.client, self.config)
 
         # Add some default stubbed responses.
-        # Note that these defaults assume that the stubbed responses happen
-        # in sequential order which is what we want.
+        # These responses are added in order of part number so if the
+        # multipart upload is not done sequentially, which it should because
+        # we limit the in memory upload chunks to one, the stubber will
+        # raise exceptions for mismatching parameters for partNumber when
+        # once the upload() method is called on the transfer manager.
+        # If there is a mismatch, the stubber error will propogate on
+        # the future.result()
         self.add_create_multipart_response_with_default_expected_params()
         self.add_upload_part_responses_with_default_expected_params()
         self.add_complete_multipart_response_with_default_expected_params()
@@ -296,8 +301,11 @@ class TestMultipartUpload(BaseUploadTest):
             future = self.manager.upload(
                 f, self.bucket, self.key, self.extra_args)
             future.result()
-        # Ensure the contents and client calls were as expected.
+
+        # Make sure that the stubber had all of its stubbed responses consumed.
         self.assert_expected_client_calls_were_correct()
+        # Ensure the contents were uploaded in sequentially order by checking
+        # the sent contents were in order.
         self.assert_upload_part_bodies_were_correct()
 
     def test_upload_failure_invokes_abort(self):

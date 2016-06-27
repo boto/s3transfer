@@ -148,6 +148,13 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
         self.assertTrue(
             self.download_output_manager.is_compatible(self.fileobj))
 
+    def test_is_compatible_bytes_io(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(six.BytesIO()))
+
+    def test_not_compatible_for_non_filelike_obj(self):
+        self.assertFalse(self.download_output_manager.is_compatible(object()))
+
     def test_get_fileobj_for_io_writes(self):
         self.assertIs(
             self.download_output_manager.get_fileobj_for_io_writes(

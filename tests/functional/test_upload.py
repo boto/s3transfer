@@ -21,6 +21,7 @@ from botocore.stub import ANY
 
 from tests import BaseGeneralInterfaceTest
 from tests import RecordingSubscriber
+from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
 
@@ -140,6 +141,15 @@ class TestNonMultipartUpload(BaseUploadTest):
             future = self.manager.upload(
                 f, self.bucket, self.key, self.extra_args)
             future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
+
+    def test_upload_for_seekable_filelike_obj(self):
+        self.add_put_object_response_with_default_expected_params()
+        bytes_io = six.BytesIO(self.content)
+        future = self.manager.upload(
+            bytes_io, self.bucket, self.key, self.extra_args)
+        future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
 
@@ -272,6 +282,17 @@ class TestMultipartUpload(BaseUploadTest):
             future = self.manager.upload(
                 f, self.bucket, self.key, self.extra_args)
             future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_upload_part_bodies_were_correct()
+
+    def test_upload_for_seekable_filelike_obj(self):
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
+        bytes_io = six.BytesIO(self.content)
+        future = self.manager.upload(
+            bytes_io, self.bucket, self.key, self.extra_args)
+        future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_upload_part_bodies_were_correct()
 

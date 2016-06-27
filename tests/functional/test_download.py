@@ -158,6 +158,22 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
 
+    def test_download_for_seekable_filelike_obj(self):
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+
+        # Create a file-like object to test. In this case, it is a BytesIO
+        # object.
+        bytes_io = six.BytesIO()
+
+        future = self.manager.download(
+            self.bucket, self.key, bytes_io, self.extra_args)
+        future.result()
+
+        # Ensure that the contents are correct
+        bytes_io.seek(0)
+        self.assertEqual(self.content, bytes_io.read())
+
     def test_download_cleanup_on_failure(self):
         self.add_head_object_response()
 

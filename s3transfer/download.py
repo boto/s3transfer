@@ -82,6 +82,11 @@ class DownloadOutputManager(object):
     def get_final_io_task(self):
         """Get the final io task to complete the download
 
+        This is needed because based on the architecture of the TransferManager
+        the final tasks will be sent to the IO executor, but the executor
+        needs a final task for it to signal that the transfer is done and
+        all done callbacks can be run.
+
         :rtype: s3transfer.tasks.Task
         :returns: A final task to completed in the io executor
         """
@@ -145,16 +150,14 @@ class DownloadSeekableOutputManager(DownloadOutputManager):
         # This task will serve the purpose of signaling when all of the io
         # writes have finished so done callbacks can be called.
         return CompleteDownloadNOOPTask(
-            transfer_coordinator=self._transfer_coordinator,
-            is_final=True
-        )
+            transfer_coordinator=self._transfer_coordinator)
 
 
 class DownloadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute a download"""
 
     def _get_download_output_manager_cls(self, transfer_future):
-        """Retieves a class for managing output for a download
+        """Retrieves a class for managing output for a download
 
         :type transfer_future: s3transfer.futures.TransferFuture
         :param transfer_future: The transfer future for the request
@@ -454,6 +457,21 @@ class IORenameFileTask(Task):
 
 
 class CompleteDownloadNOOPTask(Task):
-    """A NOOP task to serve as an indicator that the download is complete"""
+    """A NOOP task to serve as an indicator that the download is complete
+
+    Note that the default for is_final is set to True because this should
+    always be the last task.
+    """
+    def __init__(self, transfer_coordinator, main_kwargs=None,
+                 pending_main_kwargs=None, done_callbacks=None,
+                 is_final=True):
+        super(CompleteDownloadNOOPTask, self).__init__(
+            transfer_coordinator=transfer_coordinator,
+            main_kwargs=main_kwargs,
+            pending_main_kwargs=pending_main_kwargs,
+            done_callbacks=done_callbacks,
+            is_final=is_final
+        )
+
     def _main(self):
         pass

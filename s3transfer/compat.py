@@ -59,18 +59,18 @@ def seekable(fileobj):
 
     :returns: True, if seekable. False, otherwise.
     """
-    try:
-        # If the fileobj has a seekable attr, try calling the seekable()
-        # method on it.
-        if hasattr(fileobj, 'seekable'):
-            return fileobj.seekable()
-        # If there is no seekable attr, check if the object can be seeked
-        # or telled. If it can, try to seek to the current position.
-        elif hasattr(fileobj, 'seek') and hasattr(fileobj, 'tell'):
+    # If the fileobj has a seekable attr, try calling the seekable()
+    # method on it.
+    if hasattr(fileobj, 'seekable'):
+        return fileobj.seekable()
+    # If there is no seekable attr, check if the object can be seeked
+    # or telled. If it can, try to seek to the current position.
+    elif hasattr(fileobj, 'seek') and hasattr(fileobj, 'tell'):
+        try:
             fileobj.seek(0, 1)
             return True
-        # Else, the fileobj is not seekable
-        return False
-    except (OSError, IOError):
-        # If an io related error was thrown as well then it is not seekable.
-        return False
+        except (OSError, IOError):
+            # If an io related error was thrown then it is not seekable.
+            return False
+    # Else, the fileobj is not seekable
+    return False

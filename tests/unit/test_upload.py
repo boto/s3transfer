@@ -21,6 +21,7 @@ from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
 from tests import RecordingExecutor
+from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import UploadFilenameInputManager
@@ -184,6 +185,13 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def tearDown(self):
         self.fileobj.close()
         super(TestUploadSeekableInputManager, self).tearDown()
+
+    def test_is_compatible_bytes_io(self):
+        self.assertTrue(
+            self.upload_input_manager.is_compatible(six.BytesIO()))
+
+    def test_not_compatible_for_non_filelike_obj(self):
+        self.assertFalse(self.upload_input_manager.is_compatible(object()))
 
     def test_stores_bodies_in_memory_upload_part(self):
         self.assertTrue(

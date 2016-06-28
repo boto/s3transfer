@@ -12,6 +12,8 @@
 # language governing permissions and limitations under the License.
 import copy
 import os
+import shutil
+import tempfile
 
 from tests import BaseTaskTest
 from tests import StreamWithError
@@ -19,11 +21,15 @@ from tests import FileCreator
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
+from s3transfer.download import DownloadFilenameOutputManager
+from s3transfer.download import DownloadSeekableOutputManager
 from s3transfer.download import GetObjectTask
 from s3transfer.download import IOWriteTask
 from s3transfer.download import IORenameFileTask
+from s3transfer.download import CompleteDownloadNOOPTask
 from s3transfer.futures import BoundedExecutor
 from s3transfer.utils import OSUtils
+from s3transfer.utils import CallArgs
 
 
 class DownloadException(Exception):
@@ -63,6 +69,104 @@ class CancelledStreamWrapper(object):
             self._transfer_coordinator.cancel()
         self._stream.read(*args, **kwargs)
         self._count += 1
+
+
+class BaseDownloadOutputManagerTest(BaseTaskTest):
+    def setUp(self):
+        super(BaseDownloadOutputManagerTest, self).setUp()
+        self.osutil = OSUtils()
+
+        # Create a file to write to
+        self.tempdir = tempfile.mkdtemp()
+        self.filename = os.path.join(self.tempdir, 'myfile')
+
+        self.call_args = CallArgs(fileobj=self.filename)
+        self.future = self.get_transfer_future(self.call_args)
+
+    def tearDown(self):
+        super(BaseDownloadOutputManagerTest, self).tearDown()
+        shutil.rmtree(self.tempdir)
+
+
+class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadFilenameOutputManager, self).setUp()
+        self.download_output_manager = DownloadFilenameOutputManager(
+            self.osutil, self.transfer_coordinator)
+
+    def test_is_compatible(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(self.filename))
+
+    def test_get_fileobj_for_io_writes(self):
+        with self.download_output_manager.get_fileobj_for_io_writes(
+                self.future) as f:
+            # Ensure it is a file like object returned
+            self.assertTrue(hasattr(f, 'read'))
+            self.assertTrue(hasattr(f, 'seek'))
+            # Make sure the name of the file returned is not the same as the
+            # final filename as we should be writing to a temporary file.
+            self.assertNotEqual(f.name, self.filename)
+
+    def test_get_final_io_task(self):
+        ref_contents = b'my_contents'
+        with self.download_output_manager.get_fileobj_for_io_writes(
+                self.future) as f:
+            temp_filename = f.name
+            # Write some data to test that the data gets moved over to the
+            # final location.
+            f.write(ref_contents)
+            final_task = self.download_output_manager.get_final_io_task()
+            # Make sure it is the appropriate task.
+            self.assertIsInstance(final_task, IORenameFileTask)
+            final_task()
+            # Make sure the temp_file gets removed
+            self.assertFalse(os.path.exists(temp_filename))
+        # Make sure what ever was written to the temp file got moved to
+        # the final filename
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(f.read(), ref_contents)
+
+
+class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadSeekableOutputManager, self).setUp()
+        self.download_output_manager = DownloadSeekableOutputManager(
+            self.osutil, self.transfer_coordinator)
+
+        # Create a fileobj to write to
+        self.fileobj = open(self.filename, 'wb')
+
+        self.call_args = CallArgs(fileobj=self.fileobj)
+        self.future = self.get_transfer_future(self.call_args)
+
+    def tearDown(self):
+        self.fileobj.close()
+        super(TestDownloadSeekableOutputManager, self).tearDown()
+
+    def test_is_compatible(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(self.fileobj))
+
+    def test_is_compatible_bytes_io(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(six.BytesIO()))
+
+    def test_not_compatible_for_non_filelike_obj(self):
+        self.assertFalse(self.download_output_manager.is_compatible(object()))
+
+    def test_get_fileobj_for_io_writes(self):
+        self.assertIs(
+            self.download_output_manager.get_fileobj_for_io_writes(
+                self.future),
+            self.fileobj
+        )
+
+    def test_get_final_io_task(self):
+        self.assertIsInstance(
+            self.download_output_manager.get_final_io_task(),
+            CompleteDownloadNOOPTask
+        )
 
 
 class TestGetObjectTask(BaseTaskTest):

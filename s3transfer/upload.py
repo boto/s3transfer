@@ -14,6 +14,7 @@ import math
 
 from botocore.compat import six
 
+from s3transfer.compat import seekable
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
@@ -187,9 +188,7 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
     """Upload utility for am open file object"""
     @classmethod
     def is_compatible(cls, upload_source):
-        return (
-            hasattr(upload_source, 'seek') and hasattr(upload_source, 'tell')
-        )
+        return seekable(upload_source)
 
     def stores_body_in_memory(self, operation_name):
         if operation_name == 'put_object':

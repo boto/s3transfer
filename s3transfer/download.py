@@ -15,11 +15,13 @@ import os
 import socket
 import math
 
+from botocore.compat import six
 from botocore.exceptions import IncompleteReadError
 from botocore.vendored.requests.packages.urllib3.exceptions import \
     ReadTimeoutError
 
 from s3transfer.compat import SOCKET_ERROR
+from s3transfer.compat import seekable
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
@@ -38,8 +40,144 @@ S3_RETRYABLE_ERRORS = (
 )
 
 
+class DownloadOutputManager(object):
+    """Base manager class for handling various types of files for downloads
+
+    This class is typically used for the DownloadSubmissionTask class to help
+    determine the following:
+
+        * Provides the fileobj to write to downloads to
+        * Get a task to complete once everything downloaded has been written
+
+    The answers/implementations differ for the various types of file outputs
+    that may be accepted. All implementations must subclass and override
+    public methods from this class.
+    """
+    def __init__(self, osutil, transfer_coordinator):
+        self._osutil = osutil
+        self._transfer_coordinator = transfer_coordinator
+
+    @classmethod
+    def is_compatible(self, download_target):
+        """Determines if the target for the download is compatible with manager
+
+        :param download_target: The target for which the upload will write
+            data to.
+
+        :returns: True if the manager can handle the type of target specified
+            otherwise returns False.
+        """
+        raise NotImplementedError('must implement is_compatible()')
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        """Get file-like object to use for io writes in the io executor
+
+        :type transfer_future: s3transfer.futures.TransferFuture
+        :param transfer_future: The future associated with upload request
+
+        returns: A file-like object to write to
+        """
+        raise NotImplementedError('must implement get_fileobj_for_io_writes()')
+
+    def get_final_io_task(self):
+        """Get the final io task to complete the download
+
+        This is needed because based on the architecture of the TransferManager
+        the final tasks will be sent to the IO executor, but the executor
+        needs a final task for it to signal that the transfer is done and
+        all done callbacks can be run.
+
+        :rtype: s3transfer.tasks.Task
+        :returns: A final task to completed in the io executor
+        """
+        raise NotImplementedError(
+            'must implement get_final_io_task()')
+
+
+class DownloadFilenameOutputManager(DownloadOutputManager):
+    def __init__(self, osutil, transfer_coordinator):
+        super(DownloadFilenameOutputManager, self).__init__(
+            osutil, transfer_coordinator)
+        self._final_filename = None
+        self._temp_filename = None
+        self._temp_fileobj = None
+
+    @classmethod
+    def is_compatible(self, download_target):
+        return isinstance(download_target, six.string_types)
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        self._final_filename = fileobj
+        self._temp_filename = fileobj + os.extsep + random_file_extension()
+        self._temp_fileobj = self._get_temp_fileobj()
+        return self._temp_fileobj
+
+    def get_final_io_task(self):
+        # A task to rename the file from the temporary file to its final
+        # location is needed. This should be the last task needed to complete
+        # the download.
+        return IORenameFileTask(
+            transfer_coordinator=self._transfer_coordinator,
+            main_kwargs={
+                'fileobj': self._temp_fileobj,
+                'final_filename': self._final_filename,
+                'osutil': self._osutil
+            },
+            is_final=True
+        )
+
+    def _get_temp_fileobj(self):
+        f = self._osutil.open(self._temp_filename, 'wb')
+        # Make sure the file gets closed and we remove the temporary file
+        # if anything goes wrong during the process.
+        self._transfer_coordinator.add_failure_cleanup(f.close)
+        self._transfer_coordinator.add_failure_cleanup(
+            self._osutil.remove_file, self._temp_filename)
+        return f
+
+
+class DownloadSeekableOutputManager(DownloadOutputManager):
+    @classmethod
+    def is_compatible(self, download_target):
+        return seekable(download_target)
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        # Return the fileobj provided to the future.
+        return transfer_future.meta.call_args.fileobj
+
+    def get_final_io_task(self):
+        # This task will serve the purpose of signaling when all of the io
+        # writes have finished so done callbacks can be called.
+        return CompleteDownloadNOOPTask(
+            transfer_coordinator=self._transfer_coordinator)
+
+
 class DownloadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute a download"""
+
+    def _get_download_output_manager_cls(self, transfer_future):
+        """Retrieves a class for managing output for a download
+
+        :type transfer_future: s3transfer.futures.TransferFuture
+        :param transfer_future: The transfer future for the request
+
+        :rtype: class of DownloadOutputManager
+        :returns: The appropriate class to use for managing a specific type of
+            input for downloads.
+        """
+        download_manager_resolver_chain = [
+            DownloadFilenameOutputManager,
+            DownloadSeekableOutputManager
+        ]
+
+        fileobj = transfer_future.meta.call_args.fileobj
+        for download_manager_cls in download_manager_resolver_chain:
+            if download_manager_cls.is_compatible(fileobj):
+                return download_manager_cls
+        raise RuntimeError(
+            'Output %s of type: %s is not supported.' % (
+                fileobj, type(fileobj)))
 
     def _submit(self, client, config, osutil, request_executor, io_executor,
                 transfer_future):
@@ -76,38 +214,32 @@ class DownloadSubmissionTask(SubmissionTask):
             transfer_future.meta.provide_transfer_size(
                 response['ContentLength'])
 
-        # Figure out a temporary filename for the file.
-        temp_filename = (
-            transfer_future.meta.call_args.fileobj + os.extsep +
-            random_file_extension()
-        )
+        download_output_manager = self._get_download_output_manager_cls(
+            transfer_future)(osutil, self._transfer_coordinator)
+
         # If it is greater than threshold do a ranged download, otherwise
         # do a regular GetObject download.
         if transfer_future.meta.size < config.multipart_threshold:
             self._submit_download_request(
                 client, config, osutil, request_executor, io_executor,
-                temp_filename, transfer_future)
+                download_output_manager, transfer_future)
         else:
             self._submit_ranged_download_request(
                 client, config, osutil, request_executor, io_executor,
-                temp_filename, transfer_future)
+                download_output_manager, transfer_future)
 
     def _submit_download_request(self, client, config, osutil,
-                                 request_executor, io_executor, temp_filename,
-                                 transfer_future):
+                                 request_executor, io_executor,
+                                 download_output_manager, transfer_future):
         call_args = transfer_future.meta.call_args
 
-        # Get a handle to the temp file
-        temp_fileobj = self._get_io_file_handle(temp_filename, osutil)
+        # Get a handle to the file that will be used for writing downloaded
+        # contents
+        fileobj = download_output_manager.get_fileobj_for_io_writes(
+            transfer_future)
 
         # Get the needed callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
-
-        # Before starting any tasks for downloads set up a cleanup function
-        # that will make sure that the temporary file always gets
-        # cleaned up.
-        self._transfer_coordinator.add_failure_cleanup(
-            osutil.remove_file, temp_filename)
 
         # Submit the task to download the object.
         download_future = self._submit_task(
@@ -118,7 +250,7 @@ class DownloadSubmissionTask(SubmissionTask):
                     'client': client,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
-                    'fileobj': temp_fileobj,
+                    'fileobj': fileobj,
                     'extra_args': call_args.extra_args,
                     'callbacks': progress_callbacks,
                     'max_attempts': config.num_download_attempts,
@@ -129,30 +261,27 @@ class DownloadSubmissionTask(SubmissionTask):
 
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            osutil, request_executor, io_executor, temp_fileobj,
-            call_args.fileobj, [download_future])
+            request_executor, io_executor, download_output_manager,
+            [download_future])
 
     def _submit_ranged_download_request(self, client, config, osutil,
                                         request_executor, io_executor,
-                                        temp_filename, transfer_future):
+                                        download_output_manager,
+                                        transfer_future):
         call_args = transfer_future.meta.call_args
 
         # Get the needed progress callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
-        # Get a handle to the temp file
-        temp_fileobj = self._get_io_file_handle(temp_filename, osutil)
+        # Get a handle to the file that will be used for writing downloaded
+        # contents
+        fileobj = download_output_manager.get_fileobj_for_io_writes(
+            transfer_future)
 
         # Determine the number of parts
         part_size = config.multipart_chunksize
         num_parts = int(
             math.ceil(transfer_future.meta.size / float(part_size)))
-
-        # Before starting any tasks for downloads set up a cleanup function
-        # that will make sure that the temporary file always gets
-        # cleaned up.
-        self._transfer_coordinator.add_failure_cleanup(
-            osutil.remove_file, temp_filename)
 
         ranged_downloads = []
         for i in range(num_parts):
@@ -174,7 +303,7 @@ class DownloadSubmissionTask(SubmissionTask):
                             'client': client,
                             'bucket': call_args.bucket,
                             'key': call_args.key,
-                            'fileobj': temp_fileobj,
+                            'fileobj': fileobj,
                             'extra_args': extra_args,
                             'callbacks': progress_callbacks,
                             'max_attempts': config.num_download_attempts,
@@ -186,34 +315,22 @@ class DownloadSubmissionTask(SubmissionTask):
             )
         # Send the necessary tasks to complete the download.
         self._complete_download(
-            osutil, request_executor, io_executor, temp_fileobj,
-            call_args.fileobj, ranged_downloads)
+            request_executor, io_executor, download_output_manager,
+            ranged_downloads)
 
-    def _get_io_file_handle(self, filename, osutil):
-        f = osutil.open(filename, 'wb')
-        self._transfer_coordinator.add_failure_cleanup(f.close)
-        return f
+    def _complete_download(self, request_executor, io_executor,
+                           download_output_manager, download_futures):
 
-    def _complete_download(self, osutil, request_executor, io_executor,
-                           fileobj, final_filename, download_futures):
-        # A task to rename the file from the temporary file to its final
-        # location. This should be the last task needed to complete the
-        # download.
-        rename_task = IORenameFileTask(
-            transfer_coordinator=self._transfer_coordinator,
-            main_kwargs={
-                'fileobj': fileobj,
-                'final_filename': final_filename,
-                'osutil': osutil
-            },
-            is_final=True
-        )
-        submit_rename_task = FunctionContainer(
-            self._submit_task, io_executor, rename_task)
+        # Get the final io task that will be placed into the io queue once
+        # all of the other GetObjectTasks have completed.
+        final_task = download_output_manager.get_final_io_task()
+        submit_final_task = FunctionContainer(
+            self._submit_task, io_executor, final_task)
 
         # Submit a task to wait for all of the downloads to complete
         # and submit their downloaded content to the io executor before
-        # submitting the renaming task to the io executor.
+        # submitting the final task to the io executor that ensures that all
+        # of the io tasks have been completed.
         self._submit_task(
             request_executor,
             JoinFuturesTask(
@@ -221,7 +338,7 @@ class DownloadSubmissionTask(SubmissionTask):
                 pending_main_kwargs={
                     'futures_to_wait_on': download_futures
                 },
-                done_callbacks=[submit_rename_task]
+                done_callbacks=[submit_final_task]
             )
         )
 
@@ -337,3 +454,24 @@ class IORenameFileTask(Task):
     def _main(self, fileobj, final_filename, osutil):
         fileobj.close()
         osutil.rename_file(fileobj.name, final_filename)
+
+
+class CompleteDownloadNOOPTask(Task):
+    """A NOOP task to serve as an indicator that the download is complete
+
+    Note that the default for is_final is set to True because this should
+    always be the last task.
+    """
+    def __init__(self, transfer_coordinator, main_kwargs=None,
+                 pending_main_kwargs=None, done_callbacks=None,
+                 is_final=True):
+        super(CompleteDownloadNOOPTask, self).__init__(
+            transfer_coordinator=transfer_coordinator,
+            main_kwargs=main_kwargs,
+            pending_main_kwargs=pending_main_kwargs,
+            done_callbacks=done_callbacks,
+            is_final=is_final
+        )
+
+    def _main(self):
+        pass

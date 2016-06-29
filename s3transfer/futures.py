@@ -14,9 +14,9 @@ from concurrent import futures
 from collections import namedtuple
 import copy
 import logging
-import sys
 import threading
 
+from s3transfer.compat import MAXINT
 from s3transfer.utils import FunctionContainer
 
 
@@ -189,7 +189,7 @@ class TransferCoordinator(object):
         # can be interrupted in python3 so we just wait with the largest
         # possible value integer value, which is on the scale of billions of
         # years...
-        self._done_event.wait(sys.maxint)
+        self._done_event.wait(MAXINT)
 
         # Once done waiting, raise an exception if present or return the
         # final result.

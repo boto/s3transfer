@@ -45,11 +45,13 @@ if six.PY3:
     # In py3 all the socket related errors are in a newly created
     # ConnectionError
     SOCKET_ERROR = ConnectionError
+    MAXINT = None
 else:
     def accepts_kwargs(func):
         return inspect.getargspec(func)[2]
 
     SOCKET_ERROR = socket.error
+    MAXINT = sys.maxint
 
 
 def seekable(fileobj):

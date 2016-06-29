@@ -14,6 +14,7 @@ from concurrent import futures
 from collections import namedtuple
 import copy
 import logging
+import sys
 import threading
 
 from s3transfer.utils import FunctionContainer
@@ -177,22 +178,18 @@ class TransferCoordinator(object):
                 self._exception = exception
                 self._status = 'failed'
 
-    def result(self, sleep_intervals=0.2):
+    def result(self):
         """Waits until TransferFuture is done and returns the result
 
         If the TransferFuture succeeded, it will return the result. If the
         TransferFuture failed, it will raise the exception associated to the
         failure.
-
-        :type sleep_intervals: int or float
-        :param sleep_intervals: The amount of time to sleep each interval
-            while waiting for the transfer to complete.
         """
-        # We add an interval to sleep because we want to allow the wait
-        # to be interrupted just in case a KeyboardInterrupt happened.
-        # Doing a wait() with no time to sleep cannot be interrupted.
-        while not self._done_event.is_set():
-            self._done_event.wait(sleep_intervals)
+        # Doing a wait() with no timeout cannot be interrupted in python2 but
+        # can be interrupted in python3 so we just wait with the largest
+        # possible value integer value, which is on the scale of billions of
+        # years...
+        self._done_event.wait(sys.maxint)
 
         # Once done waiting, raise an exception if present or return the
         # final result.

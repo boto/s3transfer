@@ -24,6 +24,49 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import DeferredOpenFile
 
 
+class InterruptReader(object):
+    """Wrapper that can interrupt reading using an error
+
+    It uses a transfer coordinator to propogate an error if it notices
+    that a read is being made while the file is being read from.
+
+    :type fileobj: file-like obj
+    :param fileobj: The file-like object to read from
+
+    :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+    :param transfer_coordinator: The transfer coordinator to use if the
+        reader needs to be interrupted.
+    """
+    def __init__(self, fileobj, transfer_coordinator):
+        self._fileobj = fileobj
+        self._transfer_coordinator = transfer_coordinator
+
+    def read(self, amount=None):
+        # If there is an exception, then raise the exception.
+        # We raise an error instead of returning no bytes because for
+        # requests where the content length and md5 was sent, it will
+        # cause md5 mismatches and retries as there was no indication that
+        # the stream being read from encountered any issues.
+        if self._transfer_coordinator.exception:
+            raise self._transfer_coordinator.exception
+        return self._fileobj.read(amount)
+
+    def seek(self, where):
+        self._fileobj.seek(where)
+
+    def tell(self):
+        return self._fileobj.tell()
+
+    def close(self):
+        self._fileobj.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
+
+
 class UploadInputManager(object):
     """Base manager class for handling various types of files for uploads
 
@@ -123,8 +166,9 @@ class UploadInputManager(object):
 
 class UploadFilenameInputManager(UploadInputManager):
     """Upload utility for filenames"""
-    def __init__(self, osutil):
+    def __init__(self, osutil, transfer_coordinator):
         self._osutil = osutil
+        self._transfer_coordinator = transfer_coordinator
 
     @classmethod
     def is_compatible(cls, upload_source):
@@ -145,6 +189,12 @@ class UploadFilenameInputManager(UploadInputManager):
         # Get a file-like object for the given input
         fileobj = self._get_put_object_fileobj(
             transfer_future.meta.call_args.fileobj)
+
+        # Wrap fileobj with interrupt reader that will quickly cancel
+        # uploads if needed instead of having to wait for the socket
+        # to completely read all of the data.
+        fileobj = self._wrap_with_interrupt_reader(fileobj)
+
         callbacks = get_callbacks(transfer_future, 'progress')
         size = transfer_future.meta.size
         # Return the file-like object wrapped into a ReadFileChunk to get
@@ -165,11 +215,20 @@ class UploadFilenameInputManager(UploadInputManager):
             fileobj, full_size = self._get_upload_part_fileobj_with_full_size(
                 transfer_future.meta.call_args.fileobj, start_byte=start_byte,
                 part_size=part_size, full_file_size=full_file_size)
+
+            # Wrap fileobj with interrupt reader that will quickly cancel
+            # uploads if needed instead of having to wait for the socket
+            # to completely read all of the data.
+            fileobj = self._wrap_with_interrupt_reader(fileobj)
+
             # Wrap the file-like object into a ReadFileChunk to get progress.
             read_file_chunk = self._osutil.open_file_chunk_reader_from_fileobj(
                 fileobj=fileobj, chunk_size=part_size,
                 full_file_size=full_size, callbacks=callbacks)
             yield part_number, read_file_chunk
+
+    def _wrap_with_interrupt_reader(self, fileobj):
+        return InterruptReader(fileobj, self._transfer_coordinator)
 
     def _get_put_object_fileobj(self, fileobj):
         return DeferredOpenFile(fileobj, 0)
@@ -281,7 +340,7 @@ class UploadSubmissionTask(SubmissionTask):
             transfer request that tasks are being submitted for
         """
         upload_input_manager = self._get_upload_input_manager_cls(
-            transfer_future)(osutil)
+            transfer_future)(osutil, self._transfer_coordinator)
 
         # Determine the size if it was not provided
         if transfer_future.meta.size is None:

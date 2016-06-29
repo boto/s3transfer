@@ -124,6 +124,11 @@ class TransferCoordinator(object):
         self._failure_cleanups_lock = threading.Lock()
 
     @property
+    def exception(self):
+        with self._lock:
+            return self._exception
+
+    @property
     def associated_futures(self):
         """The list of futures associated to the inprogress TransferFuture
 

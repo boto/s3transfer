@@ -24,6 +24,7 @@ from tests import RecordingExecutor
 from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
+from s3transfer.upload import InterruptReader
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
 from s3transfer.upload import UploadSubmissionTask
@@ -31,6 +32,10 @@ from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+
+
+class InterruptionError(Exception):
+    pass
 
 
 class OSUtilsExceptionOnFileSize(OSUtils):
@@ -69,6 +74,33 @@ class BaseUploadTest(BaseTaskTest):
             self.sent_bodies.append(params['Body'].read())
 
 
+class TestInterruptReader(BaseUploadTest):
+    def test_read_raises_exception(self):
+        with open(self.filename, 'rb') as f:
+            reader = InterruptReader(f, self.transfer_coordinator)
+            # Read some bytes to show it can be read.
+            self.assertEqual(reader.read(1), self.content[0:1])
+            # Then set an exception in the transfer coordinator
+            self.transfer_coordinator.set_exception(InterruptionError())
+            # The next read should have the exception propograte
+            with self.assertRaises(InterruptionError):
+                reader.read()
+
+    def test_seek(self):
+        with open(self.filename, 'rb') as f:
+            reader = InterruptReader(f, self.transfer_coordinator)
+            # Ensure it can seek correctly
+            reader.seek(1)
+            self.assertEqual(reader.read(1), self.content[1:2])
+
+    def test_tell(self):
+        with open(self.filename, 'rb') as f:
+            reader = InterruptReader(f, self.transfer_coordinator)
+            # Ensure it can tell correctly
+            reader.seek(1)
+            self.assertEqual(reader.tell(), 1)
+
+
 class BaseUploadInputManagerTest(BaseUploadTest):
     def setUp(self):
         super(BaseUploadInputManagerTest, self).setUp()
@@ -92,7 +124,8 @@ class BaseUploadInputManagerTest(BaseUploadTest):
 class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
     def setUp(self):
         super(TestUploadFilenameInputManager, self).setUp()
-        self.upload_input_manager = UploadFilenameInputManager(self.osutil)
+        self.upload_input_manager = UploadFilenameInputManager(
+            self.osutil, self.transfer_coordinator)
         self.call_args = CallArgs(
             fileobj=self.filename, subscribers=self.subscribers)
         self.future = self.get_transfer_future(self.call_args)
@@ -146,6 +179,18 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
             self.recording_subscriber.calculate_bytes_seen(),
             len(self.content))
 
+    def test_get_put_object_body_is_interruptable(self):
+        self.future.meta.provide_transfer_size(len(self.content))
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future)
+
+        # Set an exception in the transfer coordinator
+        self.transfer_coordinator.set_exception(InterruptionError)
+        # Ensure the returned read file chunk can be interrupted with that
+        # error.
+        with self.assertRaises(InterruptionError):
+            read_file_chunk.read()
+
     def test_yield_upload_part_bodies(self):
         # Adjust the chunk size to something more grainular for testing.
         self.config.multipart_chunksize = 4
@@ -172,11 +217,30 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
             self.recording_subscriber.calculate_bytes_seen(),
             len(self.content))
 
+    def test_yield_upload_part_bodies_are_interruptable(self):
+        # Adjust the chunk size to something more grainular for testing.
+        self.config.multipart_chunksize = 4
+        self.future.meta.provide_transfer_size(len(self.content))
+
+        # Get an iterator that will yield all of the bodies and their
+        # respective part number.
+        part_iterator = self.upload_input_manager.yield_upload_part_bodies(
+            self.future, self.config)
+
+        # Set an exception in the transfer coordinator
+        self.transfer_coordinator.set_exception(InterruptionError)
+        for _, read_file_chunk in part_iterator:
+            # Ensure that each read file chunk yielded can be interrupted
+            # with that error.
+            with self.assertRaises(InterruptionError):
+                read_file_chunk.read()
+
 
 class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def setUp(self):
         super(TestUploadSeekableInputManager, self).setUp()
-        self.upload_input_manager = UploadSeekableInputManager(self.osutil)
+        self.upload_input_manager = UploadSeekableInputManager(
+            self.osutil, self.transfer_coordinator)
         self.fileobj = open(self.filename, 'rb')
         self.call_args = CallArgs(
             fileobj=self.fileobj, subscribers=self.subscribers)

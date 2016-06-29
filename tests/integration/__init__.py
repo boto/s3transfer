@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import botocore.session
+from botocore.exceptions import ClientError
 
 from tests import unittest
 from tests import FileCreator
@@ -57,9 +58,11 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             Key=key)
 
     def object_exists(self, key):
-        self.client.head_object(Bucket=self.bucket_name,
-                                Key=key)
-        return True
+        try:
+            self.client.head_object(Bucket=self.bucket_name, Key=key)
+            return True
+        except ClientError:
+            return False
 
     def create_transfer_manager(self, config=None):
         return TransferManager(self.client, config=config)

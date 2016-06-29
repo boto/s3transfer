@@ -161,6 +161,12 @@ class RecordingSubscriber(BaseSubscriber):
         return amount_seen
 
 
+class TransferCoordinatorWithInterrupt(TransferCoordinator):
+    """Used to inject keyboard interrupts"""
+    def result(self):
+        raise KeyboardInterrupt()
+
+
 class RecordingExecutor(object):
     """A wrapper on an executor to record calls made to submit()
 

@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import CancelledError
 
 from tests import unittest
+from tests import TransferCoordinatorWithInterrupt
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -26,12 +27,6 @@ from s3transfer.utils import FunctionContainer
 
 def return_call_args(*args, **kwargs):
     return args, kwargs
-
-
-class TransferCoordinatorWithInterrupt(TransferCoordinator):
-    """Used to inject keyboard interrupts"""
-    def result(self):
-        raise KeyboardInterrupt()
 
 
 class TestTransferFuture(unittest.TestCase):

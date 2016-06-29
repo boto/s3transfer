@@ -10,8 +10,8 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import copy
 import threading
-import time
 
 from s3transfer.utils import unique_id
 from s3transfer.utils import get_callbacks
@@ -441,7 +441,16 @@ class TransferCoordinatorCanceler(object):
         to complete and cancel all inprogress transfers.
         """
         self._lock = threading.Lock()
-        self._active_transfer_coordinators = set()
+        self._tracked_transfer_coordinators = set()
+
+    @property
+    def tracked_transfer_coordinators(self):
+        """The set of transfer coordinators being tracked"""
+        with self._lock:
+            # We return a copy because the set is mutable and if you were to
+            # iterate over the set, it may be changing in length due to
+            # additions and removals of transfer coordinators.
+            return copy.copy(self._tracked_transfer_coordinators)
 
     def add_transfer_coordinator(self, transfer_coordinator):
         """Adds a transfer coordinator of a transfer to be canceled if needed
@@ -451,7 +460,7 @@ class TransferCoordinatorCanceler(object):
             particular transfer
         """
         with self._lock:
-            self._active_transfer_coordinators.add(transfer_coordinator)
+            self._tracked_transfer_coordinators.add(transfer_coordinator)
 
     def remove_transfer_coordinator(self, transfer_coordinator):
         """Remove a transfer coordinator from cancelation consideration
@@ -464,7 +473,7 @@ class TransferCoordinatorCanceler(object):
             particular transfer
         """
         with self._lock:
-            self._active_transfer_coordinators.remove(transfer_coordinator)
+            self._tracked_transfer_coordinators.remove(transfer_coordinator)
 
     def cancel(self):
         """Cancels all inprogress transfers
@@ -472,23 +481,22 @@ class TransferCoordinatorCanceler(object):
         This cancels the inprogress transfers by calling cancel() on all
         tracked transfer coordinators.
         """
-        with self._lock:
-            for transfer_coordinator in self._active_transfer_coordinators:
-                transfer_coordinator.cancel()
+        for transfer_coordinator in self.tracked_transfer_coordinators:
+            transfer_coordinator.cancel()
 
-    def wait(self, sleep_intervals=0.2):
-        """Wait until there are no more inprogress transfers
-
-        :type sleep_interval: int or float
-        :param sleep_interval: The amount of time to sleep each interval
-            while waiting for all inprogress transfers to complete.
-        """
-        while self._has_inprogress_transfers():
-            time.sleep(sleep_intervals)
-
-    def _has_inprogress_transfers(self):
-        with self._lock:
-            for transfer_coordinator in self._active_transfer_coordinators:
-                if not transfer_coordinator.done():
-                    return True
-            return False
+    def wait(self):
+        """Wait until there are no more inprogress transfers"""
+        try:
+            for transfer_coordinator in self.tracked_transfer_coordinators:
+                transfer_coordinator.result()
+        except KeyboardInterrupt:
+            # If Keyboard interrupt is raised while waiting for
+            # the result, then exit out of the wait and raise the
+            # exception
+            raise
+        except Exception:
+            # A general exception could have been thrown because
+            # of result(). We just want to ignore this and continue
+            # because we at least know that the transfer coordinator
+            # has completed.
+            pass

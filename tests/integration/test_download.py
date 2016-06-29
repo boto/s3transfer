@@ -64,7 +64,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
-        sleep_time = 1
+        sleep_time = 0.5
         try:
             with transfer_manager:
                 start_time = time.time()

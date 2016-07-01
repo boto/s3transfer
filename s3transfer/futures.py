@@ -16,6 +16,7 @@ import copy
 import logging
 import threading
 
+from s3transfer.compat import MAXINT
 from s3transfer.utils import FunctionContainer
 
 
@@ -28,7 +29,7 @@ class TransferFuture(object):
 
         :type meta: TransferMeta
         :param meta: The metadata associated to the request. This object
-            is visible to the requester..
+            is visible to the requester.
 
         :type coordinator: TransferCoordinator
         :param coordinator: The coordinator associated to the request. This
@@ -61,7 +62,14 @@ class TransferFuture(object):
         TransferFuture failed, it will raise the exception associated to the
         failure.
         """
-        return self._coordinator.result()
+        try:
+            # Usually the result() method blocks until the transfer is done,
+            # however if a KeyboardInterrupt is raised we want want to exit
+            # out of this and propogate the exception.
+            return self._coordinator.result()
+        except KeyboardInterrupt as e:
+            self.cancel()
+            raise e
 
     def cancel(self):
         """Cancels the request associated with the TransferFuture"""
@@ -177,7 +185,14 @@ class TransferCoordinator(object):
         TransferFuture failed, it will raise the exception associated to the
         failure.
         """
-        self._done_event.wait()
+        # Doing a wait() with no timeout cannot be interrupted in python2 but
+        # can be interrupted in python3 so we just wait with the largest
+        # possible value integer value, which is on the scale of billions of
+        # years...
+        self._done_event.wait(MAXINT)
+
+        # Once done waiting, raise an exception if present or return the
+        # final result.
         with self._lock:
             if self._exception:
                 raise self._exception

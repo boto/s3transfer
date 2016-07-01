@@ -16,8 +16,8 @@ from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import CancelledError
 
-
 from tests import unittest
+from tests import TransferCoordinatorWithInterrupt
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -33,7 +33,16 @@ class TestTransferFuture(unittest.TestCase):
     def setUp(self):
         self.meta = TransferMeta()
         self.coordinator = TransferCoordinator()
-        self.future = TransferFuture(self.meta, self.coordinator)
+        self.future = self._get_transfer_future()
+
+    def _get_transfer_future(self, **kwargs):
+        components = {
+            'meta': self.meta,
+            'coordinator': self.coordinator,
+        }
+        for component_name, component in kwargs.items():
+            components[component_name] = component
+        return TransferFuture(**components)
 
     def test_meta(self):
         self.assertIs(self.future.meta, self.meta)
@@ -48,6 +57,16 @@ class TestTransferFuture(unittest.TestCase):
         self.coordinator.set_result(result)
         self.coordinator.announce_done()
         self.assertEqual(self.future.result(), result)
+
+    def test_keyboard_interrupt_on_result_does_not_block(self):
+        # This should raise a KeyboardInterrupt when result is called on it.
+        self.coordinator = TransferCoordinatorWithInterrupt()
+        self.future = self._get_transfer_future()
+
+        # result() should not block and immediately raise the keyboard
+        # interrupt exception.
+        with self.assertRaises(KeyboardInterrupt):
+            self.future.result()
 
     def test_cancel(self):
         self.future.cancel()

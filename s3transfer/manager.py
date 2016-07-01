@@ -10,6 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import copy
+import threading
+
 from s3transfer.utils import unique_id
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import disable_upload_callbacks
@@ -162,6 +165,7 @@ class TransferManager(object):
         if config is None:
             self._config = TransferConfig()
         self._osutil = OSUtils()
+        self._coordinator_controller = TransferCoordinatorController()
 
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
@@ -349,9 +353,18 @@ class TransferManager(object):
 
     def _get_future_with_components(self, call_args):
         # Creates a new transfer future along with its components
+        transfer_coordinator = TransferCoordinator()
+        # Track the transfer coordinator for transfers to manage.
+        self._coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
+        # Also make sure that the transfer coordinator is removed once
+        # the transfer completes so it does not stick around in memory.
+        transfer_coordinator.add_done_callback(
+            self._coordinator_controller.remove_transfer_coordinator,
+            transfer_coordinator)
         components = {
             'meta': TransferMeta(call_args),
-            'coordinator': TransferCoordinator()
+            'coordinator': transfer_coordinator
         }
         transfer_future = TransferFuture(**components)
         return transfer_future, components
@@ -378,11 +391,119 @@ class TransferManager(object):
         self._client.meta.events.register_last(
             event_name, enable_upload_callbacks, unique_id=enable_id)
 
-    def shutdown(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *args):
+        cancel = False
+        # If a exception was raised in the context handler, signal to cancel
+        # all of the inprogress futures in the shutdown.
+        if exc_type:
+            cancel = True
+        self.shutdown(cancel)
+
+    def shutdown(self, cancel=False):
         """Shutdown the TransferManager
 
-        It will wait till all requests complete before it complete shuts down.
+        It will wait till all transfers complete before it completely shuts
+        down.
+
+        :type cancel: boolean
+        :param cancel: If True, calls TransferFuture.cancel() for
+            all in-progress in transfers. This is useful if you want the
+            shutdown to happen quicker.
         """
-        self._submission_executor.shutdown()
-        self._request_executor.shutdown()
-        self._io_executor.shutdown()
+        if cancel:
+            # Cancel all in-flight transfers if requested, before waiting
+            # for them to complete.
+            self._coordinator_controller.cancel()
+        try:
+            # Wait until there are no more in-progress transfers. This is
+            # wrapped in a try statement because this can be interrupted
+            # with a KeyboardInterrupt that needs to be caught.
+            self._coordinator_controller.wait()
+        finally:
+            # If not errors were raised in the try block, the cancel should
+            # have no coordinators it needs to run cancel on. If there was
+            # an error raised in the try statement we want to cancel all of
+            # the inflight transfers before shutting down to speed that
+            # process up.
+            self._coordinator_controller.cancel()
+            # Shutdown all of the executors.
+            self._submission_executor.shutdown()
+            self._request_executor.shutdown()
+            self._io_executor.shutdown()
+
+
+class TransferCoordinatorController(object):
+    def __init__(self):
+        """Abstraction to control all transfer coordinators
+
+        This abstraction allows the manager to wait for inprogress transfers
+        to complete and cancel all inprogress transfers.
+        """
+        self._lock = threading.Lock()
+        self._tracked_transfer_coordinators = set()
+
+    @property
+    def tracked_transfer_coordinators(self):
+        """The set of transfer coordinators being tracked"""
+        with self._lock:
+            # We return a copy because the set is mutable and if you were to
+            # iterate over the set, it may be changing in length due to
+            # additions and removals of transfer coordinators.
+            return copy.copy(self._tracked_transfer_coordinators)
+
+    def add_transfer_coordinator(self, transfer_coordinator):
+        """Adds a transfer coordinator of a transfer to be canceled if needed
+
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The transfer coordinator for the
+            particular transfer
+        """
+        with self._lock:
+            self._tracked_transfer_coordinators.add(transfer_coordinator)
+
+    def remove_transfer_coordinator(self, transfer_coordinator):
+        """Remove a transfer coordinator from cancelation consideration
+
+        Typically, this method is invoked by the transfer coordinator itself
+        to remove its self when it completes its transfer.
+
+        :type transfer_coordinator: s3transfer.futures.TransferCoordinator
+        :param transfer_coordinator: The transfer coordinator for the
+            particular transfer
+        """
+        with self._lock:
+            self._tracked_transfer_coordinators.remove(transfer_coordinator)
+
+    def cancel(self):
+        """Cancels all inprogress transfers
+
+        This cancels the inprogress transfers by calling cancel() on all
+        tracked transfer coordinators.
+        """
+        for transfer_coordinator in self.tracked_transfer_coordinators:
+            transfer_coordinator.cancel()
+
+    def wait(self):
+        """Wait until there are no more inprogress transfers
+
+        This will not stop when failures are encountered and not propogate any
+        of these errors from failed transfers, but it can be interrupted with
+        a KeyboardInterrupt.
+        """
+        try:
+            for transfer_coordinator in self.tracked_transfer_coordinators:
+                transfer_coordinator.result()
+        except KeyboardInterrupt:
+            # If Keyboard interrupt is raised while waiting for
+            # the result, then exit out of the wait and raise the
+            # exception
+            raise
+        except Exception:
+            # A general exception could have been thrown because
+            # of result(). We just want to ignore this and continue
+            # because we at least know that the transfer coordinator
+            # has completed.
+            pass

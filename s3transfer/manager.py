@@ -165,7 +165,7 @@ class TransferManager(object):
         if config is None:
             self._config = TransferConfig()
         self._osutil = OSUtils()
-        self._canceler = TransferCoordinatorCanceler()
+        self._coordinator_controller = TransferCoordinatorController()
 
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
@@ -355,11 +355,13 @@ class TransferManager(object):
         # Creates a new transfer future along with its components
         transfer_coordinator = TransferCoordinator()
         # Track the transfer coordinator for transfers to manage.
-        self._canceler.add_transfer_coordinator(transfer_coordinator)
+        self._coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
         # Also make sure that the transfer coordinator is removed once
         # the transfer completes so it does not stick around in memory.
         transfer_coordinator.add_done_callback(
-            self._canceler.remove_transfer_coordinator, transfer_coordinator)
+            self._coordinator_controller.remove_transfer_coordinator,
+            transfer_coordinator)
         components = {
             'meta': TransferMeta(call_args),
             'coordinator': transfer_coordinator
@@ -414,28 +416,28 @@ class TransferManager(object):
         if cancel:
             # Cancel all in-flight transfers if requested, before waiting
             # for them to complete.
-            self._canceler.cancel()
+            self._coordinator_controller.cancel()
         try:
             # Wait until there are no more in-progress transfers. This is
             # wrapped in a try statement because this can be interrupted
             # with a KeyboardInterrupt that needs to be caught.
-            self._canceler.wait()
+            self._coordinator_controller.wait()
         finally:
             # If not errors were raised in the try block, the cancel should
             # have no coordinators it needs to run cancel on. If there was
             # an error raised in the try statement we want to cancel all of
             # the inflight transfers before shutting down to speed that
             # process up.
-            self._canceler.cancel()
+            self._coordinator_controller.cancel()
             # Shutdown all of the executors.
             self._submission_executor.shutdown()
             self._request_executor.shutdown()
             self._io_executor.shutdown()
 
 
-class TransferCoordinatorCanceler(object):
+class TransferCoordinatorController(object):
     def __init__(self):
-        """Abstraction to control the cancelation of all transfers
+        """Abstraction to control all transfer coordinators
 
         This abstraction allows the manager to wait for inprogress transfers
         to complete and cancel all inprogress transfers.

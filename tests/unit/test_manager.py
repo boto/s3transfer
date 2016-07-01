@@ -17,16 +17,16 @@ from concurrent.futures import ThreadPoolExecutor
 from tests import unittest
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.futures import TransferCoordinator
-from s3transfer.manager import TransferCoordinatorCanceler
+from s3transfer.manager import TransferCoordinatorController
 
 
 class FutureResultException(Exception):
     pass
 
 
-class TestTransferCoordinatorCanceler(unittest.TestCase):
+class TestTransferCoordinatorController(unittest.TestCase):
     def setUp(self):
-        self.canceler = TransferCoordinatorCanceler()
+        self.coordinator_controller = TransferCoordinatorController()
 
     def sleep_then_announce_done(self, transfer_coordinator, sleep_time):
         time.sleep(sleep_time)
@@ -39,34 +39,40 @@ class TestTransferCoordinatorCanceler(unittest.TestCase):
     def test_add_transfer_coordinator(self):
         transfer_coordinator = TransferCoordinator()
         # Add the transfer coordinator
-        self.canceler.add_transfer_coordinator(transfer_coordinator)
+        self.coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
         # Ensure that is tracked.
         self.assertEqual(
-            self.canceler.tracked_transfer_coordinators,
+            self.coordinator_controller.tracked_transfer_coordinators,
             set([transfer_coordinator]))
 
     def test_remove_transfer_coordinator(self):
         transfer_coordinator = TransferCoordinator()
         # Add the coordinator
-        self.canceler.add_transfer_coordinator(transfer_coordinator)
+        self.coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
         # Now remove the coordinator
-        self.canceler.remove_transfer_coordinator(transfer_coordinator)
+        self.coordinator_controller.remove_transfer_coordinator(
+            transfer_coordinator)
         # Make sure that it is no longer getting tracked.
-        self.assertEqual(self.canceler.tracked_transfer_coordinators, set())
+        self.assertEqual(
+            self.coordinator_controller.tracked_transfer_coordinators, set())
 
     def test_cancel(self):
         transfer_coordinator = TransferCoordinator()
         # Add the transfer coordinator
-        self.canceler.add_transfer_coordinator(transfer_coordinator)
+        self.coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
         # Cancel with the canceler
-        self.canceler.cancel()
+        self.coordinator_controller.cancel()
         # Check that coordinator got canceled
         self.assert_coordinator_is_cancelled(transfer_coordinator)
 
     def test_wait_for_done_transfer_coordinators(self):
         # Create a coordinator and add it to the canceler
         transfer_coordinator = TransferCoordinator()
-        self.canceler.add_transfer_coordinator(transfer_coordinator)
+        self.coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
 
         sleep_time = 0.02
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -77,7 +83,7 @@ class TestTransferCoordinatorCanceler(unittest.TestCase):
                 self.sleep_then_announce_done, transfer_coordinator,
                 sleep_time)
             # Now call wait to wait for the transfer coordinator to be done.
-            self.canceler.wait()
+            self.coordinator_controller.wait()
             end_time = time.time()
             wait_time = end_time - start_time
         # The time waited should not be less than the time it took to sleep in
@@ -90,12 +96,13 @@ class TestTransferCoordinatorCanceler(unittest.TestCase):
         transfer_coordinator.set_exception(FutureResultException())
         transfer_coordinator.announce_done()
         try:
-            self.canceler.wait()
+            self.coordinator_controller.wait()
         except FutureResultException as e:
             self.fail('%s should not have been raised.' % e)
 
     def test_wait_can_be_interrupted(self):
         inject_interrupt_coordinator = TransferCoordinatorWithInterrupt()
-        self.canceler.add_transfer_coordinator(inject_interrupt_coordinator)
+        self.coordinator_controller.add_transfer_coordinator(
+            inject_interrupt_coordinator)
         with self.assertRaises(KeyboardInterrupt):
-            self.canceler.wait()
+            self.coordinator_controller.wait()

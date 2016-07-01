@@ -487,7 +487,12 @@ class TransferCoordinatorController(object):
             transfer_coordinator.cancel()
 
     def wait(self):
-        """Wait until there are no more inprogress transfers"""
+        """Wait until there are no more inprogress transfers
+
+        This will not stop when failures are encountered and not propogate any
+        of these errors from failed transfers, but it can be interrupted with
+        a KeyboardInterrupt.
+        """
         try:
             for transfer_coordinator in self.tracked_transfer_coordinators:
                 transfer_coordinator.result()

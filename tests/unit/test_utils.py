@@ -13,6 +13,9 @@
 import os.path
 import shutil
 import tempfile
+import threading
+import random
+import time
 
 from tests import unittest
 from tests import RecordingSubscriber
@@ -29,6 +32,8 @@ from s3transfer.utils import OSUtils
 from s3transfer.utils import DeferredOpenFile
 from s3transfer.utils import ReadFileChunk
 from s3transfer.utils import StreamReaderProgress
+from s3transfer.utils import SlidingWindowSemaphore
+from s3transfer.utils import NoResourcesAvailable
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -374,3 +379,230 @@ class TestStreamReaderProgress(BaseUtilsTest):
             original_stream, [self.callback, self.callback])
         self.assertEqual(wrapped.read(), 'foobarbaz')
         self.assertEqual(self.amounts_seen, [9, 9])
+
+
+class TestSlidingWindowSemaphore(unittest.TestCase):
+    # These tests use block=False to tests will fail
+    # instead of hang the test runner in the case of x
+    # incorrect behavior.
+    def test_acquire_release_basic_case(self):
+        sem = SlidingWindowSemaphore(1)
+        # Count is 1
+
+        num = sem.acquire('a', blocking=False)
+        self.assertEqual(num, 0)
+        sem.release('a', 0)
+        # Count now back to 1.
+
+    def test_can_acquire_release_multiple_times(self):
+        sem = SlidingWindowSemaphore(1)
+        num = sem.acquire('a', blocking=False)
+        self.assertEqual(num, 0)
+        sem.release('a', num)
+
+        num = sem.acquire('a', blocking=False)
+        self.assertEqual(num, 1)
+        sem.release('a', num)
+
+    def test_can_acquire_a_range(self):
+        sem = SlidingWindowSemaphore(3)
+        self.assertEqual(sem.acquire('a', blocking=False), 0)
+        self.assertEqual(sem.acquire('a', blocking=False), 1)
+        self.assertEqual(sem.acquire('a', blocking=False), 2)
+        sem.release('a', 0)
+        sem.release('a', 1)
+        sem.release('a', 2)
+        # Now we're reset so we should be able to acquire the same
+        # sequence again.
+        self.assertEqual(sem.acquire('a', blocking=False), 3)
+        self.assertEqual(sem.acquire('a', blocking=False), 4)
+        self.assertEqual(sem.acquire('a', blocking=False), 5)
+        self.assertEqual(sem.current_count(), 0)
+
+
+    def test_counter_release_only_on_min_element(self):
+        sem = SlidingWindowSemaphore(3)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+
+        # The count only increases when we free the min
+        # element.  This means if we're currently failing to
+        # acquire now:
+        with self.assertRaises(NoResourcesAvailable):
+            sem.acquire('a', blocking=False)
+
+        # Then freeing a non-min element:
+        sem.release('a', 1)
+
+        # doesn't change anything.  We still fail to acquire.
+        with self.assertRaises(NoResourcesAvailable):
+            sem.acquire('a', blocking=False)
+        self.assertEqual(sem.current_count(), 0)
+
+    def test_raises_error_when_count_is_zero(self):
+        sem = SlidingWindowSemaphore(3)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+
+        # Count is now 0 so trying to acquire should fail.
+        with self.assertRaises(NoResourcesAvailable):
+            sem.acquire('a', blocking=False)
+
+    def test_release_counters_can_increment_counter_repeatedly(self):
+        sem = SlidingWindowSemaphore(3)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+
+        # These two releases don't increment the counter
+        # because we're waiting on 0.
+        sem.release('a', 1)
+        sem.release('a', 2)
+        self.assertEqual(sem.current_count(), 0)
+        # But as soon as we release 0, we free up 0, 1, and 2.
+        sem.release('a', 0)
+        self.assertEqual(sem.current_count(), 3)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+
+    def test_error_to_release_unknown_tag(self):
+        sem = SlidingWindowSemaphore(3)
+        with self.assertRaises(ValueError):
+            sem.release('a', 0)
+
+    def test_can_track_multiple_tags(self):
+        sem = SlidingWindowSemaphore(3)
+        self.assertEqual(sem.acquire('a', blocking=False), 0)
+        self.assertEqual(sem.acquire('b', blocking=False), 0)
+        self.assertEqual(sem.acquire('a', blocking=False), 1)
+
+        # We're at our max of 3 even though 2 are for A and 1 is for B.
+        with self.assertRaises(NoResourcesAvailable):
+            sem.acquire('a', blocking=False)
+        with self.assertRaises(NoResourcesAvailable):
+            sem.acquire('b', blocking=False)
+
+    def test_can_handle_multiple_tags_released(self):
+        sem = SlidingWindowSemaphore(4)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('b', blocking=False)
+        sem.acquire('b', blocking=False)
+
+        sem.release('b', 1)
+        sem.release('a', 1)
+        self.assertEqual(sem.current_count(), 0)
+
+        sem.release('b', 0)
+        self.assertEqual(sem.acquire('a', blocking=False), 2)
+
+        sem.release('a', 0)
+        self.assertEqual(sem.acquire('b', blocking=False), 2)
+
+    def test_is_error_to_release_unknown_sequence_number(self):
+        sem = SlidingWindowSemaphore(3)
+        sem.acquire('a', blocking=False)
+        with self.assertRaises(ValueError):
+            sem.release('a', 1)
+
+    def test_is_error_to_double_release(self):
+        # This is different than other error tests because
+        # we're verifying we can reset the state after an
+        # acquire/release cycle.
+        sem = SlidingWindowSemaphore(2)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.release('a', 0)
+        sem.release('a', 1)
+        self.assertEqual(sem.current_count(), 2)
+        with self.assertRaises(ValueError):
+            sem.release('a', 0)
+
+    def test_can_check_in_partial_range(self):
+        sem = SlidingWindowSemaphore(4)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+
+        sem.release('a', 1)
+        sem.release('a', 3)
+        sem.release('a', 0)
+        self.assertEqual(sem.current_count(), 2)
+
+
+class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
+    # These tests focus on mutithreaded properties of the range
+    # semaphore.  Basic functionality is tested in TestSlidingWindowSemaphore.
+    def setUp(self):
+        self.threads = []
+
+    def tearDown(self):
+        self.join_threads()
+
+    def join_threads(self):
+        for thread in self.threads:
+            thread.join()
+        self.threads = []
+
+    def start_threads(self):
+        for thread in self.threads:
+            thread.start()
+
+    def test_acquire_blocks_until_release_is_called(self):
+        sem = SlidingWindowSemaphore(2)
+        sem.acquire('a', blocking=False)
+        sem.acquire('a', blocking=False)
+        def acquire():
+            # This next call to acquire will bloc
+            self.assertEqual(sem.acquire('a', blocking=True), 2)
+        t = threading.Thread(target=acquire)
+        self.threads.append(t)
+        # Starting the thread will block the sem.acquire()
+        # in the acquire function above.
+        t.start()
+        # This still will keep the thread blocked.
+        sem.release('a', 1)
+        # Releasing the min element will unblock the therad.
+        sem.release('a', 0)
+        t.join()
+        sem.release('a', 2)
+
+    def test_stress_invariants_random_order(self):
+        sem = SlidingWindowSemaphore(100)
+        for _ in range(10):
+            recorded = []
+            for _ in range(100):
+                recorded.append(sem.acquire('a', blocking=False))
+            # Release them in randomized order.  As long as we
+            # eventually free all 100, we should have all the
+            # resources released.
+            random.shuffle(recorded)
+            for i in recorded:
+                sem.release('a', i)
+
+        # Everything's freed so should be back at count == 100
+        self.assertEqual(sem.current_count(), 100)
+
+    def test_blocking_stress(self):
+        sem = SlidingWindowSemaphore(5)
+        num_threads = 10
+        num_iterations = 50
+        def acquire():
+            for _ in range(num_iterations):
+                num = sem.acquire('a', blocking=True)
+                time.sleep(0.001)
+                sem.release('a', num)
+        for i in range(num_threads):
+            t = threading.Thread(target=acquire)
+            self.threads.append(t)
+        self.start_threads()
+        self.join_threads()
+        # Should have all the available resources freed.
+        self.assertEqual(sem.current_count(), 5)
+        # Should have acquired num_threads * num_iterations
+        self.assertEqual(sem.acquire('a', blocking=False),
+                         num_threads * num_iterations)

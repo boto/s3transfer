@@ -10,6 +10,10 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import time
+
+from concurrent.futures import CancelledError
+
 from tests import RecordingSubscriber
 from tests.integration import BaseTransferManagerIntegTest
 from s3transfer.manager import TransferConfig
@@ -42,6 +46,39 @@ class TestUpload(BaseTransferManagerIntegTest):
 
         future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
+
+    def test_large_upload_exits_quicky_on_exception(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=20 * 1024 * 1024)
+
+        sleep_time = 1
+        try:
+            with transfer_manager:
+                start_time = time.time()
+                future = transfer_manager.upload(
+                    filename, self.bucket_name, '20mb.txt')
+                # Sleep for a little to get the transfer process going
+                time.sleep(sleep_time)
+                # Raise an exception which should cause the preceeding
+                # download to cancel and exit quickly
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+        end_time = time.time()
+        # The maximum time allowed for the transfer manager to exit.
+        # This means that it should take less than a couple second after
+        # sleeping to exit.
+        max_allowed_exit_time = sleep_time + 2
+        self.assertTrue(end_time - start_time < max_allowed_exit_time)
+
+        # Make sure the future was cancelled because of the KeyboardInterrupt
+        with self.assertRaises(CancelledError):
+            future.result()
+
+        # Make sure the object does not exist as well.
+        self.assertFalse(self.object_exists('20mb.txt'))
 
     def test_upload_open_file_below_threshold(self):
         transfer_manager = self.create_transfer_manager(self.config)

@@ -123,6 +123,7 @@ class TestTransferCoordinator(unittest.TestCase):
         # Setting an exception should result in a failed state and the return
         # value should be the rasied exception
         self.assertEqual(self.transfer_coordinator.status, 'failed')
+        self.assertEqual(self.transfer_coordinator.exception, exception_result)
         with self.assertRaises(exception_result):
             self.transfer_coordinator.result()
 

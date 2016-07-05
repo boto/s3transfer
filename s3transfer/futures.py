@@ -125,8 +125,7 @@ class TransferCoordinator(object):
 
     @property
     def exception(self):
-        with self._lock:
-            return self._exception
+        return self._exception
 
     @property
     def associated_futures(self):

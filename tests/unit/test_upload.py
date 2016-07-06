@@ -10,9 +10,11 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+from __future__ import division
 import os
 import tempfile
 import shutil
+import math
 
 from botocore.stub import ANY
 
@@ -21,12 +23,14 @@ from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
 from tests import RecordingExecutor
+from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import InterruptReader
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
+from s3transfer.upload import UploadNonSeekableInputManager
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
@@ -260,6 +264,84 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def test_stores_bodies_in_memory_upload_part(self):
         self.assertTrue(
             self.upload_input_manager.stores_body_in_memory('upload_part'))
+
+
+class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
+    def setUp(self):
+        super(TestUploadNonSeekableInputManager, self).setUp()
+        self.upload_input_manager = UploadNonSeekableInputManager(
+            self.osutil, self.transfer_coordinator)
+        self.fileobj = NonSeekableReader(self.content)
+        self.call_args = CallArgs(
+            fileobj=self.fileobj, subscribers=self.subscribers)
+        self.future = self.get_transfer_future(self.call_args)
+
+    def assert_multipart_parts(self):
+        """
+        Asserts that the input manager will generate a multipart upload
+        and that each part is in order and the correct size.
+        """
+        # Assert that a multipart upload is required.
+        self.assertTrue(
+            self.upload_input_manager.requires_multipart_upload(
+                self.future, self.config))
+
+        # Get a list of all the parts that would be sent.
+        parts = list(self.upload_input_manager.yield_upload_part_bodies(
+            self.future, self.config))
+
+        # Assert that the actual number of parts is what we would expect
+        # based on the configuration.
+        size = self.config.multipart_chunksize
+        num_parts = math.ceil(len(self.content) / size)
+        self.assertEqual(len(parts), num_parts)
+
+        # Run for every part but the last part.
+        for i, part in enumerate(parts[:-1]):
+            # Assert the part number is correct.
+            self.assertEqual(part[0], i + 1)
+            # Assert the part contains the right amount of data.
+            data = part[1].read()
+            self.assertEqual(len(data), size)
+
+        # Assert that the last part is the correct size.
+        expected_final_size = len(self.content) - ((num_parts - 1) * size)
+        final_part = parts[-1]
+        self.assertEqual(len(final_part[1].read()), expected_final_size)
+
+        # Assert that the last part has the correct part number.
+        self.assertEqual(final_part[0], len(parts))
+
+    def test_provide_transfer_size(self):
+        self.upload_input_manager.provide_transfer_size(self.future)
+        # There is no way to get the size without reading the entire body.
+        self.assertEqual(self.future.meta.size, None)
+
+    def test_stores_bodies_in_memory_upload_part(self):
+        self.assertTrue(
+            self.upload_input_manager.stores_body_in_memory('upload_part'))
+
+    def test_stores_bodies_in_memory_put_object(self):
+        self.assertTrue(
+            self.upload_input_manager.stores_body_in_memory('put_object'))
+
+    def test_initial_data_parts_threshold_lesser(self):
+        # threshold < size
+        self.config.multipart_chunksize = 4
+        self.config.multipart_threshold = 2
+        self.assert_multipart_parts()
+
+    def test_initial_data_parts_threshold_equal(self):
+        # threshold == size
+        self.config.multipart_chunksize = 4
+        self.config.multipart_threshold = 4
+        self.assert_multipart_parts()
+
+    def test_initial_data_parts_threshold_greater(self):
+        # threshold > size
+        self.config.multipart_chunksize = 4
+        self.config.multipart_threshold = 8
+        self.assert_multipart_parts()
 
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):

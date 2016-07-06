@@ -14,8 +14,10 @@ import os
 import tempfile
 import shutil
 
+from botocore.compat import six
+
 from tests import unittest
-from s3transfer.compat import seekable
+from s3transfer.compat import seekable, readable
 
 
 class ErrorRaisingSeekWrapper(object):
@@ -60,3 +62,15 @@ class TestSeekable(unittest.TestCase):
         # Should return False if OSError is thrown.
         with open(self.filename, 'w') as f:
             self.assertFalse(seekable(ErrorRaisingSeekWrapper(f, OSError())))
+
+
+class TestReadable(unittest.TestCase):
+    def test_readable_fileobj(self):
+        with tempfile.TemporaryFile() as f:
+            self.assertTrue(readable(f))
+
+    def test_readable_file_like_obj(self):
+        self.assertTrue(readable(six.BytesIO()))
+
+    def test_non_file_like_obj(self):
+        self.assertFalse(readable(object()))

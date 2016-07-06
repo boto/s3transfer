@@ -10,6 +10,7 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import io
 import hashlib
 import math
 import os
@@ -23,6 +24,7 @@ except ImportError:
     import unittest
 import botocore.session
 from botocore.stub import Stubber
+from botocore.compat import six
 
 from s3transfer.manager import TransferConfig
 from s3transfer.futures import TransferCoordinator
@@ -386,3 +388,26 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         self.assertEqual(subscriber.on_queued_calls, [{'future': future}])
         self.assertEqual(subscriber.on_progress_calls, expected_progress_calls)
         self.assertEqual(subscriber.on_done_calls, [{'future': future}])
+
+
+class NonSeekableReader(io.RawIOBase):
+    def __init__(self, b=b''):
+        super(NonSeekableReader, self).__init__()
+        self._data = six.BytesIO(b)
+
+    def seekable(self):
+        return False
+
+    def writable(self):
+        return False
+
+    def readable(self):
+        return True
+
+    def write(self, b):
+        # This is needed because python will not always return the correct
+        # kind of error even though writeable returns False.
+        raise io.UnsupportedOperation("write")
+
+    def read(self, n=-1):
+        return self._data.read(n)

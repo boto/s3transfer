@@ -139,6 +139,23 @@ class FileCreator(object):
         return os.path.join(self.rootdir, filename)
 
 
+class RecordingOSUtils(OSUtils):
+    """An OSUtil abstraction that records openings and renamings"""
+    def __init__(self):
+        super(RecordingOSUtils, self).__init__()
+        self.open_records = []
+        self.rename_records = []
+
+    def open(self, filename, mode):
+        self.open_records.append((filename, mode))
+        return super(RecordingOSUtils, self).open(filename, mode)
+
+    def rename_file(self, current_filename, new_filename):
+        self.rename_records.append((current_filename, new_filename))
+        super(RecordingOSUtils, self).rename_file(
+            current_filename, new_filename)
+
+
 class RecordingSubscriber(BaseSubscriber):
     def __init__(self):
         self.on_queued_calls = []

@@ -21,6 +21,7 @@ from botocore.exceptions import ClientError
 from tests import StreamWithError
 from tests import FileSizeProvider
 from tests import RecordingSubscriber
+from tests import RecordingOSUtils
 from tests import BaseGeneralInterfaceTest
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
@@ -287,6 +288,22 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.stubber.assert_no_pending_responses()
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
+
+    def test_uses_provided_osutil(self):
+        osutil = RecordingOSUtils()
+        # Use the recording os utility for the transfer manager
+        self._manager = TransferManager(self.client, self.config, osutil)
+
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+
+        future = self.manager.download(**self.create_call_kwargs())
+        future.result()
+        # The osutil should have had its open() method invoked when opening
+        # a temporary file and its rename_file() method invoked when the
+        # the temporary file was moved to its final location.
+        self.assertEqual(len(osutil.open_records), 1)
+        self.assertEqual(len(osutil.rename_records), 1)
 
 
 class TestNonRangedDownload(BaseDownloadTest):

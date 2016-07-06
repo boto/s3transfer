@@ -181,13 +181,17 @@ class TestGetObjectTask(BaseTaskTest):
         self.content = b'my content'
         self.stream = six.BytesIO(self.content)
         self.fileobj = WriteCollector()
+        self.osutil = OSUtils()
+        self.download_output_manager = DownloadSeekableOutputManager(
+            self.osutil, self.transfer_coordinator)
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
             'fileobj': self.fileobj, 'extra_args': self.extra_args,
             'callbacks': self.callbacks,
-            'max_attempts': self.max_attempts, 'io_executor': self.io_executor
+            'max_attempts': self.max_attempts, 'io_executor': self.io_executor,
+            'download_output_manager': self.download_output_manager,
         }
         default_kwargs.update(kwargs)
         return self.get_task(GetObjectTask, main_kwargs=default_kwargs)

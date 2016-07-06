@@ -150,6 +150,14 @@ class TestTransferCoordinator(unittest.TestCase):
         # succes is a done state.
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
+    def test_set_result_can_override_cancel(self):
+        self.transfer_coordinator.cancel()
+        # Result setting should override any cancel or set exception as this
+        # is always invoked by the final task.
+        self.transfer_coordinator.set_result('foo')
+        self.transfer_coordinator.announce_done()
+        self.assertEqual(self.transfer_coordinator.status, 'success')
+
     def test_done(self):
         # These should result in not done state:
         # queued

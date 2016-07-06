@@ -165,12 +165,17 @@ class TransferCoordinator(object):
     def set_result(self, result):
         """Set a result for the TransferFuture
 
-        Implies that the TransferFuture succeeded.
+        Implies that the TransferFuture succeeded. This will always set a
+        result because it is invoked on the final task where there is only
+        ever one final task and it is ran at the very end of a transfer
+        process. So if a result is being set for this final task, the transfer
+        succeeded even if something came a long and canceled the transfer
+        on the final task.
         """
-        if not self.done():
-            with self._lock:
-                self._result = result
-                self._status = 'success'
+        with self._lock:
+            self._exception = None
+            self._result = result
+            self._status = 'success'
 
     def set_exception(self, exception):
         """Set an exception for the TransferFuture

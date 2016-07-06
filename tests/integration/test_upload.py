@@ -73,12 +73,15 @@ class TestUpload(BaseTransferManagerIntegTest):
         max_allowed_exit_time = sleep_time + 2
         self.assertTrue(end_time - start_time < max_allowed_exit_time)
 
-        # Make sure the future was cancelled because of the KeyboardInterrupt
-        with self.assertRaises(CancelledError):
+        try:
             future.result()
-
-        # Make sure the object does not exist as well.
-        self.assertFalse(self.object_exists('20mb.txt'))
+            self.skipTest(
+                'Upload completed before interrupted and therefore '
+                'could not cancel the upload')
+        except CancelledError:
+            # If the transfer did get cancelled,
+            # make sure the object does not exist.
+            self.assertFalse(self.object_exists('20mb.txt'))
 
     def test_upload_open_file_below_threshold(self):
         transfer_manager = self.create_transfer_manager(self.config)

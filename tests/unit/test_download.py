@@ -92,7 +92,7 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadFilenameOutputManager, self).setUp()
         self.download_output_manager = DownloadFilenameOutputManager(
-            self.osutil, self.transfer_coordinator)
+            self.osutil, self.transfer_coordinator, io_executor=None)
 
     def test_is_compatible(self):
         self.assertTrue(
@@ -132,7 +132,7 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSeekableOutputManager, self).setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator)
+            self.osutil, self.transfer_coordinator, io_executor=None)
 
         # Create a fileobj to write to
         self.fileobj = open(self.filename, 'wb')
@@ -183,14 +183,14 @@ class TestGetObjectTask(BaseTaskTest):
         self.fileobj = WriteCollector()
         self.osutil = OSUtils()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator)
+            self.osutil, self.transfer_coordinator, self.io_executor)
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
             'fileobj': self.fileobj, 'extra_args': self.extra_args,
             'callbacks': self.callbacks,
-            'max_attempts': self.max_attempts, 'io_executor': self.io_executor,
+            'max_attempts': self.max_attempts,
             'download_output_manager': self.download_output_manager,
         }
         default_kwargs.update(kwargs)

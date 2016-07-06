@@ -53,7 +53,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=20 * 1024 * 1024)
 
-        sleep_time = 1
+        sleep_time = 0.25
         try:
             with transfer_manager:
                 start_time = time.time()

@@ -206,6 +206,7 @@ class TransferCoordinator(object):
         """Cancels the TransferFuture"""
         if not self.done():
             with self._lock:
+                logger.debug('TransferCoordinator cancel() called')
                 self._exception = futures.CancelledError
                 self._status = 'cancelled'
 

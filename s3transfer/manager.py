@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import copy
+import logging
 import threading
 
 from s3transfer.utils import unique_id
@@ -30,6 +31,7 @@ from s3transfer.copies import CopySubmissionTask
 
 
 MB = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class TransferConfig(object):
@@ -497,6 +499,7 @@ class TransferCoordinatorController(object):
             for transfer_coordinator in self.tracked_transfer_coordinators:
                 transfer_coordinator.result()
         except KeyboardInterrupt:
+            logger.debug('Received KeyboardInterrupt in wait()')
             # If Keyboard interrupt is raised while waiting for
             # the result, then exit out of the wait and raise the
             # exception

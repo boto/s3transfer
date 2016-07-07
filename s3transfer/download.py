@@ -14,6 +14,9 @@ import logging
 import os
 import socket
 import math
+import threading
+import heapq
+
 
 from botocore.compat import six
 from botocore.exceptions import IncompleteReadError
@@ -176,6 +179,54 @@ class DownloadSeekableOutputManager(DownloadOutputManager):
 
 
 
+class DownloadNonSeekableOutputManager(DownloadOutputManager):
+    def __init__(self, osutil, transfer_coordinator, io_executor,
+                 defer_queue=None):
+        super(DownloadNonSeekableOutputManager, self).__init__(
+            osutil, transfer_coordinator, io_executor)
+        if defer_queue is None:
+            defer_queue = DeferQueue()
+        self._defer_queue = defer_queue
+        self._io_submit_lock = threading.Lock()
+
+    @classmethod
+    def is_compatible(cls, download_target):
+        # We're lying a bit here.  We actually *are* compatible
+        # with seekable fileobjs, we'll still queue the IO writes
+        # in order.  Technically works, but this is not ideal behavior when you
+        # could just use DownloadSeekableOutputManager.
+        # Perhaps this method makes more sense as "should_use()"
+        return (
+            not seekable(download_target) and
+            hasattr(download_target, 'write')
+        )
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        return transfer_future.meta.call_args.fileobj
+
+    def get_final_io_task(self):
+        return CompleteDownloadNOOPTask(
+            transfer_coordinator=self._transfer_coordinator)
+
+    def queue_file_io_task(self, fileobj, data, offset):
+        with self._io_submit_lock:
+            writes = self._defer_queue.request_writes(offset, data)
+            for write in writes:
+                data = write['data']
+                logger.debug("Queueing IO offset %s for fileobj: %s",
+                            write['offset'], fileobj)
+                future = self._io_executor.submit(
+                    IOStreamingWriteTask(
+                        self._transfer_coordinator,
+                        main_kwargs={
+                            'fileobj': fileobj,
+                            'data': data,
+                        }
+                    )
+                )
+                self._transfer_coordinator.add_associated_future(future)
+
+
 class DownloadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute a download"""
 
@@ -192,6 +243,7 @@ class DownloadSubmissionTask(SubmissionTask):
         download_manager_resolver_chain = [
             DownloadFilenameOutputManager,
             DownloadSeekableOutputManager,
+            DownloadNonSeekableOutputManager,
         ]
 
         fileobj = transfer_future.meta.call_args.fileobj
@@ -458,6 +510,22 @@ class IOWriteTask(Task):
         fileobj.write(data)
 
 
+class IOStreamingWriteTask(Task):
+    """Task for writing data to a non-seekable stream."""
+
+    def _main(self, fileobj, data):
+        """Write data to a fileobj.
+
+        Data will be written directly to the fileboj without
+        any prior seeking.
+
+        :param fileobj: The fileobj to write content to
+        :param data: The data to write
+
+        """
+        fileobj.write(data)
+
+
 class IORenameFileTask(Task):
     """A task to rename a temporary file to its final filename
 
@@ -490,3 +558,38 @@ class CompleteDownloadNOOPTask(Task):
 
     def _main(self):
         pass
+
+
+class DeferQueue(object):
+    """IO queue that defers write requests until they are queued sequentially.
+
+    This class is used to track IO data for a *single* fileobj.
+
+    You can send data to this queue, and it will defer any IO write requests
+    until it has the next contiguous block available (starting at 0).
+
+    """
+    def __init__(self):
+        self._writes = []
+        self._next_offset = 0
+
+    def request_writes(self, offset, data):
+        """Request any available writes given new incoming data.
+
+        You call this method by providing new data along with the
+        offset associated with the data.  If that new data unlocks
+        any contiguous writes that can now be submitted, this
+        method will return all applicable writes.
+
+        This is done with 1 method call so you don't have to
+        make two method calls (put(), get()) which acquires a lock
+        each method call.
+
+        """
+        writes = []
+        heapq.heappush(self._writes, (offset, data))
+        while self._writes and self._writes[0][0] == self._next_offset:
+            next_write = heapq.heappop(self._writes)
+            writes.append({'offset': next_write[0], 'data': next_write[1]})
+            self._next_offset += len(next_write[1])
+        return writes

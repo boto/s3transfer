@@ -14,7 +14,7 @@ import math
 
 from botocore.compat import six
 
-from s3transfer.compat import seekable
+from s3transfer.compat import seekable, readable
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
@@ -82,6 +82,10 @@ class UploadInputManager(object):
     that may be accepted. All implementations must subclass and override
     public methods from this class.
     """
+    def __init__(self, osutil, transfer_coordinator):
+        self._osutil = osutil
+        self._transfer_coordinator = transfer_coordinator
+
     @classmethod
     def is_compatible(cls, upload_source):
         """Determines if the source for the upload is compatible with manager
@@ -163,13 +167,12 @@ class UploadInputManager(object):
         """
         raise NotImplementedError('must implement yield_upload_part_bodies()')
 
+    def _wrap_with_interrupt_reader(self, fileobj):
+        return InterruptReader(fileobj, self._transfer_coordinator)
+
 
 class UploadFilenameInputManager(UploadInputManager):
     """Upload utility for filenames"""
-    def __init__(self, osutil, transfer_coordinator):
-        self._osutil = osutil
-        self._transfer_coordinator = transfer_coordinator
-
     @classmethod
     def is_compatible(cls, upload_source):
         return isinstance(upload_source, six.string_types)
@@ -227,9 +230,6 @@ class UploadFilenameInputManager(UploadInputManager):
                 full_file_size=full_size, callbacks=callbacks)
             yield part_number, read_file_chunk
 
-    def _wrap_with_interrupt_reader(self, fileobj):
-        return InterruptReader(fileobj, self._transfer_coordinator)
-
     def _get_deferred_open_file(self, fileobj, start_byte):
         fileobj = DeferredOpenFile(fileobj, start_byte)
         fileobj.OPEN_METHOD = self._osutil.open
@@ -249,10 +249,10 @@ class UploadFilenameInputManager(UploadInputManager):
 
 
 class UploadSeekableInputManager(UploadFilenameInputManager):
-    """Upload utility for am open file object"""
+    """Upload utility for an open file object"""
     @classmethod
     def is_compatible(cls, upload_source):
-        return seekable(upload_source)
+        return readable(upload_source) and seekable(upload_source)
 
     def stores_body_in_memory(self, operation_name):
         if operation_name == 'put_object':
@@ -291,6 +291,132 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
         return fileobj
 
 
+class UploadNonSeekableInputManager(UploadInputManager):
+    """Upload utility for a file-like object that cannot seek."""
+    def __init__(self, osutil, transfer_coordinator):
+        super(UploadNonSeekableInputManager, self).__init__(
+            osutil, transfer_coordinator)
+        self._initial_data = b''
+
+    @classmethod
+    def is_compatible(cls, upload_source):
+        return readable(upload_source)
+
+    def stores_body_in_memory(self, operation_name):
+        return True
+
+    def provide_transfer_size(self, transfer_future):
+        # No-op because there is no way to do this short of reading the entire
+        # body into memory.
+        return
+
+    def requires_multipart_upload(self, transfer_future, config):
+        # If the user has set the size, we can use that.
+        if transfer_future.meta.size is not None:
+            return transfer_future.meta.size >= config.multipart_threshold
+
+        # This is tricky to determine in this case because we can't know how
+        # large the input is. So to figure it out, we read data into memory
+        # up until the threshold and compare how much data was actually read
+        # against the threshold.
+        fileobj = transfer_future.meta.call_args.fileobj
+        threshold = config.multipart_threshold
+        self._initial_data = self._read(fileobj, threshold, False)
+        if len(self._initial_data) < threshold:
+            return False
+        else:
+            return True
+
+    def get_put_object_body(self, transfer_future):
+        callbacks = get_callbacks(transfer_future, 'progress')
+        fileobj = transfer_future.meta.call_args.fileobj
+
+        body = self._wrap_data(
+            self._initial_data + fileobj.read(), callbacks)
+
+        # Zero out the stored data so we don't have additional copies
+        # hanging around in memory.
+        self._initial_data = None
+        return body
+
+    def yield_upload_part_bodies(self, transfer_future, config):
+        part_size = config.multipart_chunksize
+        file_object = transfer_future.meta.call_args.fileobj
+        callbacks = get_callbacks(transfer_future, 'progress')
+        part_number = 0
+
+        # Continue reading parts from the file-like object until it is empty.
+        while True:
+            part_number += 1
+            part_content = self._read(file_object, part_size)
+            if not part_content:
+                break
+            part_object = self._wrap_data(part_content, callbacks)
+
+            # Zero out part_content to avoid hanging on to additional data.
+            part_content = None
+            yield part_number, part_object
+
+    def _read(self, fileobj, amount, truncate=True):
+        """
+        Reads a specific amount of data from a stream and returns it. If there
+        is any data in initial_data, that will be popped out first.
+
+        :type fileobj: A file-like object that implements read
+        :param fileobj: The stream to read from.
+
+        :type amount: int
+        :param amount: The number of bytes to read from the stream.
+
+        :type truncate: bool
+        :param truncate: Whether or not to truncate initial_data after
+            reading from it.
+
+        :return: Generator which generates part bodies from the initial data.
+        """
+        # If the the initial data is empty, we simply read from the fileobj
+        if len(self._initial_data) == 0:
+            return fileobj.read(amount)
+
+        # If the requested number of bytes is less thant the amount of
+        # initial data, pull entirely from initial data.
+        if amount <= len(self._initial_data):
+            data = self._initial_data[:amount]
+            # Truncate initial data so we don't hang onto the data longer
+            # than we need.
+            if truncate:
+                self._initial_data = self._initial_data[amount:]
+            return data
+
+        # At this point there is some initial data left, but not enough to
+        # satisfy the number of bytes requested. Pull out the remaining
+        # initial data and read the rest from the fileobj.
+        amount_to_read = amount - len(self._initial_data)
+        data = self._initial_data + fileobj.read(amount_to_read)
+
+        # Zero out initial data so we don't hang onto the data any more.
+        if truncate:
+            self._initial_data = b''
+        return data
+
+    def _wrap_data(self, data, callbacks):
+        """
+        Wraps data with the interrupt reader and the file chunk reader.
+
+        :type data: bytes
+        :param data: The data to wrap.
+
+        :type callbacks: list
+        :param callbacks: The callbacks associated with the transfer future.
+
+        :return: Fully wrapped data.
+        """
+        fileobj = self._wrap_with_interrupt_reader(six.BytesIO(data))
+        return self._osutil.open_file_chunk_reader_from_fileobj(
+            fileobj=fileobj, chunk_size=len(data), full_file_size=len(data),
+            callbacks=callbacks)
+
+
 class UploadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute an upload"""
 
@@ -313,7 +439,8 @@ class UploadSubmissionTask(SubmissionTask):
         """
         upload_manager_resolver_chain = [
             UploadFilenameInputManager,
-            UploadSeekableInputManager
+            UploadSeekableInputManager,
+            UploadNonSeekableInputManager
         ]
 
         fileobj = transfer_future.meta.call_args.fileobj

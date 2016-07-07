@@ -76,3 +76,16 @@ def seekable(fileobj):
             return False
     # Else, the fileobj is not seekable
     return False
+
+
+def readable(fileobj):
+    """Determines whether or not a file-like object is readable.
+
+    :param fileobj: The file-like object to determine if readable
+
+    :returns: True, if readable. False otherwise.
+    """
+    if hasattr(fileobj, 'readable'):
+        return fileobj.readable()
+
+    return hasattr(fileobj, 'read')

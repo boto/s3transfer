@@ -21,6 +21,7 @@ from botocore.stub import ANY
 
 from tests import BaseGeneralInterfaceTest
 from tests import RecordingSubscriber
+from tests import RecordingOSUtils
 from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
@@ -172,6 +173,20 @@ class TestNonMultipartUpload(BaseUploadTest):
 
         # The amount of bytes seen should be the same as the file size
         self.assertEqual(subscriber.calculate_bytes_seen(), len(self.content))
+
+    def test_uses_provided_osutil(self):
+        osutil = RecordingOSUtils()
+        # Use the recording os utility for the transfer manager
+        self._manager = TransferManager(self.client, self.config, osutil)
+
+        self.add_put_object_response_with_default_expected_params()
+
+        future = self.manager.upload(self.filename, self.bucket, self.key)
+        future.result()
+
+        # The upload should have used the os utility. We check this by making
+        # sure that the recorded opens are as expected.
+        self.assertEqual(osutil.open_records, [(self.filename, 'rb')])
 
 
 class TestMultipartUpload(BaseUploadTest):

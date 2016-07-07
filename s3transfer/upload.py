@@ -230,13 +230,18 @@ class UploadFilenameInputManager(UploadInputManager):
     def _wrap_with_interrupt_reader(self, fileobj):
         return InterruptReader(fileobj, self._transfer_coordinator)
 
+    def _get_deferred_open_file(self, fileobj, start_byte):
+        fileobj = DeferredOpenFile(fileobj, start_byte)
+        fileobj.OPEN_METHOD = self._osutil.open
+        return fileobj
+
     def _get_put_object_fileobj(self, fileobj):
-        return DeferredOpenFile(fileobj, 0)
+        return self._get_deferred_open_file(fileobj, 0)
 
     def _get_upload_part_fileobj_with_full_size(self, fileobj, **kwargs):
         start_byte = kwargs['start_byte']
         full_size = kwargs['full_file_size']
-        return DeferredOpenFile(fileobj, start_byte), full_size
+        return self._get_deferred_open_file(fileobj, start_byte), full_size
 
     def _get_num_parts(self, transfer_future, part_size):
         return int(

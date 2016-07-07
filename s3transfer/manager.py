@@ -156,17 +156,21 @@ class TransferManager(object):
         'MetadataDirective'
     ]
 
-    def __init__(self, client, config=None):
+    def __init__(self, client, config=None, osutil=None):
         """A transfer manager interface for Amazon S3
 
         :param client: Client to be used by the manager
         :param config: TransferConfig to associate specific configurations
+        :param osutil: OSUtils object to use for os-related behavior when
+            using with transfer manager.
         """
         self._client = client
         self._config = config
         if config is None:
             self._config = TransferConfig()
-        self._osutil = OSUtils()
+        self._osutil = osutil
+        if osutil is None:
+            self._osutil = OSUtils()
         self._coordinator_controller = TransferCoordinatorController()
 
         # The executor responsible for making S3 API transfer requests

@@ -191,15 +191,7 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
 
     @classmethod
     def is_compatible(cls, download_target):
-        # We're lying a bit here.  We actually *are* compatible
-        # with seekable fileobjs, we'll still queue the IO writes
-        # in order.  Technically works, but this is not ideal behavior when you
-        # could just use DownloadSeekableOutputManager.
-        # Perhaps this method makes more sense as "should_use()"
-        return (
-            not seekable(download_target) and
-            hasattr(download_target, 'write')
-        )
+        return hasattr(download_target, 'write')
 
     def get_fileobj_for_io_writes(self, transfer_future):
         return transfer_future.meta.call_args.fileobj

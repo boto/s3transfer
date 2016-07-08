@@ -180,9 +180,9 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
         self.download_output_manager = DownloadNonSeekableOutputManager(
             self.osutil, self.transfer_coordinator, io_executor=None)
 
-    def test_not_compatible_with_seekable_stream(self):
+    def test_is_compatible_with_seekable_stream(self):
         with open(self.filename, 'wb') as f:
-            self.assertFalse(self.download_output_manager.is_compatible(f))
+            self.assertTrue(self.download_output_manager.is_compatible(f))
 
     def test_not_compatible_with_filename(self):
         self.assertFalse(self.download_output_manager.is_compatible(
@@ -196,8 +196,8 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
         f = NonSeekable()
         self.assertTrue(self.download_output_manager.is_compatible(f))
 
-    def test_no_compatible_with_bytesio(self):
-        self.assertFalse(
+    def test_is_compatible_with_bytesio(self):
+        self.assertTrue(
             self.download_output_manager.is_compatible(six.BytesIO()))
 
     def test_submit_writes_from_internal_queue(self):

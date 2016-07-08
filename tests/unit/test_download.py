@@ -87,6 +87,7 @@ class BaseDownloadOutputManagerTest(BaseTaskTest):
 
         self.call_args = CallArgs(fileobj=self.filename)
         self.future = self.get_transfer_future(self.call_args)
+        self.io_executor = BoundedExecutor(0, 1)
 
     def tearDown(self):
         super(BaseDownloadOutputManagerTest, self).tearDown()
@@ -97,7 +98,8 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadFilenameOutputManager, self).setUp()
         self.download_output_manager = DownloadFilenameOutputManager(
-            self.osutil, self.transfer_coordinator, io_executor=None)
+            self.osutil, self.transfer_coordinator,
+            io_executor=self.io_executor)
 
     def test_is_compatible(self):
         self.assertTrue(
@@ -132,12 +134,21 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(f.read(), ref_contents)
 
+    def test_can_queue_file_io_task(self):
+        fileobj = WriteCollector()
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=0)
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='bar', offset=3)
+        self.io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
 
 class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSeekableOutputManager, self).setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, io_executor=None)
+            self.osutil, self.transfer_coordinator, io_executor=self.io_executor)
 
         # Create a fileobj to write to
         self.fileobj = open(self.filename, 'wb')
@@ -172,6 +183,15 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
             self.download_output_manager.get_final_io_task(),
             CompleteDownloadNOOPTask
         )
+
+    def test_can_queue_file_io_task(self):
+        fileobj = WriteCollector()
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=0)
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='bar', offset=3)
+        self.io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
 
 class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):

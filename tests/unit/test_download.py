@@ -531,3 +531,37 @@ class TestDeferQueue(unittest.TestCase):
         # Same thing here but with offset
         writes = self.q.request_writes(offset=11, data='hello again')
         self.assertEqual(writes, [{'offset': 11, 'data': 'hello again'}])
+
+    def test_writes_below_min_offset_are_ignored(self):
+        self.q.request_writes(offset=0, data='a')
+        self.q.request_writes(offset=1, data='b')
+        self.q.request_writes(offset=2, data='c')
+
+        # At this point we're expecting offset=3, so if a write
+        # comes in below 3, we ignore it.
+        self.assertEqual(self.q.request_writes(offset=0, data='a'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='b'), [])
+
+        self.assertEqual(
+            self.q.request_writes(offset=3, data='d'),
+            [{'offset': 3, 'data': 'd'}]
+        )
+
+    def test_duplicate_writes_are_ignored(self):
+        self.q.request_writes(offset=2, data='c')
+        self.q.request_writes(offset=1, data='b')
+
+        # We're still waiting for offset=0, but if
+        # a duplicate write comes in for offset=2/offset=1
+        # it's ignored.  This gives "first one wins" behavior.
+        self.assertEqual(self.q.request_writes(offset=2, data='X'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='Y'), [])
+
+        self.assertEqual(
+            self.q.request_writes(offset=0, data='a'),
+            [{'offset': 0, 'data': 'a'},
+             # Note we're seeing 'b' 'c', and not 'X', 'Y'.
+             {'offset': 1, 'data': 'b'},
+             {'offset': 2, 'data': 'c'},
+            ]
+        )

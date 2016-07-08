@@ -563,6 +563,7 @@ class DeferQueue(object):
     """
     def __init__(self):
         self._writes = []
+        self._pending_offsets = set()
         self._next_offset = 0
 
     def request_writes(self, offset, data):
@@ -578,10 +579,23 @@ class DeferQueue(object):
         each method call.
 
         """
+        if offset < self._next_offset:
+            # This is a request for a write that we've already
+            # seen.  This can happen in the event of a retry
+            # where if we retry at at offset N/2, we'll requeue
+            # offsets 0-N/2 again.
+            return []
         writes = []
+        if offset in self._pending_offsets:
+            # We've already queued this offset so this request is
+            # a duplicate.  In this case we should ignore
+            # this request and prefer what's already queued.
+            return []
         heapq.heappush(self._writes, (offset, data))
+        self._pending_offsets.add(offset)
         while self._writes and self._writes[0][0] == self._next_offset:
             next_write = heapq.heappop(self._writes)
             writes.append({'offset': next_write[0], 'data': next_write[1]})
+            self._pending_offsets.remove(next_write[0])
             self._next_offset += len(next_write[1])
         return writes

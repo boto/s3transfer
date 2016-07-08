@@ -432,7 +432,7 @@ class TestIOStreamingWriteTask(BaseIOTaskTest):
                 IOStreamingWriteTask,
                 main_kwargs={
                     'fileobj': f,
-                    'data': 'foobar'
+                    'data': b'foobar'
                 }
             )
             task()
@@ -440,7 +440,7 @@ class TestIOStreamingWriteTask(BaseIOTaskTest):
                 IOStreamingWriteTask,
                 main_kwargs={
                     'fileobj': f,
-                    'data': 'baz'
+                    'data': b'baz'
                 }
             )
             task2()

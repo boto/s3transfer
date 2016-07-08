@@ -405,7 +405,7 @@ class BaseIOTaskTest(BaseTaskTest):
         self.files.remove_all()
 
 
-class TestIORenameFileTask(BaseIOTaskTest):
+class TestIOStreamingWriteTask(BaseIOTaskTest):
     def test_main(self):
         with open(self.temp_filename, 'wb') as f:
             task = self.get_task(

@@ -1,0 +1,142 @@
+#!/usr/bin/env python
+"""
+Summarizes results of benchmarking.
+
+Usage
+=====
+
+Run this script with::
+
+    ./summarize -f performance.csv
+
+
+And that should output::
+
+    Total time: 1.810 seconds
+    Max memory: 114.0 MiB
+    Max cpu: 208.3 percent
+    Average memory: 67.3 MiB
+    Average cpu: 140.5 percent
+"""
+import argparse
+import csv
+
+
+def human_readable_size(value):
+    """Converts integer values in bytes to human readable values"""
+    hummanize_suffixes = ('KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB')
+    base = 1024
+    bytes_int = float(value)
+
+    if bytes_int == 1:
+        return '1 Byte'
+    elif bytes_int < base:
+        return '%d Bytes' % bytes_int
+
+    for i, suffix in enumerate(hummanize_suffixes):
+        unit = base ** (i+2)
+        if round((bytes_int / unit) * base) < base:
+            return '%.1f %s' % ((base * bytes_int / unit), suffix)
+
+
+class Summarizer(object):
+    DATA_INDEX_IN_ROW = {
+        'time': 0,
+        'memory': 1,
+        'cpu': 2
+    }
+
+    def __init__(self):
+        self._num_rows = 0
+        self._start_time = None
+        self._end_time = None
+        self._totals = {
+            'memory': 0.0,
+            'cpu': 0.0
+        }
+        self._maximums = {
+            'memory': 0.0,
+            'cpu': 0.0
+        }
+
+    @property
+    def total_time(self):
+        return self._end_time - self._start_time
+
+    @property
+    def max_cpu(self):
+        return self._maximums['cpu']
+
+    @property
+    def max_memory(self):
+        return human_readable_size(self._maximums['memory'])
+
+    @property
+    def average_cpu(self):
+        return self._average('cpu')
+
+    @property
+    def average_memory(self):
+        return human_readable_size(self._average('memory'))
+
+    def _average(self, name):
+        return self._totals[name]/self._num_rows
+
+    def summarize(self):
+        """Prints out the processed data"""
+        print('Total time: %.3f seconds' % self.total_time)
+        print('Max memory: %s' % self.max_memory)
+        print('Max cpu: %.1f percent' % self.max_cpu)
+        print('Average memory: %s' % self.average_memory)
+        print('Average cpu: %.1f percent' % self.average_cpu)
+
+    def process(self, args):
+        """Processes the data from the CSV file"""
+        with open(args.benchmark_file, 'rb') as f:
+            reader = csv.reader(f)
+            # Process each row from the CSV file
+            for row in reader:
+                self.process_data_row(row)
+        self._end_time = self._get_time(row)
+
+    def process_data_row(self, row):
+        # If the row is the first row collect the start time.
+        if self._num_rows == 0:
+            self._start_time = self._get_time(row)
+        self._num_rows += 1
+        self.process_data_point(row, 'memory')
+        self.process_data_point(row, 'cpu')
+
+    def process_data_point(self, row, name):
+        # Determine where in the CSV row the requested data is located.
+        index = self.DATA_INDEX_IN_ROW[name]
+        # Get the data point.
+        data_point = float(row[index])
+        # Add it to the running total.
+        self._add_to_total(name, data_point)
+        # Account if the data point is a maximum.
+        self._account_for_maximum(name, data_point)
+
+    def _get_time(self, row):
+        return float(row[self.DATA_INDEX_IN_ROW['time']])
+
+    def _add_to_total(self, name, data_point):
+        self._totals[name] += data_point
+
+    def _account_for_maximum(self, name, data_point):
+        if data_point > self._maximums[name]:
+            self._maximums[name] = data_point
+
+
+def main():
+    parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument(
+        '-f', '--benchmark-file', required=True,
+        help='The CSV output file from the benchmark script.')
+    args = parser.parse_args()
+    summarizer = Summarizer()
+    summarizer.process(args)
+    summarizer.summarize()
+
+if __name__ == '__main__':
+    main()

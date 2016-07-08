@@ -557,7 +557,7 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         sem.acquire('a', blocking=False)
         sem.acquire('a', blocking=False)
         def acquire():
-            # This next call to acquire will bloc
+            # This next call to acquire will block.
             self.assertEqual(sem.acquire('a', blocking=True), 2)
         t = threading.Thread(target=acquire)
         self.threads.append(t)
@@ -566,7 +566,7 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         t.start()
         # This still will keep the thread blocked.
         sem.release('a', 1)
-        # Releasing the min element will unblock the therad.
+        # Releasing the min element will unblock the thread.
         sem.release('a', 0)
         t.join()
         sem.release('a', 2)

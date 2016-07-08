@@ -88,4 +88,7 @@ def readable(fileobj):
     if hasattr(fileobj, 'readable'):
         return fileobj.readable()
 
+    if hasattr(fileobj, 'mode'):
+        return 'r' in fileobj.mode or '+' in fileobj.mode
+
     return hasattr(fileobj, 'read')

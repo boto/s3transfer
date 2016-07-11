@@ -498,7 +498,7 @@ class UploadSubmissionTask(SubmissionTask):
             upload_input_manager, 'put_object')
 
         # Submit the request of a single upload.
-        self._submit_task(
+        self._transfer_coordinator.submit(
             request_executor,
             PutObjectTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -521,7 +521,7 @@ class UploadSubmissionTask(SubmissionTask):
         call_args = transfer_future.meta.call_args
 
         # Submit the request to create a multipart upload.
-        create_multipart_future = self._submit_task(
+        create_multipart_future = self._transfer_coordinator.submit(
             request_executor,
             CreateMultipartUploadTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -548,7 +548,7 @@ class UploadSubmissionTask(SubmissionTask):
 
         for part_number, fileobj in part_iterator:
             part_futures.append(
-                self._submit_task(
+                self._transfer_coordinator.submit(
                     request_executor,
                     UploadPartTask(
                         transfer_coordinator=self._transfer_coordinator,
@@ -569,7 +569,7 @@ class UploadSubmissionTask(SubmissionTask):
             )
 
         # Submit the request to complete the multipart upload.
-        self._submit_task(
+        self._transfer_coordinator.submit(
             request_executor,
             CompleteMultipartUploadTask(
                 transfer_coordinator=self._transfer_coordinator,

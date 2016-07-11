@@ -18,15 +18,19 @@ import tempfile
 from tests import BaseTaskTest
 from tests import StreamWithError
 from tests import FileCreator
+from tests import unittest
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.download import DownloadFilenameOutputManager
 from s3transfer.download import DownloadSeekableOutputManager
+from s3transfer.download import DownloadNonSeekableOutputManager
 from s3transfer.download import GetObjectTask
 from s3transfer.download import IOWriteTask
+from s3transfer.download import IOStreamingWriteTask
 from s3transfer.download import IORenameFileTask
 from s3transfer.download import CompleteDownloadNOOPTask
+from s3transfer.download import DeferQueue
 from s3transfer.futures import BoundedExecutor
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
@@ -47,6 +51,7 @@ class WriteCollector(object):
 
     def write(self, data):
         self.writes.append((self._pos, data))
+        self._pos += len(data)
 
 
 class CancelledStreamWrapper(object):
@@ -82,6 +87,7 @@ class BaseDownloadOutputManagerTest(BaseTaskTest):
 
         self.call_args = CallArgs(fileobj=self.filename)
         self.future = self.get_transfer_future(self.call_args)
+        self.io_executor = BoundedExecutor(0, 1)
 
     def tearDown(self):
         super(BaseDownloadOutputManagerTest, self).tearDown()
@@ -92,7 +98,8 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadFilenameOutputManager, self).setUp()
         self.download_output_manager = DownloadFilenameOutputManager(
-            self.osutil, self.transfer_coordinator)
+            self.osutil, self.transfer_coordinator,
+            io_executor=self.io_executor)
 
     def test_is_compatible(self):
         self.assertTrue(
@@ -127,12 +134,21 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(f.read(), ref_contents)
 
+    def test_can_queue_file_io_task(self):
+        fileobj = WriteCollector()
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=0)
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='bar', offset=3)
+        self.io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
 
 class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSeekableOutputManager, self).setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator)
+            self.osutil, self.transfer_coordinator, io_executor=self.io_executor)
 
         # Create a fileobj to write to
         self.fileobj = open(self.filename, 'wb')
@@ -168,6 +184,61 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
             CompleteDownloadNOOPTask
         )
 
+    def test_can_queue_file_io_task(self):
+        fileobj = WriteCollector()
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=0)
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='bar', offset=3)
+        self.io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
+
+class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadNonSeekableOutputManager, self).setUp()
+        self.download_output_manager = DownloadNonSeekableOutputManager(
+            self.osutil, self.transfer_coordinator, io_executor=None)
+
+    def test_is_compatible_with_seekable_stream(self):
+        with open(self.filename, 'wb') as f:
+            self.assertTrue(self.download_output_manager.is_compatible(f))
+
+    def test_not_compatible_with_filename(self):
+        self.assertFalse(self.download_output_manager.is_compatible(
+            self.filename))
+
+    def test_compatible_with_non_seekable_stream(self):
+        class NonSeekable(object):
+            def write(self, data):
+                pass
+
+        f = NonSeekable()
+        self.assertTrue(self.download_output_manager.is_compatible(f))
+
+    def test_is_compatible_with_bytesio(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(six.BytesIO()))
+
+    def test_submit_writes_from_internal_queue(self):
+        class FakeQueue(object):
+            def request_writes(self, offset, data):
+                return [
+                    {'offset': 0, 'data': 'foo'},
+                    {'offset': 3, 'data': 'bar'},
+                ]
+
+        q = FakeQueue()
+        io_executor = BoundedExecutor(0, 1)
+        manager = DownloadNonSeekableOutputManager(
+            self.osutil, self.transfer_coordinator, io_executor=io_executor,
+            defer_queue=q)
+        fileobj = WriteCollector()
+        manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=1)
+        io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
 
 class TestGetObjectTask(BaseTaskTest):
     def setUp(self):
@@ -181,13 +252,17 @@ class TestGetObjectTask(BaseTaskTest):
         self.content = b'my content'
         self.stream = six.BytesIO(self.content)
         self.fileobj = WriteCollector()
+        self.osutil = OSUtils()
+        self.download_output_manager = DownloadSeekableOutputManager(
+            self.osutil, self.transfer_coordinator, self.io_executor)
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
             'fileobj': self.fileobj, 'extra_args': self.extra_args,
             'callbacks': self.callbacks,
-            'max_attempts': self.max_attempts, 'io_executor': self.io_executor
+            'max_attempts': self.max_attempts,
+            'download_output_manager': self.download_output_manager,
         }
         default_kwargs.update(kwargs)
         return self.get_task(GetObjectTask, main_kwargs=default_kwargs)
@@ -350,6 +425,31 @@ class BaseIOTaskTest(BaseTaskTest):
         self.files.remove_all()
 
 
+class TestIOStreamingWriteTask(BaseIOTaskTest):
+    def test_main(self):
+        with open(self.temp_filename, 'wb') as f:
+            task = self.get_task(
+                IOStreamingWriteTask,
+                main_kwargs={
+                    'fileobj': f,
+                    'data': b'foobar'
+                }
+            )
+            task()
+            task2 = self.get_task(
+                IOStreamingWriteTask,
+                main_kwargs={
+                    'fileobj': f,
+                    'data': b'baz'
+                }
+            )
+            task2()
+        with open(self.temp_filename, 'rb') as f:
+            # We should just have written to the file in the order
+            # the tasks were executed.
+            self.assertEqual(f.read(), b'foobarbaz')
+
+
 class TestIOWriteTask(BaseIOTaskTest):
     def test_main(self):
         with open(self.temp_filename, 'wb') as f:
@@ -393,3 +493,95 @@ class TestIORenameFileTask(BaseIOTaskTest):
             task()
         self.assertTrue(os.path.exists(self.final_filename))
         self.assertFalse(os.path.exists(self.temp_filename))
+
+
+class TestDeferQueue(unittest.TestCase):
+    def setUp(self):
+        self.q = DeferQueue()
+
+    def test_no_writes_when_not_lowest_block(self):
+        writes = self.q.request_writes(offset=1, data='bar')
+        self.assertEqual(writes, [])
+
+    def test_writes_returned_in_order(self):
+        self.assertEqual(self.q.request_writes(offset=3, data='d'), [])
+        self.assertEqual(self.q.request_writes(offset=2, data='c'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='b'), [])
+
+        # Everything at this point has been deferred, but as soon as we
+        # send offset=0, that will unlock offsets 0-3.
+        writes = self.q.request_writes(offset=0, data='a')
+        self.assertEqual(
+            writes,
+            [{'offset': 0, 'data': 'a'},
+             {'offset': 1, 'data': 'b'},
+             {'offset': 2, 'data': 'c'},
+             {'offset': 3, 'data': 'd'},
+            ]
+        )
+
+    def test_unlocks_partial_range(self):
+        self.assertEqual(self.q.request_writes(offset=5, data='f'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='b'), [])
+
+        # offset=0 unlocks 0-1, but offset=5 still needs to see 2-4 first.
+        writes = self.q.request_writes(offset=0, data='a')
+        self.assertEqual(
+            writes,
+            [{'offset': 0, 'data': 'a'},
+             {'offset': 1, 'data': 'b'},
+            ]
+        )
+
+    def test_data_can_be_any_size(self):
+        self.q.request_writes(offset=5, data='hello world')
+        writes = self.q.request_writes(offset=0, data='abcde')
+        self.assertEqual(
+            writes,
+            [{'offset': 0, 'data': 'abcde'},
+             {'offset': 5, 'data': 'hello world'},
+            ]
+        )
+
+    def test_data_queued_in_order(self):
+        # This immediately gets returned because offset=0 is the
+        # next range we're waiting on.
+        writes = self.q.request_writes(offset=0, data='hello world')
+        self.assertEqual(writes, [{'offset': 0, 'data': 'hello world'}])
+        # Same thing here but with offset
+        writes = self.q.request_writes(offset=11, data='hello again')
+        self.assertEqual(writes, [{'offset': 11, 'data': 'hello again'}])
+
+    def test_writes_below_min_offset_are_ignored(self):
+        self.q.request_writes(offset=0, data='a')
+        self.q.request_writes(offset=1, data='b')
+        self.q.request_writes(offset=2, data='c')
+
+        # At this point we're expecting offset=3, so if a write
+        # comes in below 3, we ignore it.
+        self.assertEqual(self.q.request_writes(offset=0, data='a'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='b'), [])
+
+        self.assertEqual(
+            self.q.request_writes(offset=3, data='d'),
+            [{'offset': 3, 'data': 'd'}]
+        )
+
+    def test_duplicate_writes_are_ignored(self):
+        self.q.request_writes(offset=2, data='c')
+        self.q.request_writes(offset=1, data='b')
+
+        # We're still waiting for offset=0, but if
+        # a duplicate write comes in for offset=2/offset=1
+        # it's ignored.  This gives "first one wins" behavior.
+        self.assertEqual(self.q.request_writes(offset=2, data='X'), [])
+        self.assertEqual(self.q.request_writes(offset=1, data='Y'), [])
+
+        self.assertEqual(
+            self.q.request_writes(offset=0, data='a'),
+            [{'offset': 0, 'data': 'a'},
+             # Note we're seeing 'b' 'c', and not 'X', 'Y'.
+             {'offset': 1, 'data': 'b'},
+             {'offset': 2, 'data': 'c'},
+            ]
+        )

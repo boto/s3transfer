@@ -178,7 +178,6 @@ class DownloadSeekableOutputManager(DownloadOutputManager):
             transfer_coordinator=self._transfer_coordinator)
 
 
-
 class DownloadNonSeekableOutputManager(DownloadOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor,
                  defer_queue=None):
@@ -206,7 +205,7 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
             for write in writes:
                 data = write['data']
                 logger.debug("Queueing IO offset %s for fileobj: %s",
-                            write['offset'], fileobj)
+                             write['offset'], fileobj)
                 self._transfer_coordinator.submit(
                     self._io_executor,
                     IOStreamingWriteTask(

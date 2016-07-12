@@ -472,10 +472,12 @@ class SlidingWindowSemaphore(object):
                 # We can't do anything right now because we're still waiting
                 # for the min sequence for the tag to be released.  We have
                 # to queue this for pending release.
-                self._pending_release.setdefault(tag, []).append(sequence_number)
+                self._pending_release.setdefault(
+                    tag, []).append(sequence_number)
                 self._pending_release[tag].sort(reverse=True)
             else:
-                raise ValueError("Attempted to release unknown sequence number "
-                                 "%s for tag: %s" % (sequence_number, tag))
+                raise ValueError(
+                    "Attempted to release unknown sequence number "
+                    "%s for tag: %s" % (sequence_number, tag))
         finally:
             self._condition.release()

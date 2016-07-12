@@ -99,6 +99,10 @@ class TestTransferMeta(unittest.TestCase):
         # Assert the that call args provided is the same as is returned
         self.assertIs(transfer_meta.call_args, call_args)
 
+    def test_id(self):
+        transfer_meta = TransferMeta(id=1)
+        self.assertEqual(transfer_meta.id, 1)
+
     def test_user_context(self):
         self.transfer_meta.user_context['foo'] = 'bar'
         self.assertEqual(self.transfer_meta.user_context, {'foo': 'bar'})
@@ -107,6 +111,10 @@ class TestTransferMeta(unittest.TestCase):
 class TestTransferCoordinator(unittest.TestCase):
     def setUp(self):
         self.transfer_coordinator = TransferCoordinator()
+
+    def test_id(self):
+        transfer_coordinator = TransferCoordinator(id=1)
+        self.assertEqual(transfer_coordinator.id, 1)
 
     def test_initial_status(self):
         # A TransferCoordinator with no progress should have the status

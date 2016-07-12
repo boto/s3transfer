@@ -360,6 +360,20 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         for param, value in call_kwargs.items():
             self.assertEqual(value, getattr(future.meta.call_args, param))
 
+    def test_has_id_associated_to_future(self):
+        self._setup_default_stubbed_responses()
+        call_kwargs = self.create_call_kwargs()
+        future = self.method(**call_kwargs)
+        # The result is called so we ensure that the entire process executes
+        # before we try to clean up resources in the tearDown.
+        future.result()
+
+        # Assert that an id was associated to the future.
+        # Since there is only one transfer request is made for that transfer
+        # manager the id will be zero since it will be the first transfer
+        # request made for that transfer manager.
+        self.assertEqual(future.meta.id, 0)
+
     def test_invalid_extra_args(self):
         with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):
             self.method(

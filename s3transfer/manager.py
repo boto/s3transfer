@@ -178,6 +178,8 @@ class TransferManager(object):
         if osutil is None:
             self._osutil = OSUtils()
         self._coordinator_controller = TransferCoordinatorController()
+        # A counter to create unique id's for each transfer submitted.
+        self._id_counter = 0
 
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
@@ -361,11 +363,16 @@ class TransferManager(object):
                 main_kwargs=main_kwargs
             )
         )
+
+        # Increment the unique id counter for future transfer requests
+        self._id_counter += 1
+
         return transfer_future
 
     def _get_future_with_components(self, call_args):
+        transfer_id = self._id_counter
         # Creates a new transfer future along with its components
-        transfer_coordinator = TransferCoordinator()
+        transfer_coordinator = TransferCoordinator(id=transfer_id)
         # Track the transfer coordinator for transfers to manage.
         self._coordinator_controller.add_transfer_coordinator(
             transfer_coordinator)
@@ -375,7 +382,7 @@ class TransferManager(object):
             self._coordinator_controller.remove_transfer_coordinator,
             transfer_coordinator)
         components = {
-            'meta': TransferMeta(call_args),
+            'meta': TransferMeta(call_args, id=transfer_id),
             'coordinator': transfer_coordinator
         }
         transfer_future = TransferFuture(**components)

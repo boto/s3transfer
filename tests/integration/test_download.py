@@ -18,6 +18,7 @@ from concurrent.futures import CancelledError
 
 from tests import assert_files_equal
 from tests import RecordingSubscriber
+from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
 from s3transfer.manager import TransferConfig
 
@@ -134,5 +135,33 @@ class TestDownload(BaseTransferManagerIntegTest):
         with open(download_path, 'wb') as f:
             future = transfer_manager.download(
                 self.bucket_name, '20mb.txt', f)
+            future.result()
+        assert_files_equal(filename, download_path)
+
+    def test_below_threshold_for_nonseekable_fileobj(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=1024 * 1024)
+        self.upload_file(filename, '1mb.txt')
+
+        download_path = os.path.join(self.files.rootdir, '1mb.txt')
+        with open(download_path, 'wb') as f:
+            future = transfer_manager.download(
+                self.bucket_name, '1mb.txt', NonSeekableWriter(f))
+            future.result()
+        assert_files_equal(filename, download_path)
+
+    def test_above_threshold_for_nonseekable_fileobj(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=20 * 1024 * 1024)
+        self.upload_file(filename, '20mb.txt')
+
+        download_path = os.path.join(self.files.rootdir, '20mb.txt')
+        with open(download_path, 'wb') as f:
+            future = transfer_manager.download(
+                self.bucket_name, '20mb.txt', NonSeekableWriter(f))
             future.result()
         assert_files_equal(filename, download_path)

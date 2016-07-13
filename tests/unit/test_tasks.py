@@ -81,7 +81,7 @@ class ExceptionSubmissionTask(SubmissionTask):
 class TestSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
         super(TestSubmissionTask, self).setUp()
-        self.executor = BoundedExecutor(0, 5)
+        self.executor = BoundedExecutor(1000, 5)
         self.call_args = CallArgs(subscribers=[])
         self.transfer_future = self.get_transfer_future(self.call_args)
         self.main_kwargs = {'transfer_future': self.transfer_future}
@@ -293,7 +293,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
 class TestTask(unittest.TestCase):
     def setUp(self):
-        self.transfer_coordinator = TransferCoordinator()
+        self.id = 1
+        self.transfer_coordinator = TransferCoordinator(id=self.id)
 
     def test_repr(self):
         main_kwargs = {
@@ -308,6 +309,12 @@ class TestTask(unittest.TestCase):
             repr(task),
             'ReturnKwargsTask(%s)' % {'bucket': 'mybucket'}
         )
+
+    def test_transfer_id(self):
+        task = SuccessTask(self.transfer_coordinator)
+        # Make sure that the id is the one provided to the id associated
+        # to the transfer coordinator.
+        self.assertEqual(task.transfer_id, self.id)
 
     def test_context_status_transitioning_success(self):
         # The status should be set to running.

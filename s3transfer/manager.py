@@ -20,6 +20,7 @@ from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.utils import TaskSemaphore
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import TransferFuture
@@ -40,8 +41,8 @@ class TransferConfig(object):
                  multipart_chunksize=8 * MB,
                  max_request_concurrency=10,
                  max_submission_concurrency=5,
-                 max_request_queue_size=0,
-                 max_submission_queue_size=0,
+                 max_request_queue_size=1000,
+                 max_submission_queue_size=1000,
                  max_io_queue_size=1000,
                  io_chunksize=64 * KB,
                  num_download_attempts=5,
@@ -185,8 +186,9 @@ class TransferManager(object):
         self._request_executor = BoundedExecutor(
             max_size=self._config.max_request_queue_size,
             max_num_threads=self._config.max_request_concurrency,
-            tag_max_sizes={
-                IN_MEMORY_UPLOAD_TAG: self._config.max_in_memory_upload_chunks
+            tag_semaphores={
+                IN_MEMORY_UPLOAD_TAG: TaskSemaphore(
+                    self._config.max_in_memory_upload_chunks)
             }
         )
 

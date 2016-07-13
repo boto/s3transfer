@@ -18,6 +18,7 @@ import threading
 
 from s3transfer.compat import MAXINT
 from s3transfer.utils import FunctionContainer
+from s3transfer.utils import TaskSemaphore
 
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ class TransferCoordinator(object):
         with self._lock:
             self._status = 'running'
 
-    def submit(self, executor, task, future_tag=None):
+    def submit(self, executor, task, tag=None):
         """Submits a task to a provided executor
 
         :type executor: s3transfer.futures.BoundedExecutor
@@ -236,8 +237,8 @@ class TransferCoordinator(object):
         :type task: s3transfer.tasks.Task
         :param task: The task to submit to the executor
 
-        :type future_tag: s3transfer.futures.FutureTag
-        :param future_tag: A future tag to associate to the task
+        :type tag: s3transfer.futures.TaskTag
+        :param tag: A tag to associate to the submitted task
 
         :rtype: concurrent.futures.Future
         :returns: A future representing the submitted task
@@ -246,7 +247,7 @@ class TransferCoordinator(object):
             "Submitting task %s to executor %s for transfer request: %s." % (
                 task, executor, self.id)
         )
-        future = executor.submit(task, future_tag=future_tag)
+        future = executor.submit(task, tag=tag)
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.
         self.add_associated_future(future)
@@ -336,7 +337,7 @@ class TransferCoordinator(object):
 class BoundedExecutor(object):
     EXECUTOR_CLS = futures.ThreadPoolExecutor
 
-    def __init__(self, max_size, max_num_threads, tag_max_sizes=None):
+    def __init__(self, max_size, max_num_threads, tag_semaphores=None):
         """An executor implentation that has a maximum queued up tasks
 
         The executor will block if the number of tasks that have been
@@ -350,95 +351,66 @@ class BoundedExecutor(object):
         :params max_num_threads: The maximum number of threads the executor
             uses.
 
-        :type tag_max_sizes: dict
-        :params tag_max_sizes: A dictionary where the key is the name of the
-            tag and the value is the number of inflight futures can be running
-            with that tag value. For example, a value of  ``{'my_tag': 3}``
-            will ensure that where will be at most three inflight futures
-            tagged with the value ``'my_tag'``. Note that no matter if a future
-            is tagged, the future will be accounted against the executor's
-            ``max_size`` param.
+        :type tag_semaphores: dict
+        :params tag_semaphores: A dictionary where the key is the name of the
+            tag and the value is the semaphore to use when limiting the
+            number of tasks the executor is processing at a time.
         """
         self._max_num_threads = max_num_threads
         self._executor = self.EXECUTOR_CLS(max_workers=self._max_num_threads)
-        self._tags_to_track = [ALL_TAG]
-        self._max_sizes = {
-            ALL_TAG: max_size
-        }
-        self._currently_running_futures = {
-            ALL_TAG: set()
-        }
-        if tag_max_sizes:
-            for tag, max_size in tag_max_sizes.items():
-                self._tags_to_track.append(tag)
-                self._max_sizes[tag] = max_size
-                self._currently_running_futures[tag] = set()
-        self._lock = threading.Lock()
+        self._semaphore = TaskSemaphore(max_size)
+        self._tag_semaphores = tag_semaphores
 
-    def submit(self, fn, *args, **kwargs):
+    def submit(self, task, tag=None, block=True):
         """Submit a task to complete
 
-        :param fn: The function to call
-        :param args: The positional arguments to use to call the function
-        :param kwargs: The keyword arguments to use to call the function. You
-            can provide a tag for the submittion by providing the keyword arg
-            ``'future_tag'``.
+        :type task: s3transfer.tasks.Task
+        :param task: The task to run __call__ on
+
+
+        :type tag: s3transfer.futures.TaskTag
+        :param tag: An optional tag to associate to the task. This
+            is used to override which semaphore to use.
+
+        :type block: boolean
+        :param block: True if to wait till it is possible to submit a task.
+            False, if not to wait and raise an error if not able to submit
+            a task.
 
         :returns: The future assocaited to the submitted task
         """
-        tag = kwargs.pop('future_tag', None)
+        semaphore = self._semaphore
+        # If a tag was provided, use the semaphore associated to that
+        # tag.
+        if tag:
+            semaphore = self._tag_semaphores[tag]
 
-        with self._lock:
-            # Wait if there is a maximum reached
-            self._wait_for_futures_to_complete_if_needed(tag)
-            # Submit the task to the executor
-            future = self._executor.submit(fn, *args, **kwargs)
-            # Add the recently added future to the currently running futures
-            self._add_future_to_currently_running(future, tag)
+        # Call acquire on the semaphore.
+        acquire_token = semaphore.acquire(task.transfer_id, block)
+        # Create a callback to invoke when task is done in order to call
+        # release on the semaphore.
+        release_callback = FunctionContainer(
+            semaphore.release, task.transfer_id, acquire_token)
+        # Submit the task to the underlying executor.
+        future = self._executor.submit(task)
+        # Add the Semaphore.release() callback to the future such that
+        # it is invoked once the future completes.
+        self._add_done_callback_to_future(future, release_callback)
         return future
 
     def shutdown(self, wait=True):
         self._executor.shutdown(wait)
 
-    def _get_tags_to_operate_on(self, tag):
-        # No matter the tag provided, each future is included under the 'all'
-        # tag to represent its membership in the set of all running futures.
-        tag_to_operate_on = [ALL_TAG]
-        # Only add the tag to the set of the tags to operate on if the tag
-        # is not equal to all and the tag is being tracked for max sizes.
-        if tag != ALL_TAG and tag in self._tags_to_track:
-            tag_to_operate_on.append(tag)
-        return tag_to_operate_on
-
-    def _at_maximum_running_futures(self, tag):
-        return len(self._currently_running_futures[tag]) == \
-            self._max_sizes[tag]
-
-    def _wait_for_futures_to_complete_if_needed(self, tag):
-        tags_to_wait_on = self._get_tags_to_operate_on(tag)
-        for tag in tags_to_wait_on:
-            # First determine if there are already too many futures running
-            if self._at_maximum_running_futures(tag):
-                # If there are too many futures running, wait till some
-                # complete and save the remaining running futures as the
-                # next set to wait for.
-                self._currently_running_futures[tag] = futures.wait(
-                        self._currently_running_futures[tag],
-                        return_when=futures.FIRST_COMPLETED
-                ).not_done
-
-    def _add_future_to_currently_running(self, future, tag):
-        tags_to_add_future_to = self._get_tags_to_operate_on(tag)
-        for tag in tags_to_add_future_to:
-            # If the queue is bounded then add the new submitted task
-            # to the list of futures to wait for. If it is not bounded,
-            # then we do not need to store the future as we are not keeping
-            # track of how many futures are currently being ran.
-            if self._max_sizes[tag] != 0:
-                self._currently_running_futures[tag].add(future)
+    def _add_done_callback_to_future(self, future, callback):
+        # The done callback for concurrent.futures.Future will always pass a
+        # the future in as the only argument. So we need to create the
+        # proper signature wrapper that will invoke the callback provided.
+        def done_callback(future_passed_to_callback):
+            return callback()
+        # Add the wrapped done callback to the future.
+        future.add_done_callback(done_callback)
 
 
-FutureTag = namedtuple('FutureTag', ['name'])
+TaskTag = namedtuple('TaskTag', ['name'])
 
-ALL_TAG = FutureTag('all')
-IN_MEMORY_UPLOAD_TAG = FutureTag('in_memory_upload')
+IN_MEMORY_UPLOAD_TAG = TaskTag('in_memory_upload')

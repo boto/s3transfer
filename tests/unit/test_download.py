@@ -87,7 +87,7 @@ class BaseDownloadOutputManagerTest(BaseTaskTest):
 
         self.call_args = CallArgs(fileobj=self.filename)
         self.future = self.get_transfer_future(self.call_args)
-        self.io_executor = BoundedExecutor(0, 1)
+        self.io_executor = BoundedExecutor(1000, 1)
 
     def tearDown(self):
         super(BaseDownloadOutputManagerTest, self).tearDown()
@@ -230,7 +230,7 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
                 ]
 
         q = FakeQueue()
-        io_executor = BoundedExecutor(0, 1)
+        io_executor = BoundedExecutor(1000, 1)
         manager = DownloadNonSeekableOutputManager(
             self.osutil, self.transfer_coordinator, io_executor=io_executor,
             defer_queue=q)
@@ -249,7 +249,7 @@ class TestGetObjectTask(BaseTaskTest):
         self.extra_args = {}
         self.callbacks = []
         self.max_attempts = 5
-        self.io_executor = BoundedExecutor(0, 1)
+        self.io_executor = BoundedExecutor(1000, 1)
         self.content = b'my content'
         self.stream = six.BytesIO(self.content)
         self.fileobj = WriteCollector()

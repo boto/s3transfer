@@ -494,7 +494,7 @@ class UploadSubmissionTask(SubmissionTask):
         call_args = transfer_future.meta.call_args
 
         # Get any tags that need to be associated to the put object task
-        put_object_future_tag = self._get_upload_future_tag(
+        put_object_tag = self._get_upload_task_tag(
             upload_input_manager, 'put_object')
 
         # Submit the request of a single upload.
@@ -512,7 +512,7 @@ class UploadSubmissionTask(SubmissionTask):
                 },
                 is_final=True
             ),
-            future_tag=put_object_future_tag
+            tag=put_object_tag
         )
 
     def _submit_multipart_request(self, client, config, osutil,
@@ -540,7 +540,7 @@ class UploadSubmissionTask(SubmissionTask):
 
         # Get any tags that need to be associated to the submitted task
         # for upload the data
-        upload_part_future_tag = self._get_upload_future_tag(
+        upload_part_tag = self._get_upload_task_tag(
             upload_input_manager, 'upload_part')
 
         part_iterator = upload_input_manager.yield_upload_part_bodies(
@@ -564,7 +564,7 @@ class UploadSubmissionTask(SubmissionTask):
                             'upload_id': create_multipart_future
                         }
                     ),
-                    future_tag=upload_part_future_tag
+                    tag=upload_part_tag
                 )
             )
 
@@ -595,11 +595,11 @@ class UploadSubmissionTask(SubmissionTask):
                 upload_parts_args[key] = value
         return upload_parts_args
 
-    def _get_upload_future_tag(self, upload_input_manager, operation_name):
-        future_tag = None
+    def _get_upload_task_tag(self, upload_input_manager, operation_name):
+        tag = None
         if upload_input_manager.stores_body_in_memory(operation_name):
-            future_tag = IN_MEMORY_UPLOAD_TAG
-        return future_tag
+            tag = IN_MEMORY_UPLOAD_TAG
+        return tag
 
 
 class PutObjectTask(Task):

@@ -293,8 +293,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
 class TestTask(unittest.TestCase):
     def setUp(self):
-        self.id = 1
-        self.transfer_coordinator = TransferCoordinator(id=self.id)
+        self.transfer_id = 1
+        self.transfer_coordinator = TransferCoordinator(id=self.transfer_id)
 
     def test_repr(self):
         main_kwargs = {
@@ -314,7 +314,7 @@ class TestTask(unittest.TestCase):
         task = SuccessTask(self.transfer_coordinator)
         # Make sure that the id is the one provided to the id associated
         # to the transfer coordinator.
-        self.assertEqual(task.transfer_id, self.id)
+        self.assertEqual(task.transfer_id, self.transfer_id)
 
     def test_context_status_transitioning_success(self):
         # The status should be set to running.

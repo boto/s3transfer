@@ -28,6 +28,7 @@ from botocore.compat import six
 
 from s3transfer.manager import TransferConfig
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
+from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferFuture
@@ -36,6 +37,7 @@ from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
 from s3transfer.utils import TaskSemaphore
+from s3transfer.utils import SlidingWindowSemaphore
 
 
 def assert_files_equal(first, second):
@@ -268,7 +270,13 @@ class BaseSubmissionTaskTest(BaseTaskTest):
         self.config = TransferConfig()
         self.osutil = OSUtils()
         self.executor = BoundedExecutor(
-            1000, 1, {IN_MEMORY_UPLOAD_TAG: TaskSemaphore(10)})
+            1000,
+            1,
+            {
+                IN_MEMORY_UPLOAD_TAG: TaskSemaphore(10),
+                IN_MEMORY_DOWNLOAD_TAG: SlidingWindowSemaphore(10)
+            }
+        )
 
     def tearDown(self):
         super(BaseSubmissionTaskTest, self).tearDown()
@@ -435,3 +443,26 @@ class NonSeekableReader(io.RawIOBase):
 
     def read(self, n=-1):
         return self._data.read(n)
+
+
+class NonSeekableWriter(io.RawIOBase):
+    def __init__(self, fileobj):
+        super(NonSeekableWriter, self).__init__()
+        self._fileobj = fileobj
+
+    def seekable(self):
+        return False
+
+    def writable(self):
+        return True
+
+    def readable(self):
+        return False
+
+    def write(self, b):
+        self._fileobj.write(b)
+
+    def read(self, n=-1):
+        # This is needed because python will not always return the correct
+        # kind of error even though returnable returns False.
+        raise io.UnsupportedOperation("read")

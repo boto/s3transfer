@@ -21,6 +21,8 @@ from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import TaskSemaphore
+from s3transfer.utils import SlidingWindowSemaphore
+from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import TransferFuture
@@ -46,7 +48,8 @@ class TransferConfig(object):
                  max_io_queue_size=1000,
                  io_chunksize=64 * KB,
                  num_download_attempts=5,
-                 max_in_memory_upload_chunks=10):
+                 max_in_memory_upload_chunks=10,
+                 max_in_memory_download_chunks=10):
         """Configurations for the transfer mangager
 
         :param multipart_threshold: The threshold for which multipart
@@ -108,6 +111,15 @@ class TransferConfig(object):
             be waiting with a single read chunk to be submitted for upload
             because the ``max_in_memory_upload_chunks`` value has been reached
             by the threads making the upload request.
+
+        :param max_in_memory_download_chunks: The number of chunks that can
+            be buffered in memory and **not** in the io queue at a time for all
+            ongoing dowload requests. This pertains specifically to file-like
+            objects that cannot be seeked. The total maximum memory footprint
+            due to a in-memory download chunks is roughly equal to:
+
+                max_in_memory_download_chunks * multipart_chunksize
+
         """
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
@@ -119,6 +131,7 @@ class TransferConfig(object):
         self.io_chunksize = io_chunksize
         self.num_download_attempts = num_download_attempts
         self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
+        self.max_in_memory_download_chunks = max_in_memory_download_chunks
         self._validate_attrs_are_nonzero()
 
     def _validate_attrs_are_nonzero(self):
@@ -196,7 +209,9 @@ class TransferManager(object):
             max_num_threads=self._config.max_request_concurrency,
             tag_semaphores={
                 IN_MEMORY_UPLOAD_TAG: TaskSemaphore(
-                    self._config.max_in_memory_upload_chunks)
+                    self._config.max_in_memory_upload_chunks),
+                IN_MEMORY_DOWNLOAD_TAG: SlidingWindowSemaphore(
+                    self._config.max_in_memory_download_chunks)
             }
         )
 

@@ -414,3 +414,4 @@ class BoundedExecutor(object):
 TaskTag = namedtuple('TaskTag', ['name'])
 
 IN_MEMORY_UPLOAD_TAG = TaskTag('in_memory_upload')
+IN_MEMORY_DOWNLOAD_TAG = TaskTag('in_memory_download')

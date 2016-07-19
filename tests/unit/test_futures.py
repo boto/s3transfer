@@ -29,6 +29,16 @@ def return_call_args(*args, **kwargs):
     return args, kwargs
 
 
+class RecordingTransferCoordinator(TransferCoordinator):
+    def __init__(self):
+        self.all_transfer_futures_ever_associated = set()
+        super(RecordingTransferCoordinator, self).__init__()
+
+    def add_associated_future(self, future):
+        self.all_transfer_futures_ever_associated.add(future)
+        super(RecordingTransferCoordinator, self).add_associated_future(future)
+
+
 class TestTransferFuture(unittest.TestCase):
     def setUp(self):
         self.meta = TransferMeta()
@@ -167,12 +177,29 @@ class TestTransferCoordinator(unittest.TestCase):
                 return_call_args,
                 future_tag='my-tag'
             )
-        # Make sure the future got associated to the transfer coordinator
-        self.assertEqual(
-            self.transfer_coordinator.associated_futures, [future])
         # Make sure the future got submit and executed as well by checking its
         # result value which should include the provided future tag.
         self.assertEqual(future.result(), ((), {'future_tag': 'my-tag'}))
+
+    def test_association_and_disassociation_on_submit(self):
+        self.transfer_coordinator = RecordingTransferCoordinator()
+
+        # Submit a callable to the transfer coordinator.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = self.transfer_coordinator.submit(
+                executor, return_call_args)
+
+        # Make sure the future that got submitted was associated to the
+        # transfer future at some point.
+        self.assertEqual(
+            self.transfer_coordinator.all_transfer_futures_ever_associated,
+            set([future])
+        )
+
+        # Make sure the future got disassociated once the future is now done
+        # by looking at the currently associated futures.
+        self.assertEqual(
+            self.transfer_coordinator.associated_futures, set([]))
 
     def test_done(self):
         # These should result in not done state:
@@ -243,31 +270,31 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.add_associated_future(first_future)
         associated_futures = self.transfer_coordinator.associated_futures
         # The first future should be in the returned list of futures.
-        self.assertEqual(associated_futures, [first_future])
+        self.assertEqual(associated_futures, set([first_future]))
 
         second_future = object()
         # Associate another future to the transfer.
         self.transfer_coordinator.add_associated_future(second_future)
         # The association should not have mutated the returned list from
         # before.
-        self.assertEqual(associated_futures, [first_future])
+        self.assertEqual(associated_futures, set([first_future]))
 
         # Both futures should be in the returned list.
         self.assertEqual(
             self.transfer_coordinator.associated_futures,
-            [first_future, second_future])
+            set([first_future, second_future]))
 
     def test_associated_futures_on_done(self):
         future = object()
         self.transfer_coordinator.add_associated_future(future)
         self.assertEqual(
-            self.transfer_coordinator.associated_futures, [future])
+            self.transfer_coordinator.associated_futures, set([future]))
 
         self.transfer_coordinator.announce_done()
         # When the transfer completes that means all of the futures have
         # completed as well, leaving no need to keep the completed futures
         # around as the transfer is done.
-        self.assertEqual(self.transfer_coordinator.associated_futures, [])
+        self.assertEqual(self.transfer_coordinator.associated_futures, set())
 
     def test_done_callbacks_on_done(self):
         done_callback_invocations = []

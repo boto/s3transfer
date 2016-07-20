@@ -119,6 +119,14 @@ class TransferConfig(object):
         self.io_chunksize = io_chunksize
         self.num_download_attempts = num_download_attempts
         self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
+        self._validate_attrs_are_nonzero()
+
+    def _validate_attrs_are_nonzero(self):
+        for attr, attr_val, in self.__dict__.items():
+            if attr_val <= 0:
+                raise ValueError(
+                    'Provided parameter %s of value %s must be greater than '
+                    '0.' % (attr, attr_val))
 
 
 class TransferManager(object):

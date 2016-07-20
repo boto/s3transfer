@@ -128,12 +128,6 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
                 }
             )
 
-    def set_stream_chunk_size(self, chunk_size):
-        previous_chunk_size = GetObjectTask.STREAM_CHUNK_SIZE
-        GetObjectTask.STREAM_CHUNK_SIZE = chunk_size
-        self.addCleanup(
-            setattr, GetObjectTask, 'STREAM_CHUNK_SIZE',  previous_chunk_size)
-
     def test_download_temporary_file_does_not_exist(self):
         self.add_head_object_response()
         self.add_successful_get_object_responses()
@@ -248,8 +242,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         recorder_subscriber = RecordingSubscriber()
         # Set the streaming to a size that is smaller than the data we
         # currently provide to it to simulate rewinds of callbacks.
-        new_chunk_size = 3
-        self.set_stream_chunk_size(new_chunk_size)
+        self.config.io_chunksize = 3
         future = self.manager.download(
             subscribers=[recorder_subscriber], **self.create_call_kwargs())
         future.result()

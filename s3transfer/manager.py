@@ -29,8 +29,8 @@ from s3transfer.download import DownloadSubmissionTask
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.copies import CopySubmissionTask
 
-
-MB = 1024 * 1024
+KB = 1024
+MB = KB * KB
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +43,7 @@ class TransferConfig(object):
                  max_request_queue_size=0,
                  max_submission_queue_size=0,
                  max_io_queue_size=1000,
+                 io_chunksize=64 * KB,
                  num_download_attempts=5,
                  max_in_memory_upload_chunks=10):
         """Configurations for the transfer mangager
@@ -77,6 +78,10 @@ class TransferConfig(object):
             means that there is no maximum. The default size for each element
             in this queue is 8 KB.
 
+        :param io_chunksize: The max size of each chunk in the io queue.
+            Currently, this is size used when reading from the downloaded
+            stream as well.
+
         :param num_download_attempts: The number of download attempts that
             will be tried upon errors with downloading an object in S3. Note
             that these retries account for errors that occur when streamming
@@ -110,6 +115,7 @@ class TransferConfig(object):
         self.max_request_queue_size = max_request_queue_size
         self.max_submission_queue_size = max_submission_queue_size
         self.max_io_queue_size = max_io_queue_size
+        self.io_chunksize = io_chunksize
         self.num_download_attempts = num_download_attempts
         self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
 

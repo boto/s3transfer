@@ -294,7 +294,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 class TestTask(unittest.TestCase):
     def setUp(self):
         self.transfer_id = 1
-        self.transfer_coordinator = TransferCoordinator(id=self.transfer_id)
+        self.transfer_coordinator = TransferCoordinator(
+            transfer_id=self.transfer_id)
 
     def test_repr(self):
         main_kwargs = {

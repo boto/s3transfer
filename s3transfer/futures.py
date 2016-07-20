@@ -79,9 +79,9 @@ class TransferFuture(object):
 
 class TransferMeta(object):
     """Holds metadata about the TransferFuture"""
-    def __init__(self, call_args=None, id=None):
+    def __init__(self, call_args=None, transfer_id=None):
         self._call_args = call_args
-        self._id = id
+        self._transfer_id = transfer_id
         self._size = None
         self._user_context = {}
 
@@ -91,9 +91,9 @@ class TransferMeta(object):
         return self._call_args
 
     @property
-    def id(self):
+    def transfer_id(self):
         """The unique id of the transfer"""
-        return self._id
+        return self._transfer_id
 
     @property
     def size(self):
@@ -117,8 +117,8 @@ class TransferMeta(object):
 
 class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
-    def __init__(self, id=None):
-        self.id = id
+    def __init__(self, transfer_id=None):
+        self.transfer_id = transfer_id
         self._status = 'queued'
         self._result = None
         self._exception = None
@@ -245,7 +245,7 @@ class TransferCoordinator(object):
         """
         logger.debug(
             "Submitting task %s to executor %s for transfer request: %s." % (
-                task, executor, self.id)
+                task, executor, self.transfer_id)
         )
         future = executor.submit(task, tag=tag)
         # Add this created future to the list of associated future just

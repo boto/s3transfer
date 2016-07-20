@@ -382,7 +382,7 @@ class TransferManager(object):
     def _get_future_with_components(self, call_args):
         transfer_id = self._id_counter
         # Creates a new transfer future along with its components
-        transfer_coordinator = TransferCoordinator(id=transfer_id)
+        transfer_coordinator = TransferCoordinator(transfer_id=transfer_id)
         # Track the transfer coordinator for transfers to manage.
         self._coordinator_controller.add_transfer_coordinator(
             transfer_coordinator)
@@ -392,7 +392,7 @@ class TransferManager(object):
             self._coordinator_controller.remove_transfer_coordinator,
             transfer_coordinator)
         components = {
-            'meta': TransferMeta(call_args, id=transfer_id),
+            'meta': TransferMeta(call_args, transfer_id=transfer_id),
             'coordinator': transfer_coordinator
         }
         transfer_future = TransferFuture(**components)

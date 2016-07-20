@@ -377,11 +377,17 @@ class TestBoundedExecutor(unittest.TestCase):
         with self.assertRaises(NoResourcesAvailable):
             self.executor.submit(task, tag=tag, block=False)
 
-    def assert_submit_would_not_block(self, task, tag=None):
+    def assert_submit_would_not_block(self, task, tag=None, **kwargs):
         try:
             self.executor.submit(task, tag=tag, block=False)
         except NoResourcesAvailable:
             self.fail('Task %s should not have been blocked' % task)
+
+    def add_done_callback_to_future(self, future, fn, *args, **kwargs):
+        def callback_for_future(f):
+            fn(*args, **kwargs)
+
+        future.add_done_callback(callback_for_future)
 
     def test_submit_single_task(self):
         # Ensure we can submit a task to the executor
@@ -409,11 +415,15 @@ class TestBoundedExecutor(unittest.TestCase):
 
         # Submit a task.
         future = self.executor.submit(first_task)
+
+        # Submit a new task when the first task finishes. This should not get
+        # blocked because the first task should have finished clearing up
+        # capacity.
+        self.add_done_callback_to_future(
+            future, self.assert_submit_would_not_block, second_task)
+
         # Wait for it to complete.
-        future.result()
-        # Submit a new task. This should not get blocked because the first
-        # task should have finished clearing up capacity.
-        self.assert_submit_would_not_block(second_task)
+        self.executor.shutdown()
 
     def test_would_not_block_when_full_capacity_in_other_semaphore(self):
         first_task = self.get_sleep_task()

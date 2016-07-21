@@ -419,7 +419,6 @@ class TestSlidingWindowSemaphore(unittest.TestCase):
         self.assertEqual(sem.acquire('a', blocking=False), 5)
         self.assertEqual(sem.current_count(), 0)
 
-
     def test_counter_release_only_on_min_element(self):
         sem = SlidingWindowSemaphore(3)
         sem.acquire('a', blocking=False)
@@ -556,9 +555,11 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         sem = SlidingWindowSemaphore(2)
         sem.acquire('a', blocking=False)
         sem.acquire('a', blocking=False)
+
         def acquire():
             # This next call to acquire will block.
             self.assertEqual(sem.acquire('a', blocking=True), 2)
+
         t = threading.Thread(target=acquire)
         self.threads.append(t)
         # Starting the thread will block the sem.acquire()
@@ -591,11 +592,13 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         sem = SlidingWindowSemaphore(5)
         num_threads = 10
         num_iterations = 50
+
         def acquire():
             for _ in range(num_iterations):
                 num = sem.acquire('a', blocking=True)
                 time.sleep(0.001)
                 sem.release('a', num)
+
         for i in range(num_threads):
             t = threading.Thread(target=acquire)
             self.threads.append(t)

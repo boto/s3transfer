@@ -148,7 +148,8 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSeekableOutputManager, self).setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, io_executor=self.io_executor)
+            self.osutil, self.transfer_coordinator,
+            io_executor=self.io_executor)
 
         # Create a fileobj to write to
         self.fileobj = open(self.filename, 'wb')
@@ -513,10 +514,11 @@ class TestDeferQueue(unittest.TestCase):
         writes = self.q.request_writes(offset=0, data='a')
         self.assertEqual(
             writes,
-            [{'offset': 0, 'data': 'a'},
-             {'offset': 1, 'data': 'b'},
-             {'offset': 2, 'data': 'c'},
-             {'offset': 3, 'data': 'd'},
+            [
+                {'offset': 0, 'data': 'a'},
+                {'offset': 1, 'data': 'b'},
+                {'offset': 2, 'data': 'c'},
+                {'offset': 3, 'data': 'd'}
             ]
         )
 
@@ -528,8 +530,9 @@ class TestDeferQueue(unittest.TestCase):
         writes = self.q.request_writes(offset=0, data='a')
         self.assertEqual(
             writes,
-            [{'offset': 0, 'data': 'a'},
-             {'offset': 1, 'data': 'b'},
+            [
+                {'offset': 0, 'data': 'a'},
+                {'offset': 1, 'data': 'b'},
             ]
         )
 
@@ -538,8 +541,9 @@ class TestDeferQueue(unittest.TestCase):
         writes = self.q.request_writes(offset=0, data='abcde')
         self.assertEqual(
             writes,
-            [{'offset': 0, 'data': 'abcde'},
-             {'offset': 5, 'data': 'hello world'},
+            [
+                {'offset': 0, 'data': 'abcde'},
+                {'offset': 5, 'data': 'hello world'},
             ]
         )
 
@@ -579,9 +583,10 @@ class TestDeferQueue(unittest.TestCase):
 
         self.assertEqual(
             self.q.request_writes(offset=0, data='a'),
-            [{'offset': 0, 'data': 'a'},
-             # Note we're seeing 'b' 'c', and not 'X', 'Y'.
-             {'offset': 1, 'data': 'b'},
-             {'offset': 2, 'data': 'c'},
+            [
+                {'offset': 0, 'data': 'a'},
+                # Note we're seeing 'b' 'c', and not 'X', 'Y'.
+                {'offset': 1, 'data': 'b'},
+                {'offset': 2, 'data': 'c'},
             ]
         )

@@ -92,7 +92,8 @@ class DownloadOutputManager(object):
         This method may defer submission to the IO executor if necessary.
 
         """
-        future = self._io_executor.submit(
+        self._transfer_coordinator.submit(
+            self._io_executor,
             IOWriteTask(
                 self._transfer_coordinator,
                 main_kwargs={
@@ -102,7 +103,6 @@ class DownloadOutputManager(object):
                 }
             )
         )
-        self._transfer_coordinator.add_associated_future(future)
 
     def get_final_io_task(self):
         """Get the final io task to complete the download
@@ -178,7 +178,6 @@ class DownloadSeekableOutputManager(DownloadOutputManager):
             transfer_coordinator=self._transfer_coordinator)
 
 
-
 class DownloadNonSeekableOutputManager(DownloadOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor,
                  defer_queue=None):
@@ -206,8 +205,9 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
             for write in writes:
                 data = write['data']
                 logger.debug("Queueing IO offset %s for fileobj: %s",
-                            write['offset'], fileobj)
-                future = self._io_executor.submit(
+                             write['offset'], fileobj)
+                self._transfer_coordinator.submit(
+                    self._io_executor,
                     IOStreamingWriteTask(
                         self._transfer_coordinator,
                         main_kwargs={
@@ -216,7 +216,6 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
                         }
                     )
                 )
-                self._transfer_coordinator.add_associated_future(future)
 
 
 class DownloadSubmissionTask(SubmissionTask):
@@ -310,7 +309,7 @@ class DownloadSubmissionTask(SubmissionTask):
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
         # Submit the task to download the object.
-        download_future = self._submit_task(
+        download_future = self._transfer_coordinator.submit(
             request_executor,
             GetObjectTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -364,7 +363,7 @@ class DownloadSubmissionTask(SubmissionTask):
             extra_args.update(call_args.extra_args)
             # Submit the ranged downloads
             ranged_downloads.append(
-                self._submit_task(
+                self._transfer_coordinator.submit(
                     request_executor,
                     GetObjectTask(
                         transfer_coordinator=self._transfer_coordinator,
@@ -395,13 +394,13 @@ class DownloadSubmissionTask(SubmissionTask):
         # all of the other GetObjectTasks have completed.
         final_task = download_output_manager.get_final_io_task()
         submit_final_task = FunctionContainer(
-            self._submit_task, io_executor, final_task)
+            self._transfer_coordinator.submit, io_executor, final_task)
 
         # Submit a task to wait for all of the downloads to complete
         # and submit their downloaded content to the io executor before
         # submitting the final task to the io executor that ensures that all
         # of the io tasks have been completed.
-        self._submit_task(
+        self._transfer_coordinator.submit(
             request_executor,
             JoinFuturesTask(
                 transfer_coordinator=self._transfer_coordinator,

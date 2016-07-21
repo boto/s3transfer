@@ -58,7 +58,7 @@ class ReturnKwargsTask(Task):
 class SubmitMoreTasksTask(Task):
     def _main(self, executor, tasks_to_submit):
         for task_to_submit in tasks_to_submit:
-            self._submit_task(executor, task_to_submit)
+            self._transfer_coordinator.submit(executor, task_to_submit)
 
 
 class NOOPSubmissionTask(SubmissionTask):
@@ -70,7 +70,7 @@ class ExceptionSubmissionTask(SubmissionTask):
     def _submit(self, transfer_future, executor=None, tasks_to_submit=None):
         if executor and tasks_to_submit:
             for task_to_submit in tasks_to_submit:
-                self._submit_task(executor, task_to_submit)
+                self._transfer_coordinator.submit(executor, task_to_submit)
             # We want to sleep for a small of time to allow the provided tasks
             # to be executed before the task exception when submitting is
             # raised.

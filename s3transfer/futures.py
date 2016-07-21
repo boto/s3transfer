@@ -220,6 +220,31 @@ class TransferCoordinator(object):
         with self._lock:
             self._status = 'running'
 
+    def submit(self, executor, task, future_tag=None):
+        """Submits a task to a provided executor
+
+        :type executor: s3transfer.futures.BoundedExecutor
+        :param executor: The executor to submit the callable to
+
+        :type task: s3transfer.tasks.Task
+        :param task: The task to submit to the executor
+
+        :type future_tag: s3transfer.futures.FutureTag
+        :param future_tag: A future tag to associate to the task
+
+        :rtype: concurrent.futures.Future
+        :returns: A future representing the submitted task
+        """
+        logger.debug(
+            "Submitting task %s to executor %s from %s." % (
+                task, executor, self)
+        )
+        future = executor.submit(task, future_tag=future_tag)
+        # Add this created future to the list of associated future just
+        # in case it is needed during cleanups.
+        self.add_associated_future(future)
+        return future
+
     def done(self):
         """Determines if a TransferFuture has completed
 

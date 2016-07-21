@@ -158,6 +158,22 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.announce_done()
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
+    def test_submit(self):
+        # Submit a callable to the transfer coordinator. It should submit it
+        # to the executor.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = self.transfer_coordinator.submit(
+                executor,
+                return_call_args,
+                future_tag='my-tag'
+            )
+        # Make sure the future got associated to the transfer coordinator
+        self.assertEqual(
+            self.transfer_coordinator.associated_futures, [future])
+        # Make sure the future got submit and executed as well by checking its
+        # result value which should include the provided future tag.
+        self.assertEqual(future.result(), ((), {'future_tag': 'my-tag'}))
+
     def test_done(self):
         # These should result in not done state:
         # queued

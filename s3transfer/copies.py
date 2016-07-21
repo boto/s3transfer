@@ -122,7 +122,7 @@ class CopySubmissionTask(SubmissionTask):
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
         # Submit the request of a single copy.
-        self._submit_task(
+        self._transfer_coordinator.submit(
             request_executor,
             CopyObjectTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -150,7 +150,7 @@ class CopySubmissionTask(SubmissionTask):
             if param not in self.CREATE_MULTIPART_ARGS_BLACKLIST:
                 create_multipart_extra_args[param] = val
 
-        create_multipart_future = self._submit_task(
+        create_multipart_future = self._transfer_coordinator.submit(
             request_executor,
             CreateMultipartUploadTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -187,7 +187,7 @@ class CopySubmissionTask(SubmissionTask):
                 part_size, part_number-1, num_parts, transfer_future.meta.size
             )
             part_futures.append(
-                self._submit_task(
+                self._transfer_coordinator.submit(
                     request_executor,
                     CopyPartTask(
                         transfer_coordinator=self._transfer_coordinator,
@@ -209,7 +209,7 @@ class CopySubmissionTask(SubmissionTask):
             )
 
         # Submit the request to complete the multipart upload.
-        self._submit_task(
+        self._transfer_coordinator.submit(
             request_executor,
             CompleteMultipartUploadTask(
                 transfer_coordinator=self._transfer_coordinator,

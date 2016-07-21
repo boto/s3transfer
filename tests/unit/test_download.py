@@ -253,6 +253,7 @@ class TestGetObjectTask(BaseTaskTest):
         self.stream = six.BytesIO(self.content)
         self.fileobj = WriteCollector()
         self.osutil = OSUtils()
+        self.io_chunksize = 64 * (1024 ** 2)
         self.download_output_manager = DownloadSeekableOutputManager(
             self.osutil, self.transfer_coordinator, self.io_executor)
 
@@ -263,6 +264,7 @@ class TestGetObjectTask(BaseTaskTest):
             'callbacks': self.callbacks,
             'max_attempts': self.max_attempts,
             'download_output_manager': self.download_output_manager,
+            'io_chunksize': self.io_chunksize,
         }
         default_kwargs.update(kwargs)
         return self.get_task(GetObjectTask, main_kwargs=default_kwargs)
@@ -303,8 +305,7 @@ class TestGetObjectTask(BaseTaskTest):
             'get_object', service_response={'Body': self.stream},
             expected_params={'Bucket': self.bucket, 'Key': self.key}
         )
-        task = self.get_download_task()
-        task.STREAM_CHUNK_SIZE = 1
+        task = self.get_download_task(io_chunksize=1)
         task()
 
         self.stubber.assert_no_pending_responses()
@@ -375,8 +376,7 @@ class TestGetObjectTask(BaseTaskTest):
             'get_object', service_response={'Body': self.stream},
             expected_params={'Bucket': self.bucket, 'Key': self.key}
         )
-        task = self.get_download_task()
-        task.STREAM_CHUNK_SIZE = 1
+        task = self.get_download_task(io_chunksize=1)
         task()
 
         self.stubber.assert_no_pending_responses()

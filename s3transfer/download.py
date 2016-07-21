@@ -323,6 +323,7 @@ class DownloadSubmissionTask(SubmissionTask):
                     'callbacks': progress_callbacks,
                     'max_attempts': config.num_download_attempts,
                     'download_output_manager': download_output_manager,
+                    'io_chunksize': config.io_chunksize,
                 }
             )
         )
@@ -377,6 +378,7 @@ class DownloadSubmissionTask(SubmissionTask):
                             'max_attempts': config.num_download_attempts,
                             'start_index': i * part_size,
                             'download_output_manager': download_output_manager,
+                            'io_chunksize': config.io_chunksize,
                         }
                     )
                 )
@@ -422,10 +424,9 @@ class DownloadSubmissionTask(SubmissionTask):
 
 
 class GetObjectTask(Task):
-    STREAM_CHUNK_SIZE = 64 * 1024
-
     def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
-              max_attempts, download_output_manager, start_index=0):
+              max_attempts, download_output_manager, io_chunksize,
+              start_index=0):
         """Downloads an object and places content into io queue
 
         :param client: The client to use when calling GetObject
@@ -437,6 +438,8 @@ class GetObjectTask(Task):
         :param max_attempts: The number of retries to do when downloading
         :param download_output_manager: The download output manager associated
             with the current download.
+        :param io_chunksize: The size of each io chunk to read from the
+            download stream and queue in the io queue.
         :param start_index: The location in the file to start writing the
             content of the key to.
         """
@@ -450,7 +453,7 @@ class GetObjectTask(Task):
 
                 current_index = start_index
                 chunks = iter(
-                    lambda: streaming_body.read(self.STREAM_CHUNK_SIZE), b'')
+                    lambda: streaming_body.read(io_chunksize), b'')
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation
                     # or error somewhere else, stop trying to submit more

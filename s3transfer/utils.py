@@ -400,7 +400,10 @@ class TaskSemaphore(object):
     def acquire(self, tag, blocking=True):
         """Acquire the semaphore
 
-        :param tag: A tag identifying what is acquiring the semaphore
+        :param tag: A tag identifying what is acquiring the semaphore. Note
+            that this is not really needed to directly use this class but is
+            needed for API compatibility with the SlidingWindowSemaphore
+            implementation.
         :param block: If True, block until it can be acquired. If False,
             do not block and raise an exception if cannot be aquired.
 
@@ -415,7 +418,9 @@ class TaskSemaphore(object):
 
         :param tag: A tag identifying what is releasing the semaphore
         :param acquire_token:  The token returned from when the semaphore was
-            acquired.
+            acquired. Note that this is not really needed to directly use this
+            class but is needed for API compatibility with the
+            SlidingWindowSemaphore implementation.
         """
         logger.debug("Releasing acquire %s/%s" % (tag, acquire_token))
         self._semaphore.release()

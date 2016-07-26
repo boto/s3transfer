@@ -389,7 +389,44 @@ class NoResourcesAvailable(Exception):
     pass
 
 
-class SlidingWindowSemaphore(object):
+class TaskSemaphore(object):
+    def __init__(self, count):
+        """A semaphore for the purpose of limiting the number of tasks
+
+        :param count: The size of semaphore
+        """
+        self._semaphore = threading.Semaphore(count)
+
+    def acquire(self, tag, blocking=True):
+        """Acquire the semaphore
+
+        :param tag: A tag identifying what is acquiring the semaphore. Note
+            that this is not really needed to directly use this class but is
+            needed for API compatibility with the SlidingWindowSemaphore
+            implementation.
+        :param block: If True, block until it can be acquired. If False,
+            do not block and raise an exception if cannot be aquired.
+
+        :returns: A token (can be None) to use when releasing the semaphore
+        """
+        logger.debug("Acquiring %s", tag)
+        if not self._semaphore.acquire(blocking):
+            raise NoResourcesAvailable("Cannot acquire tag '%s'" % tag)
+
+    def release(self, tag, acquire_token):
+        """Release the semaphore
+
+        :param tag: A tag identifying what is releasing the semaphore
+        :param acquire_token:  The token returned from when the semaphore was
+            acquired. Note that this is not really needed to directly use this
+            class but is needed for API compatibility with the
+            SlidingWindowSemaphore implementation.
+        """
+        logger.debug("Releasing acquire %s/%s" % (tag, acquire_token))
+        self._semaphore.release()
+
+
+class SlidingWindowSemaphore(TaskSemaphore):
     """A semaphore used to coordinate sequential resource access.
 
     This class is similar to the stdlib BoundedSemaphore:
@@ -447,7 +484,8 @@ class SlidingWindowSemaphore(object):
         finally:
             self._condition.release()
 
-    def release(self, tag, sequence_number):
+    def release(self, tag, acquire_token):
+        sequence_number = acquire_token
         logger.debug("Releasing acquire %s/%s", tag, sequence_number)
         self._condition.acquire()
         try:

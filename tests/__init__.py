@@ -27,6 +27,7 @@ from botocore.stub import Stubber
 from botocore.compat import six
 
 from s3transfer.manager import TransferConfig
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferFuture
@@ -34,6 +35,7 @@ from s3transfer.futures import BoundedExecutor
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
+from s3transfer.utils import TaskSemaphore
 
 
 def assert_files_equal(first, second):
@@ -202,13 +204,13 @@ class RecordingExecutor(object):
         self._executor = executor
         self.submissions = []
 
-    def submit(self, fn, *args, **kwargs):
-        future = self._executor.submit(fn, *args, **kwargs)
+    def submit(self, task, tag=None, block=True):
+        future = self._executor.submit(task, tag, block)
         self.submissions.append(
             {
-                'fn': fn,
-                'args': args,
-                'kwargs': kwargs
+                'task': task,
+                'tag': tag,
+                'block': block
             }
         )
         return future
@@ -265,7 +267,8 @@ class BaseSubmissionTaskTest(BaseTaskTest):
         super(BaseSubmissionTaskTest, self).setUp()
         self.config = TransferConfig()
         self.osutil = OSUtils()
-        self.executor = BoundedExecutor(0, 1)
+        self.executor = BoundedExecutor(
+            1000, 1, {IN_MEMORY_UPLOAD_TAG: TaskSemaphore(10)})
 
     def tearDown(self):
         super(BaseSubmissionTaskTest, self).tearDown()
@@ -359,6 +362,27 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         # are of the correct value in call_args.
         for param, value in call_kwargs.items():
             self.assertEqual(value, getattr(future.meta.call_args, param))
+
+    def test_has_transfer_id_associated_to_future(self):
+        self._setup_default_stubbed_responses()
+        call_kwargs = self.create_call_kwargs()
+        future = self.method(**call_kwargs)
+        # The result is called so we ensure that the entire process executes
+        # before we try to clean up resources in the tearDown.
+        future.result()
+
+        # Assert that an transfer id was associated to the future.
+        # Since there is only one transfer request is made for that transfer
+        # manager the id will be zero since it will be the first transfer
+        # request made for that transfer manager.
+        self.assertEqual(future.meta.transfer_id, 0)
+
+        # If we make a second request, the transfer id should have incremented
+        # by one for that new TransferFuture.
+        self._setup_default_stubbed_responses()
+        future = self.method(**call_kwargs)
+        future.result()
+        self.assertEqual(future.meta.transfer_id, 1)
 
     def test_invalid_extra_args(self):
         with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):

@@ -427,12 +427,12 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
 
     def assert_tag_value_for_put_object(self, tag_value):
         self.assertEqual(
-            self.executor.submissions[0]['kwargs']['future_tag'], tag_value)
+            self.executor.submissions[0]['tag'], tag_value)
 
     def assert_tag_value_for_upload_parts(self, tag_value):
         for submission in self.executor.submissions[1:-1]:
             self.assertEqual(
-                submission['kwargs']['future_tag'], tag_value)
+                submission['tag'], tag_value)
 
     def test_provide_file_size_on_put(self):
         self.call_args.subscribers.append(FileSizeProvider(len(self.content)))

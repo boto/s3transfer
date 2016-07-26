@@ -20,6 +20,7 @@ from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.utils import TaskSemaphore
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import TransferFuture
@@ -40,8 +41,8 @@ class TransferConfig(object):
                  multipart_chunksize=8 * MB,
                  max_request_concurrency=10,
                  max_submission_concurrency=5,
-                 max_request_queue_size=0,
-                 max_submission_queue_size=0,
+                 max_request_queue_size=1000,
+                 max_submission_queue_size=1000,
                  max_io_queue_size=1000,
                  io_chunksize=64 * KB,
                  num_download_attempts=5,
@@ -118,6 +119,14 @@ class TransferConfig(object):
         self.io_chunksize = io_chunksize
         self.num_download_attempts = num_download_attempts
         self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
+        self._validate_attrs_are_nonzero()
+
+    def _validate_attrs_are_nonzero(self):
+        for attr, attr_val, in self.__dict__.items():
+            if attr_val <= 0:
+                raise ValueError(
+                    'Provided parameter %s of value %s must be greater than '
+                    '0.' % (attr, attr_val))
 
 
 class TransferManager(object):
@@ -178,13 +187,16 @@ class TransferManager(object):
         if osutil is None:
             self._osutil = OSUtils()
         self._coordinator_controller = TransferCoordinatorController()
+        # A counter to create unique id's for each transfer submitted.
+        self._id_counter = 0
 
         # The executor responsible for making S3 API transfer requests
         self._request_executor = BoundedExecutor(
             max_size=self._config.max_request_queue_size,
             max_num_threads=self._config.max_request_concurrency,
-            tag_max_sizes={
-                IN_MEMORY_UPLOAD_TAG: self._config.max_in_memory_upload_chunks
+            tag_semaphores={
+                IN_MEMORY_UPLOAD_TAG: TaskSemaphore(
+                    self._config.max_in_memory_upload_chunks)
             }
         )
 
@@ -361,11 +373,16 @@ class TransferManager(object):
                 main_kwargs=main_kwargs
             )
         )
+
+        # Increment the unique id counter for future transfer requests
+        self._id_counter += 1
+
         return transfer_future
 
     def _get_future_with_components(self, call_args):
+        transfer_id = self._id_counter
         # Creates a new transfer future along with its components
-        transfer_coordinator = TransferCoordinator()
+        transfer_coordinator = TransferCoordinator(transfer_id=transfer_id)
         # Track the transfer coordinator for transfers to manage.
         self._coordinator_controller.add_transfer_coordinator(
             transfer_coordinator)
@@ -375,7 +392,7 @@ class TransferManager(object):
             self._coordinator_controller.remove_transfer_coordinator,
             transfer_coordinator)
         components = {
-            'meta': TransferMeta(call_args),
+            'meta': TransferMeta(call_args, transfer_id=transfer_id),
             'coordinator': transfer_coordinator
         }
         transfer_future = TransferFuture(**components)

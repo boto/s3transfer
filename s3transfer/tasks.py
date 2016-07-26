@@ -88,6 +88,11 @@ class Task(object):
             self._main_kwargs, params_to_display)
         return '%s(%s)' % (self.__class__.__name__, main_kwargs_to_display)
 
+    @property
+    def transfer_id(self):
+        """The id for the transfer request that the task belongs to"""
+        return self._transfer_coordinator.transfer_id
+
     def _get_kwargs_with_params_to_include(self, kwargs, include):
         filtered_kwargs = {}
         for param in include:

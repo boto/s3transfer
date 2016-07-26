@@ -17,11 +17,18 @@ from concurrent.futures import ThreadPoolExecutor
 from tests import unittest
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.futures import TransferCoordinator
+from s3transfer.manager import TransferConfig
 from s3transfer.manager import TransferCoordinatorController
 
 
 class FutureResultException(Exception):
     pass
+
+
+class TestTransferConfig(unittest.TestCase):
+    def test_exception_on_zero_attr_value(self):
+        with self.assertRaises(ValueError):
+            TransferConfig(max_request_queue_size=0)
 
 
 class TestTransferCoordinatorController(unittest.TestCase):

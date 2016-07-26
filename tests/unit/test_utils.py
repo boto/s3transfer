@@ -32,6 +32,7 @@ from s3transfer.utils import OSUtils
 from s3transfer.utils import DeferredOpenFile
 from s3transfer.utils import ReadFileChunk
 from s3transfer.utils import StreamReaderProgress
+from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
 from s3transfer.utils import NoResourcesAvailable
 
@@ -379,6 +380,27 @@ class TestStreamReaderProgress(BaseUtilsTest):
             original_stream, [self.callback, self.callback])
         self.assertEqual(wrapped.read(), 'foobarbaz')
         self.assertEqual(self.amounts_seen, [9, 9])
+
+
+class TestTaskSemaphore(unittest.TestCase):
+    def setUp(self):
+        self.semaphore = TaskSemaphore(1)
+
+    def test_should_block_at_max_capacity(self):
+        self.semaphore.acquire('a', blocking=False)
+        with self.assertRaises(NoResourcesAvailable):
+            self.semaphore.acquire('a', blocking=False)
+
+    def test_release_capacity(self):
+        acquire_token = self.semaphore.acquire('a', blocking=False)
+        self.semaphore.release('a', acquire_token)
+        try:
+            self.semaphore.acquire('a', blocking=False)
+        except NoResourcesAvailable:
+            self.fail(
+                'The release of the semaphore should have allowed for '
+                'the second acquire to not be blocked'
+            )
 
 
 class TestSlidingWindowSemaphore(unittest.TestCase):

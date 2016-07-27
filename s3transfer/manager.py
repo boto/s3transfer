@@ -44,7 +44,7 @@ class TransferConfig(object):
                  max_request_queue_size=1000,
                  max_submission_queue_size=1000,
                  max_io_queue_size=1000,
-                 io_chunksize=64 * KB,
+                 io_chunksize=256 * KB,
                  num_download_attempts=5,
                  max_in_memory_upload_chunks=10):
         """Configurations for the transfer mangager

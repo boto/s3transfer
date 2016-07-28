@@ -8,7 +8,7 @@ the form of a csv.
 Usage
 =====
 
-NOTE: Make sure you run ``pip install -r requirements.txt`` before running.
+NOTE: Make sure you run ``pip install -r requirements-dev.txt`` before running.
 
 To use the script, run::
 

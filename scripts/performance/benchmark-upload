@@ -6,7 +6,7 @@ type of file that is uploaded (i.e. filename, seekable, nonseekable).
 Usage
 =====
 
-NOTE: Make sure you run ``pip install -r requirements.txt`` before running.
+NOTE: Make sure you run ``pip install -r requirements-dev.txt`` before running.
 
 To benchmark with using a temporary file that is generated for you::
 

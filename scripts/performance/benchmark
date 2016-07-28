@@ -98,10 +98,10 @@ def run_benchmark(pid, output_file, data_interval):
             sent_rate = sent_delta / dt
             recv_rate = recv_delta / dt
 
-            t = time.time()
             # Save all of the data into a CSV file.
             f.write(','.join(str(val) for val in [
-                t, memory_used, cpu_percent, sent_rate, recv_rate]) + '\n')
+                current_time, memory_used, cpu_percent, sent_rate,
+                recv_rate]) + '\n')
             f.flush()
     sys.exit(0)
 

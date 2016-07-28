@@ -43,7 +43,7 @@ def benchmark(args):
     child_p = run_script(args)
     try:
         # Benchmark the process where the script is being ran.
-        run_benchmark(child_p.pid, args.output_file, args.data_interval)
+        return run_benchmark(child_p.pid, args.output_file, args.data_interval)
     except KeyboardInterrupt:
         # If there is an interrupt, then try to clean everything up.
         proc = psutil.Process(parent_pid)
@@ -55,7 +55,7 @@ def benchmark(args):
         gone, alive = psutil.wait_procs(procs, timeout=1)
         for child in alive:
             child.kill()
-        sys.exit(0)
+        return 1
 
 
 def run_script(args):
@@ -102,7 +102,7 @@ def run_benchmark(pid, output_file, data_interval):
                 current_time, memory_used, cpu_percent, sent_rate,
                 recv_rate]) + '\n')
             f.flush()
-    sys.exit(0)
+    return 0
 
 
 def main():
@@ -116,7 +116,7 @@ def main():
         '--output-file', default='performance.csv',
         help='The file to output the data collected to')
     args = parser.parse_args()
-    benchmark(args)
+    return benchmark(args)
 
 
 if __name__ == '__main__':

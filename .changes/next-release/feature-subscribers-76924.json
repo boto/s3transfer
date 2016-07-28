@@ -1,0 +1,5 @@
+{
+  "category": "subscribers", 
+  "type": "feature", 
+  "description": "Add subscriber interface. Currently supports on_queued, on_progress, and on_done status changes."
+}

@@ -1,0 +1,5 @@
+{
+  "category": "download", 
+  "type": "feature", 
+  "description": "Add support for downloading to a filename, seekable file-like object, and nonseekable file-like object."
+}

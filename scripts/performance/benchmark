@@ -33,6 +33,8 @@ if sys.platform.startswith('linux'):
 elif sys.platform == 'darwin':
     INTERFACE = 'en0'
 else:
+    # TODO: Add support for windows. This would require figuring out what
+    # interface to use on windows.
     raise RuntimeError('Script cannot be run on %s' % sys.platform)
 
 

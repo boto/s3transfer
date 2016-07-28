@@ -16,21 +16,26 @@ import shutil
 import tempfile
 
 from tests import BaseTaskTest
+from tests import BaseSubmissionTaskTest
 from tests import StreamWithError
 from tests import FileCreator
 from tests import unittest
+from tests import RecordingExecutor
+from tests import NonSeekableWriter
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.download import DownloadFilenameOutputManager
 from s3transfer.download import DownloadSeekableOutputManager
 from s3transfer.download import DownloadNonSeekableOutputManager
+from s3transfer.download import DownloadSubmissionTask
 from s3transfer.download import GetObjectTask
 from s3transfer.download import IOWriteTask
 from s3transfer.download import IOStreamingWriteTask
 from s3transfer.download import IORenameFileTask
 from s3transfer.download import CompleteDownloadNOOPTask
 from s3transfer.download import DeferQueue
+from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import BoundedExecutor
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
@@ -105,6 +110,9 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         self.assertTrue(
             self.download_output_manager.is_compatible(self.filename))
 
+    def test_get_download_task_tag(self):
+        self.assertIsNone(self.download_output_manager.get_download_task_tag())
+
     def test_get_fileobj_for_io_writes(self):
         with self.download_output_manager.get_fileobj_for_io_writes(
                 self.future) as f:
@@ -172,6 +180,9 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_not_compatible_for_non_filelike_obj(self):
         self.assertFalse(self.download_output_manager.is_compatible(object()))
 
+    def test_get_download_task_tag(self):
+        self.assertIsNone(self.download_output_manager.get_download_task_tag())
+
     def test_get_fileobj_for_io_writes(self):
         self.assertIs(
             self.download_output_manager.get_fileobj_for_io_writes(
@@ -221,6 +232,11 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
         self.assertTrue(
             self.download_output_manager.is_compatible(six.BytesIO()))
 
+    def test_get_download_task_tag(self):
+        self.assertIs(
+            self.download_output_manager.get_download_task_tag(),
+            IN_MEMORY_DOWNLOAD_TAG)
+
     def test_submit_writes_from_internal_queue(self):
         class FakeQueue(object):
             def request_writes(self, offset, data):
@@ -239,6 +255,179 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
             fileobj=fileobj, data='foo', offset=1)
         io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
+
+class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
+    def setUp(self):
+        super(TestDownloadSubmissionTask, self).setUp()
+        self.tempdir = tempfile.mkdtemp()
+        self.filename = os.path.join(self.tempdir, 'myfile')
+
+        self.bucket = 'mybucket'
+        self.key = 'mykey'
+        self.extra_args = {}
+        self.subscribers = []
+
+        # Create a stream to read from
+        self.content = b'my content'
+        self.stream = six.BytesIO(self.content)
+
+        # A list to keep track of all of the bodies sent over the wire
+        # and their order.
+
+        self.call_args = self.get_call_args()
+        self.transfer_future = self.get_transfer_future(self.call_args)
+        self.io_executor = BoundedExecutor(1000, 1)
+        self.submission_main_kwargs = {
+            'client': self.client,
+            'config': self.config,
+            'osutil': self.osutil,
+            'request_executor': self.executor,
+            'io_executor': self.io_executor,
+            'transfer_future': self.transfer_future
+        }
+        self.submission_task = self.get_download_submission_task()
+
+    def tearDown(self):
+        super(TestDownloadSubmissionTask, self).tearDown()
+        shutil.rmtree(self.tempdir)
+
+    def get_call_args(self, **kwargs):
+        default_call_args = {
+            'fileobj': self.filename, 'bucket': self.bucket,
+            'key': self.key, 'extra_args': self.extra_args,
+            'subscribers': self.subscribers
+        }
+        default_call_args.update(kwargs)
+        return CallArgs(**default_call_args)
+
+    def wrap_executor_in_recorder(self):
+        self.executor = RecordingExecutor(self.executor)
+        self.submission_main_kwargs['request_executor'] = self.executor
+
+    def use_fileobj_in_call_args(self, fileobj):
+        self.call_args = self.get_call_args(fileobj=fileobj)
+        self.transfer_future = self.get_transfer_future(self.call_args)
+        self.submission_main_kwargs['transfer_future'] = self.transfer_future
+
+    def assert_tag_for_get_object(self, tag_value):
+        submissions_to_compare = self.executor.submissions
+        if len(submissions_to_compare) > 1:
+            # If it was ranged get, make sure we do not include the join task.
+            submissions_to_compare = submissions_to_compare[:-1]
+        for submission in submissions_to_compare:
+            self.assertEqual(
+                submission['tag'], tag_value)
+
+    def add_head_object_response(self):
+        self.stubber.add_response(
+            'head_object', {'ContentLength': len(self.content)})
+
+    def add_get_responses(self):
+        chunksize = self.config.multipart_chunksize
+        for i in range(0, len(self.content), chunksize):
+            if i + chunksize > len(self.content):
+                stream = six.BytesIO(self.content[i:])
+                self.stubber.add_response('get_object', {'Body': stream})
+            else:
+                stream = six.BytesIO(self.content[i:i+chunksize])
+                self.stubber.add_response('get_object', {'Body': stream})
+
+    def configure_for_ranged_get(self):
+        self.config.multipart_threshold = 1
+        self.config.multipart_chunksize = 4
+
+    def get_download_submission_task(self):
+        return self.get_task(
+            DownloadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+
+    def wait_and_assert_completed_successfully(self, submission_task):
+        submission_task()
+        self.transfer_future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_submits_no_tag_for_get_object_filename(self):
+        self.wrap_executor_in_recorder()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        self.submission_task = self.get_download_submission_task()
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(None)
+
+    def test_submits_no_tag_for_ranged_get_filename(self):
+        self.wrap_executor_in_recorder()
+        self.configure_for_ranged_get()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        self.submission_task = self.get_download_submission_task()
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(None)
+
+    def test_submits_no_tag_for_get_object_fileobj(self):
+        self.wrap_executor_in_recorder()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        with open(self.filename, 'wb') as f:
+            self.use_fileobj_in_call_args(f)
+            self.submission_task = self.get_download_submission_task()
+            self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(None)
+
+    def test_submits_no_tag_for_ranged_get_object_fileobj(self):
+        self.wrap_executor_in_recorder()
+        self.configure_for_ranged_get()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        with open(self.filename, 'wb') as f:
+            self.use_fileobj_in_call_args(f)
+            self.submission_task = self.get_download_submission_task()
+            self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(None)
+
+    def tests_submits_tag_for_get_object_nonseekable_fileobj(self):
+        self.wrap_executor_in_recorder()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        with open(self.filename, 'wb') as f:
+            self.use_fileobj_in_call_args(NonSeekableWriter(f))
+            self.submission_task = self.get_download_submission_task()
+            self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(IN_MEMORY_DOWNLOAD_TAG)
+
+    def tests_submits_tag_for_ranged_get_object_nonseekable_fileobj(self):
+        self.wrap_executor_in_recorder()
+        self.configure_for_ranged_get()
+        self.add_head_object_response()
+        self.add_get_responses()
+
+        with open(self.filename, 'wb') as f:
+            self.use_fileobj_in_call_args(NonSeekableWriter(f))
+            self.submission_task = self.get_download_submission_task()
+            self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Make sure no tag to limit that task specifically was not associated
+        # to that task submission.
+        self.assert_tag_for_get_object(IN_MEMORY_DOWNLOAD_TAG)
 
 
 class TestGetObjectTask(BaseTaskTest):

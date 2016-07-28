@@ -26,6 +26,7 @@ from botocore.vendored.requests.packages.urllib3.exceptions import \
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import seekable
 from s3transfer.exceptions import RetriesExceededError
+from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import invoke_progress_callbacks
@@ -72,6 +73,14 @@ class DownloadOutputManager(object):
             otherwise returns False.
         """
         raise NotImplementedError('must implement is_compatible()')
+
+    def get_download_task_tag(self):
+        """Get the tag (if any) to associate all GetObjectTasks
+
+        :rtype: s3transfer.futures.TaskTag
+        :returns: The tag to associate all GetObjectTasks with
+        """
+        return None
 
     def get_fileobj_for_io_writes(self, transfer_future):
         """Get file-like object to use for io writes in the io executor
@@ -192,6 +201,9 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
     def is_compatible(cls, download_target):
         return hasattr(download_target, 'write')
 
+    def get_download_task_tag(self):
+        return IN_MEMORY_DOWNLOAD_TAG
+
     def get_fileobj_for_io_writes(self, transfer_future):
         return transfer_future.meta.call_args.fileobj
 
@@ -308,6 +320,9 @@ class DownloadSubmissionTask(SubmissionTask):
         # Get the needed callbacks for the task
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
+        # Get any associated tags for the get object task.
+        get_object_tag = download_output_manager.get_download_task_tag()
+
         # Submit the task to download the object.
         download_future = self._transfer_coordinator.submit(
             request_executor,
@@ -324,7 +339,8 @@ class DownloadSubmissionTask(SubmissionTask):
                     'download_output_manager': download_output_manager,
                     'io_chunksize': config.io_chunksize,
                 }
-            )
+            ),
+            tag=get_object_tag
         )
 
         # Send the necessary tasks to complete the download.
@@ -350,6 +366,9 @@ class DownloadSubmissionTask(SubmissionTask):
         part_size = config.multipart_chunksize
         num_parts = int(
             math.ceil(transfer_future.meta.size / float(part_size)))
+
+        # Get any associated tags for the get object task.
+        get_object_tag = download_output_manager.get_download_task_tag()
 
         ranged_downloads = []
         for i in range(num_parts):
@@ -379,7 +398,8 @@ class DownloadSubmissionTask(SubmissionTask):
                             'download_output_manager': download_output_manager,
                             'io_chunksize': config.io_chunksize,
                         }
-                    )
+                    ),
+                    tag=get_object_tag
                 )
             )
         # Send the necessary tasks to complete the download.

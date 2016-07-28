@@ -463,6 +463,4 @@ class NonSeekableWriter(io.RawIOBase):
         self._fileobj.write(b)
 
     def read(self, n=-1):
-        # This is needed because python will not always return the correct
-        # kind of error even though returnable returns False.
         raise io.UnsupportedOperation("read")

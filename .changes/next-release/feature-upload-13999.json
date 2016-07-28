@@ -1,0 +1,5 @@
+{
+  "category": "upload", 
+  "type": "feature", 
+  "description": "Add support for uploading a filename, seekable file-like object, and nonseekable file-like object."
+}

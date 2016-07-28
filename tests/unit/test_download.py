@@ -110,8 +110,8 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         self.assertTrue(
             self.download_output_manager.is_compatible(self.filename))
 
-    def test_buffers_memory_in_body(self):
-        self.assertFalse(self.download_output_manager.buffers_body_in_memory())
+    def test_get_download_task_tag(self):
+        self.assertIsNone(self.download_output_manager.get_download_task_tag())
 
     def test_get_fileobj_for_io_writes(self):
         with self.download_output_manager.get_fileobj_for_io_writes(
@@ -180,8 +180,8 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_not_compatible_for_non_filelike_obj(self):
         self.assertFalse(self.download_output_manager.is_compatible(object()))
 
-    def test_buffers_memory_in_body(self):
-        self.assertFalse(self.download_output_manager.buffers_body_in_memory())
+    def test_get_download_task_tag(self):
+        self.assertIsNone(self.download_output_manager.get_download_task_tag())
 
     def test_get_fileobj_for_io_writes(self):
         self.assertIs(
@@ -232,8 +232,10 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
         self.assertTrue(
             self.download_output_manager.is_compatible(six.BytesIO()))
 
-    def test_buffers_memory_in_body(self):
-        self.assertTrue(self.download_output_manager.buffers_body_in_memory())
+    def test_get_download_task_tag(self):
+        self.assertIs(
+            self.download_output_manager.get_download_task_tag(),
+            IN_MEMORY_DOWNLOAD_TAG)
 
     def test_submit_writes_from_internal_queue(self):
         class FakeQueue(object):

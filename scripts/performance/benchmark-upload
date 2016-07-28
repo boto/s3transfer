@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+"""
+Benchmark the uploading of a file using s3transfer. You can also chose how
+type of file that is uploaded (i.e. filename, seekable, nonseekable).
+
+Usage
+=====
+
+NOTE: Make sure you run ``pip install -r requirements-dev.txt`` before running.
+
+To benchmark with using a temporary file that is generated for you::
+
+    ./benchmark-upload --file-size 10MB --file-type filename \\
+        --s3-bucket mybucket
+
+To benchmark with your own local file::
+
+    ./benchmark-upload --source-file myfile --file-type filename \\
+        --s3-bucket mybucket
+
+"""
+import argparse
+import os
+import tempfile
+import shutil
+import subprocess
+
+from botocore.session import get_session
+
+
+TEMP_FILE = 'temp'
+TEMP_KEY = 'temp'
+KB = 1024
+SIZE_SUFFIX = {
+    'kb': 1024,
+    'mb': 1024 ** 2,
+    'gb': 1024 ** 3,
+    'tb': 1024 ** 4,
+    'kib': 1024,
+    'mib': 1024 ** 2,
+    'gib': 1024 ** 3,
+    'tib': 1024 ** 4,
+}
+
+
+def human_readable_to_bytes(value):
+    """Converts a human readable size to bytes.
+    :param value: A string such as "10MB".  If a suffix is not included,
+        then the value is assumed to be an integer representing the size
+        in bytes.
+    :returns: The converted value in bytes as an integer
+    """
+    value = value.lower()
+    if value[-2:] == 'ib':
+        # Assume IEC suffix.
+        suffix = value[-3:].lower()
+    else:
+        suffix = value[-2:].lower()
+    has_size_identifier = (
+        len(value) >= 2 and suffix in SIZE_SUFFIX)
+    if not has_size_identifier:
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError("Invalid size value: %s" % value)
+    else:
+        multiplier = SIZE_SUFFIX[suffix]
+        return int(value[:-len(suffix)]) * multiplier
+
+
+def create_file(filename, file_size):
+    with open(filename, 'wb') as f:
+        for i in range(0, file_size, KB):
+            f.write(b'a' * i)
+
+
+def benchmark_upload(args):
+    source_file = args.source_file
+    session = get_session()
+    client = session.create_client('s3')
+    tempdir = None
+    try:
+        # If a source file was not specified, then create a temporary file of
+        # that size for the user.
+        if not source_file:
+            tempdir = tempfile.mkdtemp()
+            source_file = os.path.join(tempdir, TEMP_FILE)
+            create_file(source_file, args.file_size)
+
+        upload_file_script = (
+            './upload-file --file-name %s --file-type %s --s3-bucket %s '
+            '--s3-key %s' % (
+                source_file, args.file_type, args.s3_bucket, TEMP_KEY)
+        )
+        benchmark_args = ['./benchmark', upload_file_script]
+        if args.output_file:
+            benchmark_args.extend(['--output-file', args.output_file])
+        subprocess.check_call(benchmark_args)
+    finally:
+        if tempdir:
+            shutil.rmtree(tempdir)
+    client.delete_object(Bucket=args.s3_bucket, Key=TEMP_KEY)
+
+
+def main():
+    parser = argparse.ArgumentParser(usage=__doc__)
+    source_file_group = parser.add_mutually_exclusive_group(required=True)
+    source_file_group.add_argument(
+        '--source-file',
+        help=(
+            'The local file to upload. Note this is optional. You can also '
+            'use --file-size which will create a temporary file for you.'
+        )
+    )
+    source_file_group.add_argument(
+        '--file-size', type=human_readable_to_bytes,
+        help=(
+            'The size of the temporary file to create. You can also specify '
+            'your own file with --source-file'
+        )
+    )
+    parser.add_argument(
+        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
+        required=True, help='The way to represent the file when uploading')
+    parser.add_argument(
+        '--s3-bucket', required=True,
+        help='The S3 bucket to upload the file to')
+    parser.add_argument(
+        '--output-file',
+        help=(
+            'The file to output the data collected to. The default '
+            'location performace.csv'
+        )
+    )
+    args = parser.parse_args()
+    benchmark_upload(args)
+
+
+if __name__ == '__main__':
+    main()

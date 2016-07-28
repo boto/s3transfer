@@ -1,8 +1,19 @@
 =========
-Changelog
+CHANGELOG
 =========
 
-0.0.1 - (2016-01-18)
---------------------
-* feature:manager: Add boto3 s3 transfer logic to package.
-  (`issue 2 <https://github.com/boto/s3transfer/pull/2>`__)
+0.1.0
+=====
+
+* feature:copy: Add support for managed copies.
+* feature:download: Add support for downloading to a filename, seekable file-like object, and nonseekable file-like object.
+* feature:general: Add ``TransferManager`` class. All public functionality for ``s3transfer`` is exposed through this class.
+* feature:subscribers: Add subscriber interface. Currently supports on_queued, on_progress, and on_done status changes.
+* feature:upload: Add support for uploading a filename, seekable file-like object, and nonseekable file-like object.
+
+
+0.0.1
+=====
+
+* feature:manager: Add boto3 s3 transfer logic to package. (`issue 2 <https://github.com/boto/s3transfer/pull/2>`__)
+

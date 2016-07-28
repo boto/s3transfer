@@ -32,8 +32,10 @@ setup(
     description='An Amazon S3 Transfer Manager',
     long_description=open('README.rst').read(),
     author='Amazon Web Services',
+    author_email='kyknapp1@gmail.com',
     url='https://github.com/boto/s3transfer',
     packages=find_packages(exclude=['tests*']),
+    include_package_data=True,
     install_requires=requires,
     extras_require={
         ':python_version=="2.6" or python_version=="2.7"': [
@@ -41,7 +43,7 @@ setup(
     },
     license="Apache License 2.0",
     classifiers=(
-        'Development Status :: 1 - Planning'
+        'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'License :: OSI Approved :: Apache Software License',

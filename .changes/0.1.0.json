@@ -1,0 +1,27 @@
+[
+  {
+    "category": "copy", 
+    "description": "Add support for managed copies.", 
+    "type": "feature"
+  }, 
+  {
+    "category": "download", 
+    "description": "Add support for downloading to a filename, seekable file-like object, and nonseekable file-like object.", 
+    "type": "feature"
+  }, 
+  {
+    "category": "general", 
+    "description": "Add ``TransferManager`` class. All public functionality for ``s3transfer`` is exposed through this class.", 
+    "type": "feature"
+  }, 
+  {
+    "category": "subscribers", 
+    "description": "Add subscriber interface. Currently supports on_queued, on_progress, and on_done status changes.", 
+    "type": "feature"
+  }, 
+  {
+    "category": "upload", 
+    "description": "Add support for uploading a filename, seekable file-like object, and nonseekable file-like object.", 
+    "type": "feature"
+  }
+]

@@ -1,0 +1,163 @@
+#!/usr/bin/env python
+"""
+Benchmark the downloading of a file using s3transfer. You can also chose how
+type of file that is downloaded (i.e. filename, seekable, nonseekable).
+
+Usage
+=====
+
+NOTE: Make sure you run ``pip install -r requirements-dev.txt`` before running.
+
+To benchmark with using a temporary file and key that is generated for you::
+
+    ./benchmark-download --file-size 10MB --file-type filename \\
+        --s3-bucket mybucket
+
+To benchmark with your own s3 key:
+
+    ./benchmark-upload --existing-s3-key mykey --file-type filename \\
+        --s3-bucket mybucket
+
+"""
+import argparse
+import os
+import tempfile
+import shutil
+import subprocess
+
+from botocore.session import get_session
+from s3transfer.manager import TransferManager
+
+
+TEMP_FILE = 'temp'
+TEMP_KEY = 'temp'
+KB = 1024
+SIZE_SUFFIX = {
+    'kb': 1024,
+    'mb': 1024 ** 2,
+    'gb': 1024 ** 3,
+    'tb': 1024 ** 4,
+    'kib': 1024,
+    'mib': 1024 ** 2,
+    'gib': 1024 ** 3,
+    'tib': 1024 ** 4,
+}
+
+
+def human_readable_to_bytes(value):
+    """Converts a human readable size to bytes.
+    :param value: A string such as "10MB".  If a suffix is not included,
+        then the value is assumed to be an integer representing the size
+        in bytes.
+    :returns: The converted value in bytes as an integer
+    """
+    value = value.lower()
+    if value[-2:] == 'ib':
+        # Assume IEC suffix.
+        suffix = value[-3:].lower()
+    else:
+        suffix = value[-2:].lower()
+    has_size_identifier = (
+        len(value) >= 2 and suffix in SIZE_SUFFIX)
+    if not has_size_identifier:
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError("Invalid size value: %s" % value)
+    else:
+        multiplier = SIZE_SUFFIX[suffix]
+        return int(value[:-len(suffix)]) * multiplier
+
+
+def create_file(filename, file_size):
+    with open(filename, 'wb') as f:
+        for i in range(0, file_size, KB):
+            f.write(b'a' * i)
+
+
+def benchmark_download(args):
+    # Create a temporary directory to use for scratch work.
+    tempdir = tempfile.mkdtemp()
+    temp_file = os.path.join(tempdir, TEMP_FILE)
+
+    if args.target_download:
+        temp_file = os.path.abspath(
+            os.path.expanduser(args.target_download))
+    session = get_session()
+    client = session.create_client('s3')
+    s3_key = args.existing_s3_key
+    try:
+        # If an existing s3 key was not specified, then create a temporary
+        # file of that size for the user and upload it.
+        if not args.existing_s3_key:
+            # Create the temporary file.
+            create_file(temp_file, args.file_size)
+
+            # Create the temporary s3 key
+            s3_key = TEMP_KEY
+            upload_file(client, temp_file, args.s3_bucket)
+
+        download_file_script = (
+            './download-file --file-name %s --file-type %s --s3-bucket %s '
+            '--s3-key %s' % (
+                temp_file, args.file_type, args.s3_bucket, s3_key)
+        )
+        benchmark_args = ['./benchmark', download_file_script]
+        if args.output_file:
+            benchmark_args.extend(['--output-file', args.output_file])
+        subprocess.check_call(benchmark_args)
+    finally:
+        shutil.rmtree(tempdir)
+        if not args.existing_s3_key:
+            client.delete_object(Bucket=args.s3_bucket, Key=s3_key)
+
+
+def upload_file(client, filename, bucket):
+    with TransferManager(client) as manager:
+        manager.upload(filename, bucket, TEMP_KEY)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    file_group = parser.add_mutually_exclusive_group(required=True)
+    file_group.add_argument(
+        '--file-size', type=human_readable_to_bytes,
+        help=(
+            'The size of the temporary file to create and then upload to s3. '
+            'You can also specify your own key with --existing-s3-key to '
+            'avoid going through this setup step.'
+        )
+    )
+    parser.add_argument(
+        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
+        required=True, help='The way to represent the file when downloading')
+    parser.add_argument(
+        '--s3-bucket', required=True,
+        help='The S3 bucket to download the file to')
+    file_group.add_argument(
+        '--existing-s3-key',
+        help=(
+            'The existing s3 key to download from. You can also use '
+            '--file-size to create a temporary file and key to download from.'
+        )
+    )
+    parser.add_argument(
+        '--target-download',
+        help=(
+            'The filename to download to. Note that this file will '
+            'always be cleaned up for you.'
+        )
+    )
+    parser.add_argument(
+        '--output-file',
+        help=(
+            'The file to output the data collected to. The default '
+            'location performace.csv'
+        )
+    )
+    args = parser.parse_args()
+    benchmark_download(args)
+
+
+if __name__ == '__main__':
+    main()

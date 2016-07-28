@@ -61,7 +61,7 @@ def benchmark(args):
 def run_script(args):
     # Run the script in a separate process.
     script_args = args.script.split(' ')
-    return subprocess.Popen(script_args)
+    return subprocess.Popen(args.script, shell=True)
 
 
 def run_benchmark(pid, output_file, data_interval):

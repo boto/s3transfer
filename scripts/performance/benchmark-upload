@@ -87,24 +87,18 @@ def benchmark_upload(args):
             source_file = os.path.join(tempdir, TEMP_FILE)
             create_file(source_file, args.file_size)
 
-        # Glue together the upload-file script that is used in the benchmark
-        # script.
         upload_file_script = (
             './upload-file --file-name %s --file-type %s --s3-bucket %s '
             '--s3-key %s' % (
                 source_file, args.file_type, args.s3_bucket, TEMP_KEY)
         )
         benchmark_args = ['./benchmark', upload_file_script]
-        # Add in the output-file for benchmark if it was specified.
         if args.output_file:
             benchmark_args.extend(['--output-file', args.output_file])
-        # Run the benchmark script now.
         subprocess.check_call(benchmark_args)
     finally:
-        # Remove the temporary directory if one got created.
         if tempdir:
             shutil.rmtree(tempdir)
-    # Delete the uploaded key as well to finish cleaning up.
     client.delete_object(Bucket=args.s3_bucket, Key=TEMP_KEY)
 
 

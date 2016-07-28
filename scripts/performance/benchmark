@@ -74,7 +74,6 @@ def run_benchmark(pid, output_file, data_interval):
             if p.status() == psutil.STATUS_ZOMBIE:
                 p.kill()
                 break
-            # Sleep for the data interval.
             time.sleep(data_interval)
 
             try:

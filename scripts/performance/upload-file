@@ -34,11 +34,8 @@ class Uploader(object):
         session = get_session()
         client = session.create_client('s3')
         file_type = args.file_type
-        # Enable debugging if requested.
         if args.debug:
             session.set_debug_logger('')
-        # Using the TransferManger, upload the file based on the file type
-        # requested.
         with TransferManager(client) as manager:
             getattr(self, 'upload_' + file_type)(
                 manager, args.file_name, args.s3_bucket, args.s3_key)

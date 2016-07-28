@@ -112,9 +112,7 @@ class Summarizer(object):
         index = self.DATA_INDEX_IN_ROW[name]
         # Get the data point.
         data_point = float(row[index])
-        # Add it to the running total.
         self._add_to_total(name, data_point)
-        # Account if the data point is a maximum.
         self._account_for_maximum(name, data_point)
 
     def _get_time(self, row):

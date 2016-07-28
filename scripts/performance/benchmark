@@ -111,7 +111,7 @@ def main():
     parser.add_argument(
         'script', help='The script to run for benchmarking')
     parser.add_argument(
-        '--data-interval', default=0.1, type=float,
+        '--data-interval', default=1, type=float,
         help='The interval in seconds to poll for data points')
     parser.add_argument(
         '--output-file', default='performance.csv',

@@ -1,5 +1,0 @@
-{
-  "category": "general", 
-  "type": "feature", 
-  "description": "Add ``TransferManager`` class. All public functionality for ``s3transfer`` is exposed through this class."
-}

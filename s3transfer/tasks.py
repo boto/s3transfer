@@ -11,7 +11,6 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import copy
-from concurrent import futures
 import logging
 
 from s3transfer.utils import get_callbacks
@@ -178,7 +177,28 @@ class Task(object):
             else:
                 futures_to_wait_on.append(future)
         # Now wait for all of the futures to complete.
-        futures.wait(futures_to_wait_on)
+        self._wait_until_all_complete(futures_to_wait_on)
+
+    def _wait_until_all_complete(self, futures):
+        # This is a basic implementation of the concurrent.futures.wait()
+        #
+        # concurrent.futures.wait() is not used instead because of this
+        # reported issue: https://bugs.python.org/issue20319.
+        # The issue would occassionally cause multipart uploads to hang
+        # when wait() was called. With this approach, it avoids the
+        # concurrency bug by removing any association with concurrent.futures
+        # implementation of waiters.
+        logger.debug(
+            '%s about to wait for the following futures %s', self, futures)
+        for future in futures:
+            try:
+                logger.debug('%s about to wait for %s', self, future)
+                future.result()
+            except Exception:
+                # result() can also produce exceptions. We want to ignore
+                # these to be deffered to error handling down the road.
+                pass
+        logger.debug('%s done waiting for dependent futures', self)
 
     def _get_all_main_kwargs(self):
         # Copy over all of the kwargs that we know is available.
@@ -270,7 +290,7 @@ class SubmissionTask(Task):
         submitted_futures = self._transfer_coordinator.associated_futures
         while submitted_futures:
             # Wait for those futures to complete.
-            futures.wait(submitted_futures)
+            self._wait_until_all_complete(submitted_futures)
             # However, more futures may have been submitted as we waited so
             # we need to check again for any more associated futures.
             possibly_more_submitted_futures = \

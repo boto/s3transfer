@@ -304,18 +304,6 @@ class TestTransferCoordinator(unittest.TestCase):
             self.transfer_coordinator.associated_futures,
             set([first_future, second_future]))
 
-    def test_associated_futures_on_done(self):
-        future = object()
-        self.transfer_coordinator.add_associated_future(future)
-        self.assertEqual(
-            self.transfer_coordinator.associated_futures, set([future]))
-
-        self.transfer_coordinator.announce_done()
-        # When the transfer completes that means all of the futures have
-        # completed as well, leaving no need to keep the completed futures
-        # around as the transfer is done.
-        self.assertEqual(self.transfer_coordinator.associated_futures, set())
-
     def test_done_callbacks_on_done(self):
         done_callback_invocations = []
         callback = FunctionContainer(

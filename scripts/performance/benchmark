@@ -59,8 +59,6 @@ def benchmark(args):
 
 
 def run_script(args):
-    # Run the script in a separate process.
-    script_args = args.script.split(' ')
     return subprocess.Popen(args.script, shell=True)
 
 
@@ -76,10 +74,13 @@ def run_benchmark(pid, output_file, data_interval):
                 break
             time.sleep(data_interval)
 
+            # Sometimes processes can spin up their own processes. We want
+            # to track these.
+            processes_to_track = [p] + p.children(recursive=True)
             try:
                 # Collect the memory and cpu usage.
-                memory_used = p.memory_info().rss
-                cpu_percent = p.cpu_percent()
+                memory_used = _get_memory_used(processes_to_track)
+                cpu_percent = _get_cpu_used(processes_to_track)
                 current_net = psutil.net_io_counters(pernic=True)[INTERFACE]
             except psutil.AccessDenied:
                 # Trying to get process information from a closed process will
@@ -103,6 +104,20 @@ def run_benchmark(pid, output_file, data_interval):
                 recv_rate]) + '\n')
             f.flush()
     return 0
+
+
+def _get_memory_used(processes):
+    memory_used = 0
+    for process in processes:
+        memory_used += process.memory_info().rss
+    return memory_used
+
+
+def _get_cpu_used(processes):
+    cpu_used = 0
+    for process in processes:
+        cpu_used += process.cpu_percent()
+    return cpu_used
 
 
 def main():

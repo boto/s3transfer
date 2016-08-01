@@ -296,14 +296,7 @@ class TransferCoordinator(object):
         if self.status != 'success':
             self._run_failure_cleanups()
         self._done_event.set()
-        self._remove_associated_futures()
         self._run_done_callbacks()
-
-    def _remove_associated_futures(self):
-        # Once the process is done, we want to empty the list so we do
-        # not hold onto too many completed futures.
-        with self._associated_futures_lock:
-            self._associated_futures = set()
 
     def _run_done_callbacks(self):
         # Run the callbacks and remove the callbacks from the internal

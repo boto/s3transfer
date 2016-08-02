@@ -73,14 +73,11 @@ def run_benchmark(pid, output_file, data_interval):
                 p.kill()
                 break
             time.sleep(data_interval)
-
-            # Sometimes processes can spin up their own processes. We want
-            # to track these.
-            processes_to_track = [p] + p.children(recursive=True)
+            process_to_measure = _get_underlying_python_process(p)
             try:
                 # Collect the memory and cpu usage.
-                memory_used = _get_memory_used(processes_to_track)
-                cpu_percent = _get_cpu_used(processes_to_track)
+                memory_used = process_to_measure.memory_info().rss
+                cpu_percent = process_to_measure.cpu_percent()
                 current_net = psutil.net_io_counters(pernic=True)[INTERFACE]
             except psutil.AccessDenied:
                 # Trying to get process information from a closed process will
@@ -106,18 +103,15 @@ def run_benchmark(pid, output_file, data_interval):
     return 0
 
 
-def _get_memory_used(processes):
-    memory_used = 0
-    for process in processes:
-        memory_used += process.memory_info().rss
-    return memory_used
-
-
-def _get_cpu_used(processes):
-    cpu_used = 0
-    for process in processes:
-        cpu_used += process.cpu_percent()
-    return cpu_used
+def _get_underlying_python_process(process):
+    # For some scripts such as the streaming CLI commands, the process is
+    # nested under a shell script that does not account for the python process.
+    # We want to always be measuring the python process.
+    children = process.children(recursive=True)
+    for child_process in children:
+        if 'python' in child_process.name():
+            return child_process
+    return process
 
 
 def main():

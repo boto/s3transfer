@@ -59,8 +59,6 @@ def benchmark(args):
 
 
 def run_script(args):
-    # Run the script in a separate process.
-    script_args = args.script.split(' ')
     return subprocess.Popen(args.script, shell=True)
 
 
@@ -75,11 +73,11 @@ def run_benchmark(pid, output_file, data_interval):
                 p.kill()
                 break
             time.sleep(data_interval)
-
+            process_to_measure = _get_underlying_python_process(p)
             try:
                 # Collect the memory and cpu usage.
-                memory_used = p.memory_info().rss
-                cpu_percent = p.cpu_percent()
+                memory_used = process_to_measure.memory_info().rss
+                cpu_percent = process_to_measure.cpu_percent()
                 current_net = psutil.net_io_counters(pernic=True)[INTERFACE]
             except psutil.AccessDenied:
                 # Trying to get process information from a closed process will
@@ -103,6 +101,17 @@ def run_benchmark(pid, output_file, data_interval):
                 recv_rate]) + '\n')
             f.flush()
     return 0
+
+
+def _get_underlying_python_process(process):
+    # For some scripts such as the streaming CLI commands, the process is
+    # nested under a shell script that does not account for the python process.
+    # We want to always be measuring the python process.
+    children = process.children(recursive=True)
+    for child_process in children:
+        if 'python' in child_process.name().lower():
+            return child_process
+    return process
 
 
 def main():

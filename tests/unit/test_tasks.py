@@ -13,6 +13,7 @@
 import time
 from concurrent import futures
 from functools import partial
+from threading import Event
 
 from tests import unittest
 from tests import RecordingSubscriber
@@ -36,12 +37,12 @@ class TaskFailureException(Exception):
 class SuccessTask(Task):
     def _main(self, return_value='success', callbacks=None,
               failure_cleanups=None):
-        if callbacks:
-            for callback in callbacks:
-                callback()
         if failure_cleanups:
             for failure_cleanup in failure_cleanups:
                 self._transfer_coordinator.add_failure_cleanup(failure_cleanup)
+        if callbacks:
+            for callback in callbacks:
+                callback()
         return return_value
 
 
@@ -67,14 +68,14 @@ class NOOPSubmissionTask(SubmissionTask):
 
 
 class ExceptionSubmissionTask(SubmissionTask):
-    def _submit(self, transfer_future, executor=None, tasks_to_submit=None):
+    def _submit(self, transfer_future, executor=None, tasks_to_submit=None,
+                additional_callbacks=None):
         if executor and tasks_to_submit:
             for task_to_submit in tasks_to_submit:
                 self._transfer_coordinator.submit(executor, task_to_submit)
-            # We want to sleep for a small of time to allow the provided tasks
-            # to be executed before the task exception when submitting is
-            # raised.
-            time.sleep(0.05)
+        if additional_callbacks:
+            for callback in additional_callbacks:
+                callback()
         raise TaskFailureException()
 
 
@@ -262,13 +263,13 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # what failure cleanups it needs to run until all spawned tasks have
         # completed.
         invocations_of_cleanup = []
-        sleep_callback = FunctionContainer(time.sleep, 0.06)
+        event = Event()
         cleanup_callback = FunctionContainer(
             invocations_of_cleanup.append, 'cleanup happened')
 
         cleanup_task = self.get_task(
             SuccessTask, main_kwargs={
-                'callbacks': [sleep_callback],
+                'callbacks': [event.set],
                 'failure_cleanups': [cleanup_callback]
             }
         )
@@ -282,6 +283,7 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.main_kwargs['executor'] = self.executor
         self.main_kwargs['tasks_to_submit'] = [
             task_for_submitting_cleanup_task]
+        self.main_kwargs['additional_callbacks'] = [event.wait]
 
         submission_task = self.get_task(
             ExceptionSubmissionTask, main_kwargs=self.main_kwargs)

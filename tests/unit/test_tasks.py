@@ -10,7 +10,6 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import time
 from concurrent import futures
 from functools import partial
 from threading import Event
@@ -220,15 +219,21 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
     def test_handles_cleanups_submitted_in_other_tasks(self):
         invocations_of_cleanup = []
+        event = Event()
         cleanup_callback = FunctionContainer(
             invocations_of_cleanup.append, 'cleanup happened')
         # We want the cleanup to be added in the execution of the task and
         # still be executed by the submission task when it fails.
         task = self.get_task(
-            SuccessTask, main_kwargs={'failure_cleanups': [cleanup_callback]})
+            SuccessTask, main_kwargs={
+                'callbacks': [event.set],
+                'failure_cleanups': [cleanup_callback]
+            }
+        )
 
         self.main_kwargs['executor'] = self.executor
         self.main_kwargs['tasks_to_submit'] = [task]
+        self.main_kwargs['additional_callbacks'] = [event.wait]
 
         submission_task = self.get_task(
             ExceptionSubmissionTask, main_kwargs=self.main_kwargs)

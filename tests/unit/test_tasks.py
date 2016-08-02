@@ -36,12 +36,12 @@ class TaskFailureException(Exception):
 class SuccessTask(Task):
     def _main(self, return_value='success', callbacks=None,
               failure_cleanups=None):
-        if failure_cleanups:
-            for failure_cleanup in failure_cleanups:
-                self._transfer_coordinator.add_failure_cleanup(failure_cleanup)
         if callbacks:
             for callback in callbacks:
                 callback()
+        if failure_cleanups:
+            for failure_cleanup in failure_cleanups:
+                self._transfer_coordinator.add_failure_cleanup(failure_cleanup)
         return return_value
 
 

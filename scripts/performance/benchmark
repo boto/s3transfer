@@ -109,7 +109,7 @@ def _get_underlying_python_process(process):
     # We want to always be measuring the python process.
     children = process.children(recursive=True)
     for child_process in children:
-        if 'python' in child_process.name():
+        if 'python' in child_process.name().lower():
             return child_process
     return process
 

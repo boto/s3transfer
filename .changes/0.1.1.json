@@ -1,0 +1,7 @@
+[
+  {
+    "category": "deadlock", 
+    "description": "Fix deadlock issue described here: https://bugs.python.org/issue20319 with using concurrent.futures.wait", 
+    "type": "bugfix"
+  }
+]

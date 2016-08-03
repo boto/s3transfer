@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.1
+=====
+
+* bugfix:deadlock: Fix deadlock issue described here: https://bugs.python.org/issue20319 with using concurrent.futures.wait
+
+
 0.1.0
 =====
 

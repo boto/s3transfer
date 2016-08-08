@@ -28,6 +28,7 @@ from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import CallArgs
 from s3transfer.utils import FunctionContainer
+from s3transfer.utils import CountCallbackInvoker
 from s3transfer.utils import OSUtils
 from s3transfer.utils import DeferredOpenFile
 from s3transfer.utils import ReadFileChunk
@@ -90,6 +91,57 @@ class TestFunctionContainer(unittest.TestCase):
         self.assertEqual(
             str(func_container), 'Function: %s with args %s and kwargs %s' % (
                 self.get_args_kwargs, ('foo',), {'bar': 'baz'}))
+
+
+class TestCountCallbackInvoker(unittest.TestCase):
+    def invoke_callback(self):
+        self.ref_results.append('callback invoked')
+
+    def assert_callback_invoked(self):
+        self.assertEqual(self.ref_results, ['callback invoked'])
+
+    def assert_callback_not_invoked(self):
+        self.assertEqual(self.ref_results, [])
+
+    def setUp(self):
+        self.ref_results = []
+        self.invoker = CountCallbackInvoker(self.invoke_callback)
+
+    def test_increment(self):
+        self.invoker.increment()
+        self.assertEqual(self.invoker.current_count, 1)
+
+    def test_decrement(self):
+        self.invoker.increment()
+        self.invoker.increment()
+        self.invoker.decrement()
+        self.assertEqual(self.invoker.current_count, 1)
+
+    def test_count_cannot_go_below_zero(self):
+        with self.assertRaises(RuntimeError):
+            self.invoker.decrement()
+
+    def test_callback_invoked_only_once_finalized(self):
+        self.invoker.increment()
+        self.invoker.decrement()
+        self.assert_callback_not_invoked()
+        self.invoker.finalize()
+        # Callback should only be invoked once finalized
+        self.assert_callback_invoked()
+
+    def test_callback_invoked_after_finalizing_and_count_reaching_zero(self):
+        self.invoker.increment()
+        self.invoker.finalize()
+        # Make sure that it does not get invoked immediately after
+        # finalizing as the count is currently one
+        self.assert_callback_not_invoked()
+        self.invoker.decrement()
+        self.assert_callback_invoked()
+
+    def test_cannot_increment_after_finalization(self):
+        self.invoker.finalize()
+        with self.assertRaises(RuntimeError):
+            self.invoker.increment()
 
 
 class TestRandomFileExtension(unittest.TestCase):

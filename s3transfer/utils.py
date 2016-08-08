@@ -156,6 +156,54 @@ class FunctionContainer(object):
         return self._func(*self._args, **self._kwargs)
 
 
+class CountCallbackInvoker(object):
+    """An abstraction to invoke a callback when a shared count reaches zero
+
+    :param callback: Callback invoke when finalized count reaches zero
+    """
+    def __init__(self, callback):
+        self._lock = threading.Lock()
+        self._callback = callback
+        self._count = 0
+        self._is_finalized = False
+
+    @property
+    def current_count(self):
+        with self._lock:
+            return self._count
+
+    def increment(self):
+        """Increment the count by one"""
+        with self._lock:
+            if self._is_finalized:
+                raise RuntimeError(
+                    'Counter has been finalized it can no longer be '
+                    'incremented.'
+                )
+            self._count += 1
+
+    def decrement(self):
+        """Decrement the count by one"""
+        with self._lock:
+            if self._count == 0:
+                raise RuntimeError(
+                    'Counter is at zero. It cannot dip below zero')
+            self._count -= 1
+            if self._is_finalized and self._count == 0:
+                self._callback()
+
+    def finalize(self):
+        """Finalize the counter
+
+        Once finalized, the counter never be incremented and the callback
+        can be invoked once the count reaches zero
+        """
+        with self._lock:
+            self._is_finalized = True
+            if self._count == 0:
+                self._callback()
+
+
 class OSUtils(object):
     def get_file_size(self, filename):
         return os.path.getsize(filename)

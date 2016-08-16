@@ -1,5 +1,0 @@
-{
-  "category": "download", 
-  "type": "bugfix", 
-  "description": "Patch memory leak related to unnecessarily holding onto futures for downloads."
-}

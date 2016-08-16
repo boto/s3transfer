@@ -162,7 +162,7 @@ class TransferManager(object):
         'GrantFullControl',
         'GrantRead',
         'GrantReadACP',
-        'GrantWriteACL',
+        'GrantWriteACP',
         'Metadata',
         'RequestPayer',
         'ServerSideEncryption',
@@ -171,6 +171,7 @@ class TransferManager(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'WebsiteRedirectLocation'
     ]
 
     ALLOWED_COPY_ARGS = ALLOWED_UPLOAD_ARGS + [

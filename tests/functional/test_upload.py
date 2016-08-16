@@ -198,6 +198,11 @@ class TestNonMultipartUpload(BaseUploadTest):
         # sure that the recorded opens are as expected.
         self.assertEqual(osutil.open_records, [(self.filename, 'rb')])
 
+    def test_allowed_upload_params_are_valid(self):
+        op_model = self.client.meta.service_model.operation_model('PutObject')
+        for allowed_upload_arg in self._manager.ALLOWED_UPLOAD_ARGS:
+            self.assertIn(allowed_upload_arg, op_model.input_shape.members)
+
 
 class TestMultipartUpload(BaseUploadTest):
     __test__ = True

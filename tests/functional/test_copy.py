@@ -246,6 +246,11 @@ class TestNonMultipartCopy(BaseCopyTest):
         future.result()
         self.stubber.assert_no_pending_responses()
 
+    def test_allowed_copy_params_are_valid(self):
+        op_model = self.client.meta.service_model.operation_model('CopyObject')
+        for allowed_upload_arg in self._manager.ALLOWED_COPY_ARGS:
+            self.assertIn(allowed_upload_arg, op_model.input_shape.members)
+
 
 class TestMultipartCopy(BaseCopyTest):
     __test__ = True

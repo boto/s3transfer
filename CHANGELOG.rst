@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.2
+=====
+
+* bugfix:download: Patch memory leak related to unnecessarily holding onto futures for downloads.
+
+
 0.1.1
 =====
 

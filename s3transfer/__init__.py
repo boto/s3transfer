@@ -143,9 +143,17 @@ from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
+
+
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 
 logger = logging.getLogger(__name__)
+logger.addHandler(NullHandler())
+
 queue = six.moves.queue
 
 MB = 1024 * 1024

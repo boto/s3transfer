@@ -32,6 +32,7 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import FunctionContainer
+from s3transfer.utils import CountCallbackInvoker
 from s3transfer.utils import StreamReaderProgress
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
@@ -323,8 +324,16 @@ class DownloadSubmissionTask(SubmissionTask):
         # Get any associated tags for the get object task.
         get_object_tag = download_output_manager.get_download_task_tag()
 
+        # Callback invoker to submit the final io task once the download
+        # is complete.
+        finalize_download_invoker = CountCallbackInvoker(
+            self._get_final_io_task_submission_callback(
+                download_output_manager, io_executor
+            )
+        )
+        finalize_download_invoker.increment()
         # Submit the task to download the object.
-        download_future = self._transfer_coordinator.submit(
+        self._transfer_coordinator.submit(
             request_executor,
             GetObjectTask(
                 transfer_coordinator=self._transfer_coordinator,
@@ -338,15 +347,13 @@ class DownloadSubmissionTask(SubmissionTask):
                     'max_attempts': config.num_download_attempts,
                     'download_output_manager': download_output_manager,
                     'io_chunksize': config.io_chunksize,
-                }
+                },
+                done_callbacks=[finalize_download_invoker.decrement]
             ),
             tag=get_object_tag
         )
 
-        # Send the necessary tasks to complete the download.
-        self._complete_download(
-            request_executor, io_executor, download_output_manager,
-            [download_future])
+        finalize_download_invoker.finalize()
 
     def _submit_ranged_download_request(self, client, config, osutil,
                                         request_executor, io_executor,
@@ -370,7 +377,13 @@ class DownloadSubmissionTask(SubmissionTask):
         # Get any associated tags for the get object task.
         get_object_tag = download_output_manager.get_download_task_tag()
 
-        ranged_downloads = []
+        # Callback invoker to submit the final io task once all downloads
+        # are complete.
+        finalize_download_invoker = CountCallbackInvoker(
+            self._get_final_io_task_submission_callback(
+                download_output_manager, io_executor
+            )
+        )
         for i in range(num_parts):
             # Calculate the range parameter
             range_parameter = calculate_range_parameter(
@@ -380,56 +393,35 @@ class DownloadSubmissionTask(SubmissionTask):
             # as extra args
             extra_args = {'Range': range_parameter}
             extra_args.update(call_args.extra_args)
+            finalize_download_invoker.increment()
             # Submit the ranged downloads
-            ranged_downloads.append(
-                self._transfer_coordinator.submit(
-                    request_executor,
-                    GetObjectTask(
-                        transfer_coordinator=self._transfer_coordinator,
-                        main_kwargs={
-                            'client': client,
-                            'bucket': call_args.bucket,
-                            'key': call_args.key,
-                            'fileobj': fileobj,
-                            'extra_args': extra_args,
-                            'callbacks': progress_callbacks,
-                            'max_attempts': config.num_download_attempts,
-                            'start_index': i * part_size,
-                            'download_output_manager': download_output_manager,
-                            'io_chunksize': config.io_chunksize,
-                        }
-                    ),
-                    tag=get_object_tag
-                )
+            self._transfer_coordinator.submit(
+                request_executor,
+                GetObjectTask(
+                    transfer_coordinator=self._transfer_coordinator,
+                    main_kwargs={
+                        'client': client,
+                        'bucket': call_args.bucket,
+                        'key': call_args.key,
+                        'fileobj': fileobj,
+                        'extra_args': extra_args,
+                        'callbacks': progress_callbacks,
+                        'max_attempts': config.num_download_attempts,
+                        'start_index': i * part_size,
+                        'download_output_manager': download_output_manager,
+                        'io_chunksize': config.io_chunksize,
+                    },
+                    done_callbacks=[finalize_download_invoker.decrement]
+                ),
+                tag=get_object_tag
             )
-        # Send the necessary tasks to complete the download.
-        self._complete_download(
-            request_executor, io_executor, download_output_manager,
-            ranged_downloads)
+        finalize_download_invoker.finalize()
 
-    def _complete_download(self, request_executor, io_executor,
-                           download_output_manager, download_futures):
-
-        # Get the final io task that will be placed into the io queue once
-        # all of the other GetObjectTasks have completed.
-        final_task = download_output_manager.get_final_io_task()
-        submit_final_task = FunctionContainer(
+    def _get_final_io_task_submission_callback(self, download_manager,
+                                               io_executor):
+        final_task = download_manager.get_final_io_task()
+        return FunctionContainer(
             self._transfer_coordinator.submit, io_executor, final_task)
-
-        # Submit a task to wait for all of the downloads to complete
-        # and submit their downloaded content to the io executor before
-        # submitting the final task to the io executor that ensures that all
-        # of the io tasks have been completed.
-        self._transfer_coordinator.submit(
-            request_executor,
-            JoinFuturesTask(
-                transfer_coordinator=self._transfer_coordinator,
-                pending_main_kwargs={
-                    'futures_to_wait_on': download_futures
-                },
-                done_callbacks=[submit_final_task]
-            )
-        )
 
     def _calculate_range_param(self, part_size, part_index, num_parts):
         # Used to calculate the Range parameter
@@ -496,20 +488,6 @@ class GetObjectTask(Task):
                     callbacks, start_index - current_index)
                 continue
         raise RetriesExceededError(last_exception)
-
-
-class JoinFuturesTask(Task):
-    """A task to wait for the completion of other futures
-
-    :params future_to_wait_on: A list of futures to wait on
-    """
-    def _main(self, futures_to_wait_on):
-        # The _main is a noop because the functionality of waiting on
-        # futures lives in the signature of the _main method. If you
-        # make the future_to_wait_on a pending_main_kwargs, all of those
-        # futures need to complete before main is executed and at that point
-        # nothing more needs to be executed.
-        pass
 
 
 class IOWriteTask(Task):

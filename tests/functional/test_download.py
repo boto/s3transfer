@@ -338,6 +338,11 @@ class TestNonRangedDownload(BaseDownloadTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
 
+    def test_allowed_copy_params_are_valid(self):
+        op_model = self.client.meta.service_model.operation_model('GetObject')
+        for allowed_upload_arg in self._manager.ALLOWED_DOWNLOAD_ARGS:
+            self.assertIn(allowed_upload_arg, op_model.input_shape.members)
+
 
 class TestRangedDownload(BaseDownloadTest):
     # TODO: If you want to add tests outside of this test class and still

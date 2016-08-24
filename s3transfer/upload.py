@@ -190,8 +190,8 @@ class UploadFilenameInputManager(UploadInputManager):
 
     def get_put_object_body(self, transfer_future):
         # Get a file-like object for the given input
-        fileobj = self._get_put_object_fileobj(
-            transfer_future.meta.call_args.fileobj)
+        fileobj, full_size = self._get_put_object_fileobj_with_full_size(
+            transfer_future)
 
         # Wrap fileobj with interrupt reader that will quickly cancel
         # uploads if needed instead of having to wait for the socket
@@ -203,7 +203,7 @@ class UploadFilenameInputManager(UploadInputManager):
         # Return the file-like object wrapped into a ReadFileChunk to get
         # progress.
         return self._osutil.open_file_chunk_reader_from_fileobj(
-            fileobj=fileobj, chunk_size=size, full_file_size=size,
+            fileobj=fileobj, chunk_size=size, full_file_size=full_size,
             callbacks=callbacks)
 
     def yield_upload_part_bodies(self, transfer_future, config):
@@ -235,8 +235,10 @@ class UploadFilenameInputManager(UploadInputManager):
         fileobj.OPEN_METHOD = self._osutil.open
         return fileobj
 
-    def _get_put_object_fileobj(self, fileobj):
-        return self._get_deferred_open_file(fileobj, 0)
+    def _get_put_object_fileobj_with_full_size(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        size = transfer_future.meta.size
+        return self._get_deferred_open_file(fileobj, 0), size
 
     def _get_upload_part_fileobj_with_full_size(self, fileobj, **kwargs):
         start_byte = kwargs['start_byte']
@@ -287,8 +289,12 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
         # source. So we must treat it as its own standalone file.
         return six.BytesIO(data), len(data)
 
-    def _get_put_object_fileobj(self, fileobj):
-        return fileobj
+    def _get_put_object_fileobj_with_full_size(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        # The current position needs to be taken into account when retrieving
+        # the full size of the file.
+        size = fileobj.tell() + transfer_future.meta.size
+        return fileobj, size
 
 
 class UploadNonSeekableInputManager(UploadInputManager):

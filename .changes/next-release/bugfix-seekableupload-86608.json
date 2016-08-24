@@ -1,0 +1,5 @@
+{
+  "description": "Fix issue where seeked position of seekable file for a nonmultipart upload was not being taken into account.",
+  "type": "bugfix",
+  "category": "seekable upload"
+}

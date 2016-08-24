@@ -265,6 +265,22 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
         self.assertTrue(
             self.upload_input_manager.stores_body_in_memory('upload_part'))
 
+    def test_get_put_object_body(self):
+        start_pos = 3
+        self.fileobj.seek(start_pos)
+        adjusted_size = len(self.content) - start_pos
+        self.future.meta.provide_transfer_size(adjusted_size)
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future)
+
+        read_file_chunk.enable_callback()
+        # The fact that the file was seeked to start should be taken into
+        # account in length and content for the read file chunk.
+        self.assertEqual(len(read_file_chunk), adjusted_size)
+        self.assertEqual(read_file_chunk.read(), self.content[start_pos:])
+        self.assertEqual(
+            self.recording_subscriber.calculate_bytes_seen(), adjusted_size)
+
 
 class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
     def setUp(self):

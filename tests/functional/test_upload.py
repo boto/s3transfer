@@ -155,6 +155,17 @@ class TestNonMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
 
+    def test_upload_for_seekable_filelike_obj_that_has_been_seeked(self):
+        self.add_put_object_response_with_default_expected_params()
+        bytes_io = six.BytesIO(self.content)
+        seek_pos = 5
+        bytes_io.seek(seek_pos)
+        future = self.manager.upload(
+            bytes_io, self.bucket, self.key, self.extra_args)
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assertEqual(b''.join(self.sent_bodies), self.content[seek_pos:])
+
     def test_upload_for_non_seekable_filelike_obj(self):
         self.add_put_object_response_with_default_expected_params()
         body = NonSeekableReader(self.content)
@@ -325,6 +336,19 @@ class TestMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_upload_part_bodies_were_correct()
+
+    def test_upload_for_seekable_filelike_obj_that_has_been_seeked(self):
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
+        bytes_io = six.BytesIO(self.content)
+        seek_pos = 1
+        bytes_io.seek(seek_pos)
+        future = self.manager.upload(
+            bytes_io, self.bucket, self.key, self.extra_args)
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assertEqual(b''.join(self.sent_bodies), self.content[seek_pos:])
 
     def test_upload_for_non_seekable_filelike_obj(self):
         self.add_create_multipart_response_with_default_expected_params()

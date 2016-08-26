@@ -7,7 +7,7 @@ Usage
 
 Run this script with::
 
-    ./summarize -f performance.csv
+    ./summarize performance.csv
 
 
 And that should output::
@@ -28,7 +28,7 @@ And that should output::
 
 The script can also be ran with multiple files:
 
-    ./summarize -f performance.csv performance-2.csv
+    ./summarize performance.csv performance-2.csv
 
 And will have a similar output:
 
@@ -241,7 +241,7 @@ class Summarizer(object):
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
     parser.add_argument(
-        '-f', '--benchmark-files', required=True, nargs='+',
+        'benchmark_files', nargs='+',
         help=(
             'The CSV output file from the benchmark script. If you provide'
             'more than one of these files, it will give you the average '

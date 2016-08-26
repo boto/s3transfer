@@ -12,19 +12,20 @@ Run this script with::
 
 And that should output::
 
-    +-----------------------+----------+----------------------+
-    | Metric                | Mean     | Standard Deviation   |
-    +=======================+==========+======================+
-    | Total Time (seconds)  | 1.200    | 0.0                  |
-    +-----------------------+----------+----------------------+
-    | Maximum Memory        | 42.3 MiB | 0 Bytes              |
-    +-----------------------+----------+----------------------+
-    | Maximum CPU (percent) | 88.1     | 0.0                  |
-    +-----------------------+----------+----------------------+
-    | Average Memory        | 33.9 MiB | 0 Bytes              |
-    +-----------------------+----------+----------------------+
-    | Average CPU (percent) | 30.5     | 0.0                  |
-    +-----------------------+----------+----------------------+
+    +------------------------+----------+----------------------+
+    | Metric over 1 run(s)   | Mean     | Standard Deviation   |
+    +========================+==========+======================+
+    | Total Time (seconds)   | 1.200    | 0.0                  |
+    +------------------------+----------+----------------------+
+    | Maximum Memory         | 42.3 MiB | 0 Bytes              |
+    +------------------------+----------+----------------------+
+    | Maximum CPU (percent)  | 88.1     | 0.0                  |
+    +------------------------+----------+----------------------+
+    | Average Memory         | 33.9 MiB | 0 Bytes              |
+    +------------------------+----------+----------------------+
+    | Average CPU (percent)  | 30.5     | 0.0                  |
+    +------------------------+----------+----------------------+
+
 
 The script can also be ran with multiple files:
 
@@ -32,19 +33,19 @@ The script can also be ran with multiple files:
 
 And will have a similar output:
 
-    +-----------------------+----------+----------------------+
-    | Metric                | Mean     | Standard Deviation   |
-    +=======================+==========+======================+
-    | Total Time (seconds)  | 1.155    | 0.0449999570847      |
-    +-----------------------+----------+----------------------+
-    | Maximum Memory        | 42.5 MiB | 110.0 KiB            |
-    +-----------------------+----------+----------------------+
-    | Maximum CPU (percent) | 94.5     | 6.45                 |
-    +-----------------------+----------+----------------------+
-    | Average Memory        | 35.6 MiB | 1.7 MiB              |
-    +-----------------------+----------+----------------------+
-    | Average CPU (percent) | 27.5     | 3.03068181818        |
-    +-----------------------+----------+----------------------+
+    +------------------------+----------+----------------------+
+    | Metric over 2 run(s)   | Mean     | Standard Deviation   |
+    +========================+==========+======================+
+    | Total Time (seconds)   | 1.155    | 0.0449999570847      |
+    +------------------------+----------+----------------------+
+    | Maximum Memory         | 42.5 MiB | 110.0 KiB            |
+    +------------------------+----------+----------------------+
+    | Maximum CPU (percent)  | 94.5     | 6.45                 |
+    +------------------------+----------+----------------------+
+    | Average Memory         | 35.6 MiB | 1.7 MiB              |
+    +------------------------+----------+----------------------+
+    | Average CPU (percent)  | 27.5     | 3.03068181818        |
+    +------------------------+----------+----------------------+
 """
 import argparse
 import csv
@@ -78,6 +79,7 @@ class Summarizer(object):
     }
 
     def __init__(self):
+        self.total_files = 0
         self._num_rows = 0
         self._start_time = None
         self._end_time = None
@@ -166,7 +168,12 @@ class Summarizer(object):
         ]
         print(
             tabulate(
-                table, headers=['Metric', 'Mean', 'Standard Deviation'],
+                table,
+                headers=[
+                    'Metric over %s run(s)' % (self.total_files),
+                    'Mean',
+                    'Standard Deviation'
+                ],
                 tablefmt="grid"
             )
         )
@@ -175,6 +182,7 @@ class Summarizer(object):
         """Processes the data from the CSV file"""
         for benchmark_file in args.benchmark_files:
             self.process_individual_file(benchmark_file)
+            self.total_files += 1
 
     def process_individual_file(self, benchmark_file):
         with open(benchmark_file, 'rb') as f:

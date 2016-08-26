@@ -180,10 +180,19 @@ class Summarizer(object):
         with open(benchmark_file, 'rb') as f:
             reader = csv.reader(f)
             # Process each row from the CSV file
+            row = None
             for row in reader:
+                self._validate_row(row, benchmark_file)
                 self.process_data_row(row)
+            self._validate_row(row, benchmark_file)
             self._end_time = self._get_time(row)
             self._finalize_processed_data_for_file()
+
+    def _validate_row(self, row, filename):
+        if not row:
+            raise RuntimeError(
+                'Row: %s could not be processed. The CSV file (%s) may be '
+                'empty.' % (row, filename))
 
     def process_data_row(self, row):
         # If the row is the first row collect the start time.

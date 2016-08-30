@@ -17,8 +17,7 @@ from s3transfer.tasks import SubmissionTask
 class DeleteSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute an object deletion."""
 
-    def _submit(self, client, config, osutil, request_executor,
-                transfer_future):
+    def _submit(self, client, request_executor, transfer_future, **kwargs):
         """
         :param client: The client associated with the transfer manager
 

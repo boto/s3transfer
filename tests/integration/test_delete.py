@@ -29,12 +29,3 @@ class TestDeleteObject(BaseTransferManagerIntegTest):
         future.result()
 
         self.assertFalse(self.object_exists(key_name))
-
-    def test_error_when_object_does_not_exist(self):
-        transfer_manager = self.create_transfer_manager()
-        future = transfer_manager.delete(bucket=self.bucket_name,
-                                         key='does_not_exist')
-        # The underlying DeleteObject API doesn't return any indication
-        # if you try to delete an object that does not exist.
-        result = future.result()
-        self.assertIsNone(result)

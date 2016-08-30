@@ -31,6 +31,7 @@ from s3transfer.futures import TransferCoordinator
 from s3transfer.download import DownloadSubmissionTask
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.copies import CopySubmissionTask
+from s3transfer.delete import DeleteSubmissionTask
 
 KB = 1024
 MB = KB * KB
@@ -183,6 +184,12 @@ class TransferManager(object):
         'CopySourceSSECustomerKey',
         'CopySourceSSECustomerKeyMD5',
         'MetadataDirective'
+    ]
+
+    ALLOWED_DELETE_ARGS = [
+        'MFA',
+        'VersionId',
+        'RequestPayer',
     ]
 
     def __init__(self, client, config=None, osutil=None):
@@ -354,6 +361,39 @@ class TransferManager(object):
             source_client=source_client
         )
         return self._submit_transfer(call_args, CopySubmissionTask)
+
+    def delete(self, bucket, key, extra_args=None, subscribers=None):
+        """Delete an S3 object.
+
+        :type bucket: str
+        :param bucket: The name of the bucket.
+
+        :type key: str
+        :param key: The name of the S3 object to delete.
+
+        :type extra_args: dict
+        :param extra_args: Extra arguments that may be passed to the
+            DeleteObject call.
+
+        :type subscribers: list
+        :param subscribers: A list of subscribers to be invoked during the
+            process of the transfer request.  Note that the ``on_progress``
+            callback is not invoked during object deletion.
+
+        :rtype: s3transfer.futures.TransferFuture
+        :return: Transfer future representing the deletion.
+
+        """
+        if extra_args is None:
+            extra_args = {}
+        if subscribers is None:
+            subscribers = []
+        self._validate_all_known_args(extra_args, self.ALLOWED_DELETE_ARGS)
+        call_args = CallArgs(
+            bucket=bucket, key=key, extra_args=extra_args,
+            subscribers=subscribers
+        )
+        return self._submit_transfer(call_args, DeleteSubmissionTask)
 
     def _validate_all_known_args(self, actual, allowed):
         for kwarg in actual:

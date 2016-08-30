@@ -1,0 +1,5 @@
+{
+  "category": "delete", 
+  "type": "feature", 
+  "description": "Add a ``.delete()`` method to the transfer manager."
+}

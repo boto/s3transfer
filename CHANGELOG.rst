@@ -2,6 +2,13 @@
 CHANGELOG
 =========
 
+0.1.3
+=====
+
+* feature:delete: Add a ``.delete()`` method to the transfer manager.
+* bugfix:seekable upload: Fix issue where seeked position of seekable file for a nonmultipart upload was not being taken into account.
+
+
 0.1.2
 =====
 

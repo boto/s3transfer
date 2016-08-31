@@ -151,14 +151,14 @@ class UploadInputManager(object):
         """
         raise NotImplementedError('must implement get_put_object_body()')
 
-    def yield_upload_part_bodies(self, transfer_future, config):
+    def yield_upload_part_bodies(self, transfer_future, chunksize):
         """Yields the part number and body to use for each UploadPart
 
         :type transfer_future: s3transfer.futures.TransferFuture
         :param transfer_future: The future associated with upload request
 
-        :type config: s3transfer.manager.TransferConfig
-        :param config: The config associated to the transfer manager
+        :type chunksize: int
+        :param chunksize: The chunksize to use for this upload.
 
         :rtype: int, s3transfer.utils.ReadFileChunk
         :returns: Yields the part number and the ReadFileChunk including all
@@ -206,18 +206,17 @@ class UploadFilenameInputManager(UploadInputManager):
             fileobj=fileobj, chunk_size=size, full_file_size=full_size,
             callbacks=callbacks)
 
-    def yield_upload_part_bodies(self, transfer_future, config):
-        part_size = config.multipart_chunksize
+    def yield_upload_part_bodies(self, transfer_future, chunksize):
         full_file_size = transfer_future.meta.size
-        num_parts = self._get_num_parts(transfer_future, part_size)
+        num_parts = self._get_num_parts(transfer_future, chunksize)
         callbacks = get_callbacks(transfer_future, 'progress')
         for part_number in range(1, num_parts + 1):
-            start_byte = part_size * (part_number - 1)
+            start_byte = chunksize * (part_number - 1)
             # Get a file-like object for that part and the size of the full
             # file size for the associated file-like object for that part.
             fileobj, full_size = self._get_upload_part_fileobj_with_full_size(
                 transfer_future.meta.call_args.fileobj, start_byte=start_byte,
-                part_size=part_size, full_file_size=full_file_size)
+                part_size=chunksize, full_file_size=full_file_size)
 
             # Wrap fileobj with interrupt reader that will quickly cancel
             # uploads if needed instead of having to wait for the socket
@@ -226,7 +225,7 @@ class UploadFilenameInputManager(UploadInputManager):
 
             # Wrap the file-like object into a ReadFileChunk to get progress.
             read_file_chunk = self._osutil.open_file_chunk_reader_from_fileobj(
-                fileobj=fileobj, chunk_size=part_size,
+                fileobj=fileobj, chunk_size=chunksize,
                 full_file_size=full_size, callbacks=callbacks)
             yield part_number, read_file_chunk
 
@@ -345,8 +344,7 @@ class UploadNonSeekableInputManager(UploadInputManager):
         self._initial_data = None
         return body
 
-    def yield_upload_part_bodies(self, transfer_future, config):
-        part_size = config.multipart_chunksize
+    def yield_upload_part_bodies(self, transfer_future, chunksize):
         file_object = transfer_future.meta.call_args.fileobj
         callbacks = get_callbacks(transfer_future, 'progress')
         part_number = 0
@@ -354,7 +352,7 @@ class UploadNonSeekableInputManager(UploadInputManager):
         # Continue reading parts from the file-like object until it is empty.
         while True:
             part_number += 1
-            part_content = self._read(file_object, part_size)
+            part_content = self._read(file_object, chunksize)
             if not part_content:
                 break
             part_object = self._wrap_data(part_content, callbacks)
@@ -550,7 +548,7 @@ class UploadSubmissionTask(SubmissionTask):
             upload_input_manager, 'upload_part')
 
         part_iterator = upload_input_manager.yield_upload_part_bodies(
-            transfer_future, config)
+            transfer_future, config.multipart_chunksize)
 
         for part_number, fileobj in part_iterator:
             part_futures.append(

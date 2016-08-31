@@ -203,7 +203,7 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         # Get an iterator that will yield all of the bodies and their
         # respective part number.
         part_iterator = self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config)
+            self.future, self.config.multipart_chunksize)
         expected_part_number = 1
         for part_number, read_file_chunk in part_iterator:
             # Ensure that the part number is as expected
@@ -229,7 +229,7 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         # Get an iterator that will yield all of the bodies and their
         # respective part number.
         part_iterator = self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config)
+            self.future, self.config.multipart_chunksize)
 
         # Set an exception in the transfer coordinator
         self.transfer_coordinator.set_exception(InterruptionError)
@@ -303,8 +303,9 @@ class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
                 self.future, self.config))
 
         # Get a list of all the parts that would be sent.
-        parts = list(self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config))
+        parts = list(
+            self.upload_input_manager.yield_upload_part_bodies(
+                self.future, self.config.multipart_chunksize))
 
         # Assert that the actual number of parts is what we would expect
         # based on the configuration.

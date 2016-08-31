@@ -26,18 +26,24 @@ from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
 
 
 class BaseUploadTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseUploadTest, self).setUp()
-        self.config = TransferConfig(max_request_concurrency=1)
+        self.config = TransferConfig(
+            max_request_concurrency=1,
+            multipart_chunksize=MIN_UPLOAD_CHUNKSIZE,
+            multipart_threshold=MIN_UPLOAD_CHUNKSIZE * 4
+        )
         self._manager = TransferManager(self.client, self.config)
 
         # Create a temporary directory with files to read from
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
-        self.content = b'my content'
+        self.half_chunksize = int(MIN_UPLOAD_CHUNKSIZE / 2)
+        self.content = b'0' * (MIN_UPLOAD_CHUNKSIZE * 2 + self.half_chunksize)
 
         with open(self.filename, 'wb') as f:
             f.write(self.content)
@@ -100,7 +106,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
         return [{'method': 'put_object', 'service_response': {}}]
 
     def create_expected_progress_callback_info(self):
-        return [{'bytes_transferred': 10}]
+        return [{'bytes_transferred': len(self.content)}]
 
     def assert_expected_client_calls_were_correct(self):
         # We assert that expected client calls were made by ensuring that
@@ -220,7 +226,7 @@ class TestMultipartUpload(BaseUploadTest):
 
     def setUp(self):
         super(TestMultipartUpload, self).setUp()
-        self.chunksize = 4
+        self.chunksize = MIN_UPLOAD_CHUNKSIZE
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
             multipart_chunksize=self.chunksize)
@@ -242,9 +248,9 @@ class TestMultipartUpload(BaseUploadTest):
 
     def create_expected_progress_callback_info(self):
         return [
-            {'bytes_transferred': 4},
-            {'bytes_transferred': 4},
-            {'bytes_transferred': 2}
+            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
+            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
+            {'bytes_transferred': self.half_chunksize}
         ]
 
     def assert_upload_part_bodies_were_correct(self):

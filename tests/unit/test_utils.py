@@ -36,6 +36,9 @@ from s3transfer.utils import StreamReaderProgress
 from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
 from s3transfer.utils import NoResourcesAvailable
+from s3transfer.utils import ChunksizeAdjuster
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE, MAX_SINGLE_UPLOAD_SIZE
+from s3transfer.utils import MAX_PARTS
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -683,3 +686,51 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         # Should have acquired num_threads * num_iterations
         self.assertEqual(sem.acquire('a', blocking=False),
                          num_threads * num_iterations)
+
+
+class TestAdjustChunksize(unittest.TestCase):
+    def setUp(self):
+        self.adjuster = ChunksizeAdjuster()
+
+    def test_valid_chunksize(self):
+        chunksize = 7 * (1024 ** 2)
+        file_size = 8 * (1024 ** 2)
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, chunksize)
+
+    def test_chunksize_below_minimum(self):
+        chunksize = MIN_UPLOAD_CHUNKSIZE - 1
+        file_size = 3 * MIN_UPLOAD_CHUNKSIZE
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, MIN_UPLOAD_CHUNKSIZE)
+
+    def test_chunksize_above_maximum(self):
+        chunksize = MAX_SINGLE_UPLOAD_SIZE + 1
+        file_size = MAX_SINGLE_UPLOAD_SIZE * 2
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, MAX_SINGLE_UPLOAD_SIZE)
+
+    def test_chunksize_too_small(self):
+        chunksize = 7 * (1024 ** 2)
+        file_size = 5 * (1024 ** 4)
+        # If we try to upload a 5TB file, we'll need to use 896MB part
+        # sizes.
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, 896 * (1024 ** 2))
+        num_parts = file_size / new_size
+        self.assertLessEqual(num_parts, MAX_PARTS)
+
+    def test_unknown_file_size_with_valid_chunksize(self):
+        chunksize = 7 * (1024 ** 2)
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, chunksize)
+
+    def test_unknown_file_size_below_minimum(self):
+        chunksize = MIN_UPLOAD_CHUNKSIZE - 1
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, MIN_UPLOAD_CHUNKSIZE)
+
+    def test_unknown_file_size_above_maximum(self):
+        chunksize = MAX_SINGLE_UPLOAD_SIZE + 1
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, MAX_SINGLE_UPLOAD_SIZE)

@@ -21,7 +21,7 @@ from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
-from s3transfer.utils import DeferredOpenFile
+from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
 
 
 class InterruptReader(object):
@@ -547,8 +547,11 @@ class UploadSubmissionTask(SubmissionTask):
         upload_part_tag = self._get_upload_task_tag(
             upload_input_manager, 'upload_part')
 
+        size = transfer_future.meta.size
+        adjuster = ChunksizeAdjuster()
+        chunksize = adjuster.adjust_chunksize(config.multipart_chunksize, size)
         part_iterator = upload_input_manager.yield_upload_part_bodies(
-            transfer_future, config.multipart_chunksize)
+            transfer_future, chunksize)
 
         for part_number, fileobj in part_iterator:
             part_futures.append(

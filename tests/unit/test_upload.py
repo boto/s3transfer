@@ -36,6 +36,7 @@ from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
 
 
 class InterruptionError(Exception):
@@ -366,7 +367,9 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         super(TestUploadSubmissionTask, self).setUp()
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
-        self.content = b'my content'
+        self.content = b'0' * (MIN_UPLOAD_CHUNKSIZE * 3)
+        self.config.multipart_chunksize = MIN_UPLOAD_CHUNKSIZE
+        self.config.multipart_threshold = MIN_UPLOAD_CHUNKSIZE * 5
 
         with open(self.filename, 'wb') as f:
             f.write(self.content)
@@ -493,7 +496,6 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         # Set up for a multipart upload.
         self.add_multipart_upload_stubbed_responses()
         self.config.multipart_threshold = 1
-        self.config.multipart_chunksize = 4
 
         self.submission_task = self.get_task(
             UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
@@ -527,7 +529,6 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         # Set up for a multipart upload.
         self.add_multipart_upload_stubbed_responses()
         self.config.multipart_threshold = 1
-        self.config.multipart_chunksize = 4
 
         with open(self.filename, 'rb') as f:
             self.use_fileobj_in_call_args(f)

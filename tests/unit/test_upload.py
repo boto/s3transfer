@@ -36,6 +36,7 @@ from s3transfer.upload import PutObjectTask
 from s3transfer.upload import UploadPartTask
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
 
 
 class InterruptionError(Exception):
@@ -203,7 +204,7 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         # Get an iterator that will yield all of the bodies and their
         # respective part number.
         part_iterator = self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config)
+            self.future, self.config.multipart_chunksize)
         expected_part_number = 1
         for part_number, read_file_chunk in part_iterator:
             # Ensure that the part number is as expected
@@ -229,7 +230,7 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         # Get an iterator that will yield all of the bodies and their
         # respective part number.
         part_iterator = self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config)
+            self.future, self.config.multipart_chunksize)
 
         # Set an exception in the transfer coordinator
         self.transfer_coordinator.set_exception(InterruptionError)
@@ -303,8 +304,9 @@ class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
                 self.future, self.config))
 
         # Get a list of all the parts that would be sent.
-        parts = list(self.upload_input_manager.yield_upload_part_bodies(
-            self.future, self.config))
+        parts = list(
+            self.upload_input_manager.yield_upload_part_bodies(
+                self.future, self.config.multipart_chunksize))
 
         # Assert that the actual number of parts is what we would expect
         # based on the configuration.
@@ -365,7 +367,9 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         super(TestUploadSubmissionTask, self).setUp()
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
-        self.content = b'my content'
+        self.content = b'0' * (MIN_UPLOAD_CHUNKSIZE * 3)
+        self.config.multipart_chunksize = MIN_UPLOAD_CHUNKSIZE
+        self.config.multipart_threshold = MIN_UPLOAD_CHUNKSIZE * 5
 
         with open(self.filename, 'wb') as f:
             f.write(self.content)
@@ -492,7 +496,6 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         # Set up for a multipart upload.
         self.add_multipart_upload_stubbed_responses()
         self.config.multipart_threshold = 1
-        self.config.multipart_chunksize = 4
 
         self.submission_task = self.get_task(
             UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
@@ -526,7 +529,6 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
         # Set up for a multipart upload.
         self.add_multipart_upload_stubbed_responses()
         self.config.multipart_threshold = 1
-        self.config.multipart_chunksize = 4
 
         with open(self.filename, 'rb') as f:
             self.use_fileobj_in_call_args(f)

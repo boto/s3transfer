@@ -24,6 +24,38 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
 
 
+class AggregatedProgressCallback(object):
+    def __init__(self, callback, threshold=1024 * 256):
+        """Aggregates progress updates into a single update
+
+        :type callback: Function that accepts bytes_transferred as a single
+            argument
+        :param callback: The callback to invoke when threshold is reached
+
+        :type threshold: int
+        :param threshold: The progress threshold in which to take the
+            aggregated progress and invoke the progress callback with that
+            aggregated progress total
+        """
+        self._callback = callback
+        self._threshold = threshold
+        self._bytes_seen = 0
+
+    def __call__(self, bytes_transferred):
+        self._bytes_seen += bytes_transferred
+        if self._bytes_seen >= self._threshold:
+            self._trigger_callback()
+
+    def flush(self):
+        """Flushes out any progress that has not been sent to its callback"""
+        if self._bytes_seen > 0:
+            self._trigger_callback()
+
+    def _trigger_callback(self):
+        self._callback(bytes_transferred=self._bytes_seen)
+        self._bytes_seen = 0
+
+
 class InterruptReader(object):
     """Wrapper that can interrupt reading using an error
 
@@ -170,6 +202,13 @@ class UploadInputManager(object):
     def _wrap_with_interrupt_reader(self, fileobj):
         return InterruptReader(fileobj, self._transfer_coordinator)
 
+    def _get_progress_callbacks(self, transfer_future):
+        callbacks = get_callbacks(transfer_future, 'progress')
+        return [AggregatedProgressCallback(callback) for callback in callbacks]
+
+    def _get_close_callbacks(self, aggregated_progress_callbacks):
+        return [callback.flush for callback in aggregated_progress_callbacks]
+
 
 class UploadFilenameInputManager(UploadInputManager):
     """Upload utility for filenames"""
@@ -198,19 +237,21 @@ class UploadFilenameInputManager(UploadInputManager):
         # to completely read all of the data.
         fileobj = self._wrap_with_interrupt_reader(fileobj)
 
-        callbacks = get_callbacks(transfer_future, 'progress')
+        callbacks = self._get_progress_callbacks(transfer_future)
+        close_callbacks = self._get_close_callbacks(callbacks)
         size = transfer_future.meta.size
         # Return the file-like object wrapped into a ReadFileChunk to get
         # progress.
         return self._osutil.open_file_chunk_reader_from_fileobj(
             fileobj=fileobj, chunk_size=size, full_file_size=full_size,
-            callbacks=callbacks)
+            callbacks=callbacks, close_callbacks=close_callbacks)
 
     def yield_upload_part_bodies(self, transfer_future, chunksize):
         full_file_size = transfer_future.meta.size
         num_parts = self._get_num_parts(transfer_future, chunksize)
-        callbacks = get_callbacks(transfer_future, 'progress')
         for part_number in range(1, num_parts + 1):
+            callbacks = self._get_progress_callbacks(transfer_future)
+            close_callbacks = self._get_close_callbacks(callbacks)
             start_byte = chunksize * (part_number - 1)
             # Get a file-like object for that part and the size of the full
             # file size for the associated file-like object for that part.
@@ -226,7 +267,8 @@ class UploadFilenameInputManager(UploadInputManager):
             # Wrap the file-like object into a ReadFileChunk to get progress.
             read_file_chunk = self._osutil.open_file_chunk_reader_from_fileobj(
                 fileobj=fileobj, chunk_size=chunksize,
-                full_file_size=full_size, callbacks=callbacks)
+                full_file_size=full_size, callbacks=callbacks,
+                close_callbacks=close_callbacks)
             yield part_number, read_file_chunk
 
     def _get_deferred_open_file(self, fileobj, start_byte):
@@ -333,11 +375,12 @@ class UploadNonSeekableInputManager(UploadInputManager):
             return True
 
     def get_put_object_body(self, transfer_future):
-        callbacks = get_callbacks(transfer_future, 'progress')
+        callbacks = self._get_progress_callbacks(transfer_future)
+        close_callbacks = self._get_close_callbacks(callbacks)
         fileobj = transfer_future.meta.call_args.fileobj
 
         body = self._wrap_data(
-            self._initial_data + fileobj.read(), callbacks)
+            self._initial_data + fileobj.read(), callbacks, close_callbacks)
 
         # Zero out the stored data so we don't have additional copies
         # hanging around in memory.
@@ -346,16 +389,18 @@ class UploadNonSeekableInputManager(UploadInputManager):
 
     def yield_upload_part_bodies(self, transfer_future, chunksize):
         file_object = transfer_future.meta.call_args.fileobj
-        callbacks = get_callbacks(transfer_future, 'progress')
         part_number = 0
 
         # Continue reading parts from the file-like object until it is empty.
         while True:
+            callbacks = self._get_progress_callbacks(transfer_future)
+            close_callbacks = self._get_close_callbacks(callbacks)
             part_number += 1
             part_content = self._read(file_object, chunksize)
             if not part_content:
                 break
-            part_object = self._wrap_data(part_content, callbacks)
+            part_object = self._wrap_data(
+                part_content, callbacks, close_callbacks)
 
             # Zero out part_content to avoid hanging on to additional data.
             part_content = None
@@ -403,7 +448,7 @@ class UploadNonSeekableInputManager(UploadInputManager):
             self._initial_data = b''
         return data
 
-    def _wrap_data(self, data, callbacks):
+    def _wrap_data(self, data, callbacks, close_callbacks):
         """
         Wraps data with the interrupt reader and the file chunk reader.
 
@@ -413,12 +458,16 @@ class UploadNonSeekableInputManager(UploadInputManager):
         :type callbacks: list
         :param callbacks: The callbacks associated with the transfer future.
 
+        :type close_callbacks: list
+        :param close_callbacks: The callbacks to be called when closing the
+            wrapper for the data.
+
         :return: Fully wrapped data.
         """
         fileobj = self._wrap_with_interrupt_reader(six.BytesIO(data))
         return self._osutil.open_file_chunk_reader_from_fileobj(
             fileobj=fileobj, chunk_size=len(data), full_file_size=len(data),
-            callbacks=callbacks)
+            callbacks=callbacks, close_callbacks=close_callbacks)
 
 
 class UploadSubmissionTask(SubmissionTask):

@@ -221,10 +221,12 @@ class OSUtils(object):
                                            enable_callbacks=False)
 
     def open_file_chunk_reader_from_fileobj(self, fileobj, chunk_size,
-                                            full_file_size, callbacks):
+                                            full_file_size, callbacks,
+                                            close_callbacks=None):
         return ReadFileChunk(
             fileobj, chunk_size, full_file_size,
-            callbacks=callbacks, enable_callbacks=False)
+            callbacks=callbacks, enable_callbacks=False,
+            close_callbacks=close_callbacks)
 
     def open(self, filename, mode):
         return open(filename, mode)
@@ -296,7 +298,7 @@ class DeferredOpenFile(object):
 
 class ReadFileChunk(object):
     def __init__(self, fileobj, chunk_size, full_file_size,
-                 callbacks=None, enable_callbacks=True):
+                 callbacks=None, enable_callbacks=True, close_callbacks=None):
         """
 
         Given a file object shown below::
@@ -322,6 +324,13 @@ class ReadFileChunk(object):
         :param callbacks: Called whenever data is read from this object in the
             order provided.
 
+        :type enable_callbacks: boolean
+        :param enable_callbacks: True if to run callbacks. Otherwise, do not
+            run callbacks
+
+        :type close_callbacks: A list of function()
+        :param close_callbacks: Called when close is called. The function
+            should take no arguments.
         """
         self._fileobj = fileobj
         self._start_byte = self._fileobj.tell()
@@ -333,6 +342,9 @@ class ReadFileChunk(object):
         if callbacks is None:
             self._callbacks = []
         self._callbacks_enabled = enable_callbacks
+        self._close_callbacks = close_callbacks
+        if close_callbacks is None:
+            self._close_callbacks = close_callbacks
 
     @classmethod
     def from_filename(cls, filename, start_byte, chunk_size, callbacks=None,
@@ -398,6 +410,9 @@ class ReadFileChunk(object):
         self._amount_read = where
 
     def close(self):
+        if self._close_callbacks is not None and self._callbacks_enabled:
+            for callback in self._close_callbacks:
+                callback()
         self._fileobj.close()
 
     def tell(self):

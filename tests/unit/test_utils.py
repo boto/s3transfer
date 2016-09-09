@@ -195,12 +195,16 @@ class BaseUtilsTest(unittest.TestCase):
         with open(self.filename, 'wb') as f:
             f.write(self.content)
         self.amounts_seen = []
+        self.num_close_callback_calls = 0
 
     def tearDown(self):
         shutil.rmtree(self.tempdir)
 
     def callback(self, bytes_transferred):
         self.amounts_seen.append(bytes_transferred)
+
+    def close_callback(self):
+        self.num_close_callback_calls += 1
 
 
 class TestOSUtils(BaseUtilsTest):
@@ -228,8 +232,10 @@ class TestOSUtils(BaseUtilsTest):
             self.assertIsInstance(reader, ReadFileChunk)
             # The content of the reader should be correct.
             self.assertEqual(reader.read(), self.content)
+            reader.close()
             # Callbacks should be disabled depspite being passed in.
             self.assertEqual(self.amounts_seen, [])
+            self.assertEqual(self.num_close_callback_calls, 0)
 
     def test_open_file(self):
         fileobj = OSUtils().open(os.path.join(self.tempdir, 'foo'), 'w')
@@ -421,6 +427,28 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(1)
         chunk.read(2)
         self.assertEqual(self.amounts_seen, [2, -2, 2, -1, 2])
+
+    def test_close_callbacks(self):
+        with open(self.filename) as f:
+            chunk = ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                                  close_callbacks=[self.close_callback])
+            chunk.close()
+            self.assertEqual(self.num_close_callback_calls, 1)
+
+    def test_close_callbacks_when_not_enabled(self):
+        with open(self.filename) as f:
+            chunk = ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                                  enable_callbacks=False,
+                                  close_callbacks=[self.close_callback])
+            chunk.close()
+            self.assertEqual(self.num_close_callback_calls, 0)
+
+    def test_close_callbacks_when_context_handler_is_used(self):
+        with open(self.filename) as f:
+            with ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                               close_callbacks=[self.close_callback]) as chunk:
+                chunk.read(1)
+            self.assertEqual(self.num_close_callback_calls, 1)
 
 
 class TestStreamReaderProgress(BaseUtilsTest):

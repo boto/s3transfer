@@ -18,6 +18,7 @@ import math
 
 from botocore.stub import ANY
 
+from tests import unittest
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from tests import FileSizeProvider
@@ -27,6 +28,7 @@ from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
+from s3transfer.upload import AggregatedProgressCallback
 from s3transfer.upload import InterruptReader
 from s3transfer.upload import UploadFilenameInputManager
 from s3transfer.upload import UploadSeekableInputManager
@@ -77,6 +79,50 @@ class BaseUploadTest(BaseTaskTest):
     def collect_body(self, params, **kwargs):
         if 'Body' in params:
             self.sent_bodies.append(params['Body'].read())
+
+
+class TestAggregatedProgressCallback(unittest.TestCase):
+    def setUp(self):
+        self.aggregated_amounts = []
+        self.threshold = 3
+        self.aggregated_progress_callback = AggregatedProgressCallback(
+            self.callback, self.threshold)
+
+    def callback(self, bytes_transferred):
+        self.aggregated_amounts.append(bytes_transferred)
+
+    def test_under_threshold(self):
+        one_under_threshold_amount = self.threshold - 1
+        self.aggregated_progress_callback(one_under_threshold_amount)
+        self.assertEqual(self.aggregated_amounts, [])
+        self.aggregated_progress_callback(1)
+        self.assertEqual(self.aggregated_amounts, [self.threshold])
+
+    def test_at_threshold(self):
+        self.aggregated_progress_callback(self.threshold)
+        self.assertEqual(self.aggregated_amounts, [self.threshold])
+
+    def test_over_threshold(self):
+        over_threshold_amount = self.threshold + 1
+        self.aggregated_progress_callback(over_threshold_amount)
+        self.assertEqual(self.aggregated_amounts, [over_threshold_amount])
+
+    def test_flush(self):
+        under_threshold_amount = self.threshold - 1
+        self.aggregated_progress_callback(under_threshold_amount)
+        self.assertEqual(self.aggregated_amounts, [])
+        self.aggregated_progress_callback.flush()
+        self.assertEqual(self.aggregated_amounts, [under_threshold_amount])
+
+    def test_flush_with_nothing_to_flush(self):
+        under_threshold_amount = self.threshold - 1
+        self.aggregated_progress_callback(under_threshold_amount)
+        self.assertEqual(self.aggregated_amounts, [])
+        self.aggregated_progress_callback.flush()
+        self.assertEqual(self.aggregated_amounts, [under_threshold_amount])
+        # Flushing again should do nothing as it was just flushed
+        self.aggregated_progress_callback.flush()
+        self.assertEqual(self.aggregated_amounts, [under_threshold_amount])
 
 
 class TestInterruptReader(BaseUploadTest):
@@ -177,7 +223,8 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
         read_file_chunk.enable_callback()
         # The file-like object provided back should be the same as the content
         # of the file.
-        self.assertEqual(read_file_chunk.read(), self.content)
+        with read_file_chunk:
+            self.assertEqual(read_file_chunk.read(), self.content)
         # The file-like object should also have been wrapped with the
         # on_queued callbacks to track the amount of bytes being transferred.
         self.assertEqual(
@@ -211,9 +258,10 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
             self.assertEqual(part_number, expected_part_number)
             read_file_chunk.enable_callback()
             # Ensure that the body is correct for that part.
-            self.assertEqual(
-                read_file_chunk.read(),
-                self._get_expected_body_for_part(part_number))
+            with read_file_chunk:
+                self.assertEqual(
+                    read_file_chunk.read(),
+                    self._get_expected_body_for_part(part_number))
             expected_part_number += 1
 
         # All of the file-like object should also have been wrapped with the
@@ -277,8 +325,9 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
         read_file_chunk.enable_callback()
         # The fact that the file was seeked to start should be taken into
         # account in length and content for the read file chunk.
-        self.assertEqual(len(read_file_chunk), adjusted_size)
-        self.assertEqual(read_file_chunk.read(), self.content[start_pos:])
+        with read_file_chunk:
+            self.assertEqual(len(read_file_chunk), adjusted_size)
+            self.assertEqual(read_file_chunk.read(), self.content[start_pos:])
         self.assertEqual(
             self.recording_subscriber.calculate_bytes_seen(), adjusted_size)
 

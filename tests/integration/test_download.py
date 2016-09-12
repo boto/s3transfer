@@ -17,6 +17,7 @@ import time
 from concurrent.futures import CancelledError
 
 from tests import assert_files_equal
+from tests import skip_if_windows
 from tests import RecordingSubscriber
 from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
@@ -165,3 +166,18 @@ class TestDownload(BaseTransferManagerIntegTest):
                 self.bucket_name, '20mb.txt', NonSeekableWriter(f))
             future.result()
         assert_files_equal(filename, download_path)
+
+    @skip_if_windows('Windows does not support UNIX special files')
+    def test_download_to_special_file(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=1024 * 1024)
+        self.upload_file(filename, '1mb.txt')
+        future = transfer_manager.download(
+            self.bucket_name, '1mb.txt', '/dev/null')
+        try:
+            future.result()
+        except Exception as e:
+            self.fail(
+                'Should have been able to download to /dev/null but received '
+                'following exception %s' % e)

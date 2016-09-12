@@ -26,6 +26,7 @@ from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.download import DownloadFilenameOutputManager
+from s3transfer.download import DownloadSpecialFilenameOutputManager
 from s3transfer.download import DownloadSeekableOutputManager
 from s3transfer.download import DownloadNonSeekableOutputManager
 from s3transfer.download import DownloadSubmissionTask
@@ -57,6 +58,12 @@ class WriteCollector(object):
     def write(self, data):
         self.writes.append((self._pos, data))
         self._pos += len(data)
+
+
+class AlwaysInicatesSpecialFileOSUtils(OSUtils):
+    """OSUtil that always returns True for is_special_file"""
+    def is_special_file(self, filename):
+        return True
 
 
 class CancelledStreamWrapper(object):
@@ -108,7 +115,9 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
 
     def test_is_compatible(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(self.filename))
+            self.download_output_manager.is_compatible(
+                self.filename, self.osutil)
+        )
 
     def test_get_download_task_tag(self):
         self.assertIsNone(self.download_output_manager.get_download_task_tag())
@@ -152,6 +161,43 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
 
+class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
+    def setUp(self):
+        super(TestDownloadSpecialFilenameOutputManager, self).setUp()
+        self.osutil = AlwaysInicatesSpecialFileOSUtils()
+        self.download_output_manager = DownloadSpecialFilenameOutputManager(
+            self.osutil, self.transfer_coordinator,
+            io_executor=self.io_executor)
+
+    def test_is_compatible_for_special_file(self):
+        self.assertTrue(
+            self.download_output_manager.is_compatible(
+                self.filename, AlwaysInicatesSpecialFileOSUtils())
+        )
+
+    def test_is_not_compatible_for_non_special_file(self):
+        self.assertFalse(
+            self.download_output_manager.is_compatible(
+                self.filename, OSUtils())
+        )
+
+    def test_get_fileobj_for_io_writes(self):
+        with self.download_output_manager.get_fileobj_for_io_writes(
+                self.future) as f:
+            # Ensure it is a file like object returned
+            self.assertTrue(hasattr(f, 'read'))
+            self.assertTrue(hasattr(f, 'seek'))
+            # Make sure the name of the file returned is the same as the
+            # final filename as we should not be writing to a temporary file.
+            self.assertEqual(f.name, self.filename)
+
+    def test_get_final_io_task(self):
+        self.assertIsInstance(
+            self.download_output_manager.get_final_io_task(),
+            CompleteDownloadNOOPTask
+        )
+
+
 class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSeekableOutputManager, self).setUp()
@@ -171,14 +217,20 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
 
     def test_is_compatible(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(self.fileobj))
+            self.download_output_manager.is_compatible(
+                self.fileobj, self.osutil)
+        )
 
     def test_is_compatible_bytes_io(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(six.BytesIO()))
+            self.download_output_manager.is_compatible(
+                six.BytesIO(), self.osutil)
+        )
 
     def test_not_compatible_for_non_filelike_obj(self):
-        self.assertFalse(self.download_output_manager.is_compatible(object()))
+        self.assertFalse(self.download_output_manager.is_compatible(
+            object(), self.osutil)
+        )
 
     def test_get_download_task_tag(self):
         self.assertIsNone(self.download_output_manager.get_download_task_tag())
@@ -214,11 +266,13 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
 
     def test_is_compatible_with_seekable_stream(self):
         with open(self.filename, 'wb') as f:
-            self.assertTrue(self.download_output_manager.is_compatible(f))
+            self.assertTrue(self.download_output_manager.is_compatible(
+                f, self.osutil)
+            )
 
     def test_not_compatible_with_filename(self):
         self.assertFalse(self.download_output_manager.is_compatible(
-            self.filename))
+            self.filename, self.osutil))
 
     def test_compatible_with_non_seekable_stream(self):
         class NonSeekable(object):
@@ -226,11 +280,15 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
                 pass
 
         f = NonSeekable()
-        self.assertTrue(self.download_output_manager.is_compatible(f))
+        self.assertTrue(self.download_output_manager.is_compatible(
+            f, self.osutil)
+        )
 
     def test_is_compatible_with_bytesio(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(six.BytesIO()))
+            self.download_output_manager.is_compatible(
+                six.BytesIO(), self.osutil)
+        )
 
     def test_get_download_task_tag(self):
         self.assertIs(

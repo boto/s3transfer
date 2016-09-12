@@ -14,6 +14,7 @@ import io
 import hashlib
 import math
 import os
+import platform
 import shutil
 import string
 import tempfile
@@ -63,6 +64,22 @@ def random_bucket_name(prefix='s3transfer', num_chars=10):
     base = string.ascii_lowercase + string.digits
     random_bytes = bytearray(os.urandom(num_chars))
     return prefix + ''.join([base[b % len(base)] for b in random_bytes])
+
+
+def skip_if_windows(reason):
+    """Decorator to skip tests that should not be run on windows.
+
+    Example usage:
+
+        @skip_if_windows("Not valid")
+        def test_some_non_windows_stuff(self):
+            self.assertEqual(...)
+
+    """
+    def decorator(func):
+        return unittest.skipIf(
+            platform.system() not in ['Darwin', 'Linux'], reason)(func)
+    return decorator
 
 
 class StreamWithError(object):

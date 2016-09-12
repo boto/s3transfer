@@ -15,6 +15,7 @@ import time
 import functools
 import math
 import os
+import stat
 import string
 import logging
 import threading
@@ -242,6 +243,35 @@ class OSUtils(object):
 
     def rename_file(self, current_filename, new_filename):
         rename_file(current_filename, new_filename)
+
+    def is_special_file(cls, filename):
+        """Checks to see if a file is a special UNIX file.
+
+        It checks if the file is a character special device, block special
+        device, FIFO, or socket.
+
+        :param filename: Name of the file
+
+        :returns: True if the file is a special file. False, if is not.
+        """
+        # If it does not exist, it must be a new file so it cannot be
+        # a special file.
+        if not os.path.exists(filename):
+            return False
+        mode = os.stat(filename).st_mode
+        # Character special device.
+        if stat.S_ISCHR(mode):
+            return True
+        # Block special device
+        if stat.S_ISBLK(mode):
+            return True
+        # FIFO.
+        if stat.S_ISFIFO(mode):
+            return True
+        # Socket.
+        if stat.S_ISSOCK(mode):
+            return True
+        return False
 
 
 class DeferredOpenFile(object):

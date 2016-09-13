@@ -2,6 +2,13 @@
 CHANGELOG
 =========
 
+0.1.4
+=====
+
+* feature:chunksize: Automatically adjust the chunksize if it doesn't meet S3s requirements.
+* bugfix:Download: Add support for downloading to special UNIX file by name
+
+
 0.1.3
 =====
 

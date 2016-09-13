@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "category": "chunksize",
-  "description": "Automatically adjust the chunksize if it doesn't meet S3s requirements."
-}

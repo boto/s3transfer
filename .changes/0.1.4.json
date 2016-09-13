@@ -1,0 +1,12 @@
+[
+  {
+    "category": "chunksize", 
+    "description": "Automatically adjust the chunksize if it doesn't meet S3s requirements.", 
+    "type": "feature"
+  }, 
+  {
+    "category": "Download", 
+    "description": "Add support for downloading to special UNIX file by name", 
+    "type": "bugfix"
+  }
+]

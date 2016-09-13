@@ -34,8 +34,7 @@ class TestOSUtilsSpecialFiles(unittest.TestCase):
         self.assertTrue(OSUtils().is_special_file('/dev/null'))
 
     def test_fifo(self):
-        mode = 0o600 | stat.S_IFIFO
-        os.mknod(self.filename, mode)
+        os.mkfifo(self.filename)
         self.assertTrue(OSUtils().is_special_file(self.filename))
 
     def test_socket(self):

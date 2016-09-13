@@ -260,6 +260,14 @@ class TestOSUtils(BaseUtilsTest):
         self.assertFalse(os.path.exists(self.filename))
         self.assertTrue(os.path.exists(new_filename))
 
+    def test_is_special_file_for_normal_file(self):
+        self.assertFalse(OSUtils().is_special_file(self.filename))
+
+    def test_is_special_file_for_non_existant_file(self):
+        non_existant_filename = os.path.join(self.tempdir, 'no-exist')
+        self.assertFalse(os.path.exists(non_existant_filename))
+        self.assertFalse(OSUtils().is_special_file(non_existant_filename))
+
 
 class TestDefferedOpenFile(BaseUtilsTest):
     def setUp(self):

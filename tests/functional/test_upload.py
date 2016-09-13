@@ -14,6 +14,7 @@ import os
 import tempfile
 import shutil
 
+import mock
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from botocore.awsrequest import AWSRequest
@@ -26,24 +27,32 @@ from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
-from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
+from s3transfer.utils import ChunksizeAdjuster
 
 
 class BaseUploadTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseUploadTest, self).setUp()
-        self.config = TransferConfig(
-            max_request_concurrency=1,
-            multipart_chunksize=MIN_UPLOAD_CHUNKSIZE,
-            multipart_threshold=MIN_UPLOAD_CHUNKSIZE * 4
-        )
+        # TODO: We do not want to use the real MIN_UPLOAD_CHUNKSIZE
+        # when we're adjusting parts.
+        # This is really wasteful and fails CI builds because self.contents
+        # would normally use 10MB+ of memory.
+        # Until there's an API to configure this, we're patching this with
+        # a min size of 1.  We can't patch MIN_UPLOAD_CHUNKSIZE directly
+        # because it's already bound to a default value in the
+        # chunksize adjuster.  Instead we need to patch out the
+        # chunksize adjuster class.
+        self.adjuster_patch = mock.patch(
+            's3transfer.upload.ChunksizeAdjuster',
+            lambda: ChunksizeAdjuster(min_size=1))
+        self.adjuster_patch.start()
+        self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
         # Create a temporary directory with files to read from
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
-        self.half_chunksize = int(MIN_UPLOAD_CHUNKSIZE / 2)
-        self.content = b'0' * (MIN_UPLOAD_CHUNKSIZE * 2 + self.half_chunksize)
+        self.content = b'my content'
 
         with open(self.filename, 'wb') as f:
             f.write(self.content)
@@ -63,6 +72,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
     def tearDown(self):
         super(BaseUploadTest, self).tearDown()
         shutil.rmtree(self.tempdir)
+        self.adjuster_patch.stop()
 
     def collect_body(self, params, model, **kwargs):
         # A handler to simulate the reading of the body including the
@@ -106,7 +116,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
         return [{'method': 'put_object', 'service_response': {}}]
 
     def create_expected_progress_callback_info(self):
-        return [{'bytes_transferred': len(self.content)}]
+        return [{'bytes_transferred': 10}]
 
     def assert_expected_client_calls_were_correct(self):
         # We assert that expected client calls were made by ensuring that
@@ -226,7 +236,7 @@ class TestMultipartUpload(BaseUploadTest):
 
     def setUp(self):
         super(TestMultipartUpload, self).setUp()
-        self.chunksize = MIN_UPLOAD_CHUNKSIZE
+        self.chunksize = 4
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
             multipart_chunksize=self.chunksize)
@@ -248,9 +258,9 @@ class TestMultipartUpload(BaseUploadTest):
 
     def create_expected_progress_callback_info(self):
         return [
-            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
-            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
-            {'bytes_transferred': self.half_chunksize}
+            {'bytes_transferred': 4},
+            {'bytes_transferred': 4},
+            {'bytes_transferred': 2}
         ]
 
     def assert_upload_part_bodies_were_correct(self):

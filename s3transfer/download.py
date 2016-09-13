@@ -64,11 +64,13 @@ class DownloadOutputManager(object):
         self._io_executor = io_executor
 
     @classmethod
-    def is_compatible(cls, download_target):
+    def is_compatible(cls, download_target, osutil):
         """Determines if the target for the download is compatible with manager
 
         :param download_target: The target for which the upload will write
             data to.
+
+        :param osutil: The os utility to be used for the transfer
 
         :returns: True if the manager can handle the type of target specified
             otherwise returns False.
@@ -138,7 +140,7 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
         self._temp_fileobj = None
 
     @classmethod
-    def is_compatible(cls, download_target):
+    def is_compatible(cls, download_target, osutil):
         return isinstance(download_target, six.string_types)
 
     def get_fileobj_for_io_writes(self, transfer_future):
@@ -163,18 +165,41 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
         )
 
     def _get_temp_fileobj(self):
-        f = self._osutil.open(self._temp_filename, 'wb')
-        # Make sure the file gets closed and we remove the temporary file
-        # if anything goes wrong during the process.
-        self._transfer_coordinator.add_failure_cleanup(f.close)
+        f = self._get_fileobj(self._temp_filename)
         self._transfer_coordinator.add_failure_cleanup(
             self._osutil.remove_file, self._temp_filename)
         return f
 
+    def _get_fileobj(self, filename):
+        f = self._osutil.open(filename, 'wb')
+        # Make sure the file gets closed and we remove the temporary file
+        # if anything goes wrong during the process.
+        self._transfer_coordinator.add_failure_cleanup(f.close)
+        return f
+
+
+class DownloadSpecialFilenameOutputManager(DownloadFilenameOutputManager):
+    """Handles special files that cannot use a temporary file for io writes"""
+    @classmethod
+    def is_compatible(cls, download_target, osutil):
+        return super(DownloadSpecialFilenameOutputManager, cls).is_compatible(
+                download_target, osutil) and \
+                osutil.is_special_file(download_target)
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        fileobj = transfer_future.meta.call_args.fileobj
+        return self._get_fileobj(fileobj)
+
+    def get_final_io_task(self):
+        # This task will serve the purpose of signaling when all of the io
+        # writes have finished so done callbacks can be called.
+        return CompleteDownloadNOOPTask(
+            transfer_coordinator=self._transfer_coordinator)
+
 
 class DownloadSeekableOutputManager(DownloadOutputManager):
     @classmethod
-    def is_compatible(cls, download_target):
+    def is_compatible(cls, download_target, osutil):
         return seekable(download_target)
 
     def get_fileobj_for_io_writes(self, transfer_future):
@@ -199,7 +224,7 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
         self._io_submit_lock = threading.Lock()
 
     @classmethod
-    def is_compatible(cls, download_target):
+    def is_compatible(cls, download_target, osutil):
         return hasattr(download_target, 'write')
 
     def get_download_task_tag(self):
@@ -234,17 +259,21 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
 class DownloadSubmissionTask(SubmissionTask):
     """Task for submitting tasks to execute a download"""
 
-    def _get_download_output_manager_cls(self, transfer_future):
+    def _get_download_output_manager_cls(self, transfer_future, osutil):
         """Retrieves a class for managing output for a download
 
         :type transfer_future: s3transfer.futures.TransferFuture
         :param transfer_future: The transfer future for the request
+
+        :type osutil: s3transfer.utils.OSUtils
+        :param osutil: The os utility associated to the transfer
 
         :rtype: class of DownloadOutputManager
         :returns: The appropriate class to use for managing a specific type of
             input for downloads.
         """
         download_manager_resolver_chain = [
+            DownloadSpecialFilenameOutputManager,
             DownloadFilenameOutputManager,
             DownloadSeekableOutputManager,
             DownloadNonSeekableOutputManager,
@@ -252,7 +281,7 @@ class DownloadSubmissionTask(SubmissionTask):
 
         fileobj = transfer_future.meta.call_args.fileobj
         for download_manager_cls in download_manager_resolver_chain:
-            if download_manager_cls.is_compatible(fileobj):
+            if download_manager_cls.is_compatible(fileobj, osutil):
                 return download_manager_cls
         raise RuntimeError(
             'Output %s of type: %s is not supported.' % (
@@ -294,8 +323,8 @@ class DownloadSubmissionTask(SubmissionTask):
                 response['ContentLength'])
 
         download_output_manager = self._get_download_output_manager_cls(
-            transfer_future)(osutil, self._transfer_coordinator,
-                             io_executor)
+            transfer_future, osutil)(osutil, self._transfer_coordinator,
+                                     io_executor)
 
         # If it is greater than threshold do a ranged download, otherwise
         # do a regular GetObject download.

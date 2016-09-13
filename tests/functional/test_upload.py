@@ -14,6 +14,7 @@ import os
 import tempfile
 import shutil
 
+import mock
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from botocore.awsrequest import AWSRequest
@@ -26,11 +27,25 @@ from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
+from s3transfer.utils import ChunksizeAdjuster
 
 
 class BaseUploadTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseUploadTest, self).setUp()
+        # TODO: We do not want to use the real MIN_UPLOAD_CHUNKSIZE
+        # when we're adjusting parts.
+        # This is really wasteful and fails CI builds because self.contents
+        # would normally use 10MB+ of memory.
+        # Until there's an API to configure this, we're patching this with
+        # a min size of 1.  We can't patch MIN_UPLOAD_CHUNKSIZE directly
+        # because it's already bound to a default value in the
+        # chunksize adjuster.  Instead we need to patch out the
+        # chunksize adjuster class.
+        self.adjuster_patch = mock.patch(
+            's3transfer.upload.ChunksizeAdjuster',
+            lambda: ChunksizeAdjuster(min_size=1))
+        self.adjuster_patch.start()
         self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
@@ -57,6 +72,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
     def tearDown(self):
         super(BaseUploadTest, self).tearDown()
         shutil.rmtree(self.tempdir)
+        self.adjuster_patch.stop()
 
     def collect_body(self, params, model, **kwargs):
         # A handler to simulate the reading of the body including the

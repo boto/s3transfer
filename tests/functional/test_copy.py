@@ -17,12 +17,17 @@ from tests import BaseGeneralInterfaceTest
 from tests import FileSizeProvider
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
 
 
 class BaseCopyTest(BaseGeneralInterfaceTest):
     def setUp(self):
         super(BaseCopyTest, self).setUp()
-        self.config = TransferConfig(max_request_concurrency=1)
+        self.config = TransferConfig(
+            max_request_concurrency=1,
+            multipart_chunksize=MIN_UPLOAD_CHUNKSIZE,
+            multipart_threshold=MIN_UPLOAD_CHUNKSIZE * 4
+        )
         self._manager = TransferManager(self.client, self.config)
 
         # Initialize some default arguments
@@ -35,7 +40,8 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         self.extra_args = {}
         self.subscribers = []
 
-        self.content = b'my content'
+        self.half_chunksize = int(MIN_UPLOAD_CHUNKSIZE / 2)
+        self.content = b'0' * (2 * MIN_UPLOAD_CHUNKSIZE + self.half_chunksize)
 
     @property
     def manager(self):
@@ -310,9 +316,9 @@ class TestMultipartCopy(BaseCopyTest):
         # Note that last read is from the empty sentinel indicating
         # that the stream is done.
         return [
-            {'bytes_transferred': 4},
-            {'bytes_transferred': 4},
-            {'bytes_transferred': 2}
+            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
+            {'bytes_transferred': MIN_UPLOAD_CHUNKSIZE},
+            {'bytes_transferred': self.half_chunksize}
         ]
 
     def add_create_multipart_upload_response(self):
@@ -335,7 +341,8 @@ class TestMultipartCopy(BaseCopyTest):
 
         expected_copy_params = []
         # Add expected parameters to the copy part
-        ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-9']
+        ranges = ['bytes=0-5242879', 'bytes=5242880-10485759',
+                  'bytes=10485760-13107199']
         for i, range_val in enumerate(ranges):
             expected_copy_params.append(
                 {

@@ -36,6 +36,9 @@ from s3transfer.utils import StreamReaderProgress
 from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
 from s3transfer.utils import NoResourcesAvailable
+from s3transfer.utils import ChunksizeAdjuster
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE, MAX_SINGLE_UPLOAD_SIZE
+from s3transfer.utils import MAX_PARTS
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -192,12 +195,16 @@ class BaseUtilsTest(unittest.TestCase):
         with open(self.filename, 'wb') as f:
             f.write(self.content)
         self.amounts_seen = []
+        self.num_close_callback_calls = 0
 
     def tearDown(self):
         shutil.rmtree(self.tempdir)
 
     def callback(self, bytes_transferred):
         self.amounts_seen.append(bytes_transferred)
+
+    def close_callback(self):
+        self.num_close_callback_calls += 1
 
 
 class TestOSUtils(BaseUtilsTest):
@@ -225,8 +232,10 @@ class TestOSUtils(BaseUtilsTest):
             self.assertIsInstance(reader, ReadFileChunk)
             # The content of the reader should be correct.
             self.assertEqual(reader.read(), self.content)
+            reader.close()
             # Callbacks should be disabled depspite being passed in.
             self.assertEqual(self.amounts_seen, [])
+            self.assertEqual(self.num_close_callback_calls, 0)
 
     def test_open_file(self):
         fileobj = OSUtils().open(os.path.join(self.tempdir, 'foo'), 'w')
@@ -250,6 +259,14 @@ class TestOSUtils(BaseUtilsTest):
         OSUtils().rename_file(self.filename, new_filename)
         self.assertFalse(os.path.exists(self.filename))
         self.assertTrue(os.path.exists(new_filename))
+
+    def test_is_special_file_for_normal_file(self):
+        self.assertFalse(OSUtils().is_special_file(self.filename))
+
+    def test_is_special_file_for_non_existant_file(self):
+        non_existant_filename = os.path.join(self.tempdir, 'no-exist')
+        self.assertFalse(os.path.exists(non_existant_filename))
+        self.assertFalse(OSUtils().is_special_file(non_existant_filename))
 
 
 class TestDefferedOpenFile(BaseUtilsTest):
@@ -418,6 +435,28 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(1)
         chunk.read(2)
         self.assertEqual(self.amounts_seen, [2, -2, 2, -1, 2])
+
+    def test_close_callbacks(self):
+        with open(self.filename) as f:
+            chunk = ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                                  close_callbacks=[self.close_callback])
+            chunk.close()
+            self.assertEqual(self.num_close_callback_calls, 1)
+
+    def test_close_callbacks_when_not_enabled(self):
+        with open(self.filename) as f:
+            chunk = ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                                  enable_callbacks=False,
+                                  close_callbacks=[self.close_callback])
+            chunk.close()
+            self.assertEqual(self.num_close_callback_calls, 0)
+
+    def test_close_callbacks_when_context_handler_is_used(self):
+        with open(self.filename) as f:
+            with ReadFileChunk(f, chunk_size=1, full_file_size=3,
+                               close_callbacks=[self.close_callback]) as chunk:
+                chunk.read(1)
+            self.assertEqual(self.num_close_callback_calls, 1)
 
 
 class TestStreamReaderProgress(BaseUtilsTest):
@@ -683,3 +722,51 @@ class TestThreadingPropertiesForSlidingWindowSemaphore(unittest.TestCase):
         # Should have acquired num_threads * num_iterations
         self.assertEqual(sem.acquire('a', blocking=False),
                          num_threads * num_iterations)
+
+
+class TestAdjustChunksize(unittest.TestCase):
+    def setUp(self):
+        self.adjuster = ChunksizeAdjuster()
+
+    def test_valid_chunksize(self):
+        chunksize = 7 * (1024 ** 2)
+        file_size = 8 * (1024 ** 2)
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, chunksize)
+
+    def test_chunksize_below_minimum(self):
+        chunksize = MIN_UPLOAD_CHUNKSIZE - 1
+        file_size = 3 * MIN_UPLOAD_CHUNKSIZE
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, MIN_UPLOAD_CHUNKSIZE)
+
+    def test_chunksize_above_maximum(self):
+        chunksize = MAX_SINGLE_UPLOAD_SIZE + 1
+        file_size = MAX_SINGLE_UPLOAD_SIZE * 2
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, MAX_SINGLE_UPLOAD_SIZE)
+
+    def test_chunksize_too_small(self):
+        chunksize = 7 * (1024 ** 2)
+        file_size = 5 * (1024 ** 4)
+        # If we try to upload a 5TB file, we'll need to use 896MB part
+        # sizes.
+        new_size = self.adjuster.adjust_chunksize(chunksize, file_size)
+        self.assertEqual(new_size, 896 * (1024 ** 2))
+        num_parts = file_size / new_size
+        self.assertLessEqual(num_parts, MAX_PARTS)
+
+    def test_unknown_file_size_with_valid_chunksize(self):
+        chunksize = 7 * (1024 ** 2)
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, chunksize)
+
+    def test_unknown_file_size_below_minimum(self):
+        chunksize = MIN_UPLOAD_CHUNKSIZE - 1
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, MIN_UPLOAD_CHUNKSIZE)
+
+    def test_unknown_file_size_above_maximum(self):
+        chunksize = MAX_SINGLE_UPLOAD_SIZE + 1
+        new_size = self.adjuster.adjust_chunksize(chunksize)
+        self.assertEqual(new_size, MAX_SINGLE_UPLOAD_SIZE)

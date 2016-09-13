@@ -19,6 +19,7 @@ from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import calculate_range_parameter
+from s3transfer.utils import ChunksizeAdjuster
 
 
 class CopySubmissionTask(SubmissionTask):
@@ -166,6 +167,9 @@ class CopySubmissionTask(SubmissionTask):
         # Determine how many parts are needed based on filesize and
         # desired chunksize.
         part_size = config.multipart_chunksize
+        adjuster = ChunksizeAdjuster()
+        part_size = adjuster.adjust_chunksize(
+            part_size, transfer_future.meta.size)
         num_parts = int(
             math.ceil(transfer_future.meta.size / float(part_size)))
 

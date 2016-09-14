@@ -17,6 +17,7 @@ import logging
 import threading
 
 from s3transfer.compat import MAXINT
+from s3transfer.exceptions import CancelledError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
@@ -220,13 +221,16 @@ class TransferCoordinator(object):
                 raise self._exception
             return self._result
 
-    def cancel(self):
-        """Cancels the TransferFuture"""
+    def cancel(self, msg=''):
+        """Cancels the TransferFuture
+
+        :param msg: The message to attach to the cancellation
+        """
         with self._lock:
             if not self.done():
                 should_announce_done = False
-                logger.debug('TransferCoordinator cancel() called')
-                self._exception = futures.CancelledError
+                logger.debug('%s cancel(%s) called', self, msg)
+                self._exception = CancelledError(msg)
                 if self._status == 'not-started':
                     should_announce_done = True
                 self._status = 'cancelled'

@@ -1,0 +1,5 @@
+{
+  "category": "Cntrl-C", 
+  "type": "bugfix", 
+  "description": "Fix issue of hangs when Cntrl-C happens for many queued transfers"
+}

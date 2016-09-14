@@ -331,7 +331,8 @@ class TestTask(unittest.TestCase):
         # a desired parameter to include.
         self.assertEqual(
             repr(task),
-            'ReturnKwargsTask(%s)' % {'bucket': 'mybucket'}
+            'ReturnKwargsTask(transfer_id=%s, %s)' % (
+                self.transfer_id, {'bucket': 'mybucket'})
         )
 
     def test_transfer_id(self):

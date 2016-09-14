@@ -85,7 +85,9 @@ class Task(object):
         ]
         main_kwargs_to_display = self._get_kwargs_with_params_to_include(
             self._main_kwargs, params_to_display)
-        return '%s(%s)' % (self.__class__.__name__, main_kwargs_to_display)
+        return '%s(transfer_id=%s, %s)' % (
+            self.__class__.__name__, self._transfer_coordinator.transfer_id,
+            main_kwargs_to_display)
 
     @property
     def transfer_id(self):

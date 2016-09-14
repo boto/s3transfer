@@ -128,6 +128,11 @@ class TestTransferCoordinator(unittest.TestCase):
         transfer_coordinator = TransferCoordinator(transfer_id=1)
         self.assertEqual(transfer_coordinator.transfer_id, 1)
 
+    def test_repr(self):
+        transfer_coordinator = TransferCoordinator(transfer_id=1)
+        self.assertEqual(
+            repr(transfer_coordinator), 'TransferCoordinator(transfer_id=1)')
+
     def test_initial_status(self):
         # A TransferCoordinator with no progress should have the status
         # of queued

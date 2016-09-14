@@ -479,15 +479,19 @@ class TransferManager(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, *args):
+    def __exit__(self, exc_type, exc_value, *args):
         cancel = False
+        cancel_msg = ''
         # If a exception was raised in the context handler, signal to cancel
         # all of the inprogress futures in the shutdown.
         if exc_type:
             cancel = True
-        self.shutdown(cancel)
+            cancel_msg = exc_value
+            if exc_type == KeyboardInterrupt:
+                cancel_msg = 'keyboard interrupt'
+        self.shutdown(cancel, cancel_msg)
 
-    def shutdown(self, cancel=False):
+    def shutdown(self, cancel=False, cancel_msg=''):
         """Shutdown the TransferManager
 
         It will wait till all transfers complete before it completely shuts
@@ -497,11 +501,15 @@ class TransferManager(object):
         :param cancel: If True, calls TransferFuture.cancel() for
             all in-progress in transfers. This is useful if you want the
             shutdown to happen quicker.
+
+        :type cancel_msg: str
+        :param cancel_msg: The message to specify if canceling all in-progress
+            transfers.
         """
         if cancel:
             # Cancel all in-flight transfers if requested, before waiting
             # for them to complete.
-            self._coordinator_controller.cancel()
+            self._coordinator_controller.cancel(cancel_msg)
         try:
             # Wait until there are no more in-progress transfers. This is
             # wrapped in a try statement because this can be interrupted

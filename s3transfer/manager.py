@@ -586,6 +586,13 @@ class TransferCoordinatorController(object):
             # If Keyboard interrupt is raised while waiting for
             # the result, then exit out of the wait and raise the
             # exception
+            if transfer_coordinator:
+                logger.debug(
+                    'On KeyboardInterrupt was waiting for '
+                    '%s of status %s and associated futures %s',
+                    transfer_coordinator,
+                    transfer_coordinator.status,
+                    transfer_coordinator.associated_futures)
             raise
         except Exception:
             # A general exception could have been thrown because

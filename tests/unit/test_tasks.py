@@ -297,6 +297,22 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.assertEqual(self.transfer_coordinator.status, 'failed')
         self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
 
+    def test_submission_task_announces_done_if_cancelled_before_main(self):
+        invocations_of_done = []
+        done_callback = FunctionContainer(
+            invocations_of_done.append, 'done announced')
+        self.transfer_coordinator.add_done_callback(done_callback)
+
+        self.transfer_coordinator.cancel()
+        submission_task = self.get_task(
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+        submission_task()
+
+        # Because the submission task was cancelled before being run
+        # it did not submit any extra tasks so a result it is responsible
+        # for making sure it announces done as nothing else will.
+        self.assertEqual(invocations_of_done, ['done announced'])
+
 
 class TestTask(unittest.TestCase):
     def setUp(self):

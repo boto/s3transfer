@@ -85,6 +85,48 @@ class TestUpload(BaseTransferManagerIntegTest):
             # make sure the object does not exist.
             self.assertFalse(self.object_exists('20mb.txt'))
 
+    def test_many_files_exits_quicky_on_exception(self):
+        # Set the max request queue size and number of submission threads
+        # to something small to simulate having a large queue
+        # of transfer requests to complete and it is backed up.
+        self.config.max_request_queue_size = 1
+        self.config.max_submission_concurrency = 1
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        fileobjs = []
+        keynames = []
+        futures = []
+        for i in range(10):
+            filename = 'file' + str(i)
+            keynames.append(filename)
+            fileobjs.append(
+                self.get_input_fileobj(name=filename, size=1024 * 1024))
+
+        try:
+            with transfer_manager:
+                start_time = time.time()
+                for i, fileobj in enumerate(fileobjs):
+                    futures.append(transfer_manager.upload(
+                        fileobj, self.bucket_name, keynames[i]))
+                # Raise an exception which should cause the preceeding
+                # transfer to cancel and exit quickly
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+        end_time = time.time()
+        # The maximum time allowed for the transfer manager to exit.
+        # This means that it should take less than a couple seconds to exit.
+        max_allowed_exit_time = 2
+        self.assertTrue(end_time - start_time < max_allowed_exit_time)
+
+        # Make sure at least one of the futures got cancelled
+        with self.assertRaises(CancelledError):
+            for future in futures:
+                future.result()
+        # For the transfer that did get cancelled, make sure the object
+        # does not exist.
+        self.assertFalse(self.object_exists(future.meta.call_args.key))
+
     def test_progress_subscribers_on_upload(self):
         subscriber = RecordingSubscriber()
         transfer_manager = self.create_transfer_manager(self.config)

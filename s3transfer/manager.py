@@ -562,14 +562,17 @@ class TransferCoordinatorController(object):
         with self._lock:
             self._tracked_transfer_coordinators.remove(transfer_coordinator)
 
-    def cancel(self):
+    def cancel(self, msg=''):
         """Cancels all inprogress transfers
 
         This cancels the inprogress transfers by calling cancel() on all
         tracked transfer coordinators.
+
+        :params msg: The message to pass on to each transfer coordinator that
+            gets cancelled.
         """
         for transfer_coordinator in self.tracked_transfer_coordinators:
-            transfer_coordinator.cancel()
+            transfer_coordinator.cancel(msg)
 
     def wait(self):
         """Wait until there are no more inprogress transfers

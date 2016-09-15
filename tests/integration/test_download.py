@@ -84,7 +84,11 @@ class TestDownload(BaseTransferManagerIntegTest):
         # This means that it should take less than a couple second after
         # sleeping to exit.
         max_allowed_exit_time = sleep_time + 1
-        self.assertTrue(end_time - start_time < max_allowed_exit_time)
+        self.assertLess(
+            end_time - start_time, max_allowed_exit_time,
+            "Failed to exit under %s. Instead exited in %s." % (
+                max_allowed_exit_time, end_time - start_time)
+        )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt
         with self.assertRaises(CancelledError):
@@ -128,7 +132,11 @@ class TestDownload(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple seconds to exit.
         max_allowed_exit_time = 2
-        self.assertTrue(end_time - start_time < max_allowed_exit_time)
+        self.assertLess(
+            end_time - start_time, max_allowed_exit_time,
+            "Failed to exit under %s. Instead exited in %s." % (
+                max_allowed_exit_time, end_time - start_time)
+        )
 
         # Make sure at least one of the futures got cancelled
         with self.assertRaises(CancelledError):

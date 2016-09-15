@@ -86,7 +86,7 @@ class TestAggregatedProgressCallback(unittest.TestCase):
         self.aggregated_amounts = []
         self.threshold = 3
         self.aggregated_progress_callback = AggregatedProgressCallback(
-            self.callback, self.threshold)
+            [self.callback], self.threshold)
 
     def callback(self, bytes_transferred):
         self.aggregated_amounts.append(bytes_transferred)

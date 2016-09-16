@@ -588,11 +588,8 @@ class TransferCoordinatorController(object):
             # exception
             if transfer_coordinator:
                 logger.debug(
-                    'On KeyboardInterrupt was waiting for '
-                    '%s of status %s and associated futures %s',
-                    transfer_coordinator,
-                    transfer_coordinator.status,
-                    transfer_coordinator.associated_futures)
+                    'On KeyboardInterrupt was waiting for %s',
+                    transfer_coordinator)
             raise
         except Exception:
             # A general exception could have been thrown because

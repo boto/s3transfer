@@ -167,8 +167,7 @@ class TransferCoordinator(object):
             * failed - An exception other than CancelledError was thrown
             * success - No exceptions were thrown and is done.
         """
-        with self._lock:
-            return self._status
+        return self._status
 
     def set_result(self, result):
         """Set a result for the TransferFuture

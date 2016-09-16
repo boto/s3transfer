@@ -11,16 +11,17 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import CancelledError
 
 from tests import unittest
+from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
+from s3transfer.futures import ExecutorFuture
 from s3transfer.tasks import Task
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
@@ -191,23 +192,27 @@ class TestTransferCoordinator(unittest.TestCase):
     def test_submit(self):
         # Submit a callable to the transfer coordinator. It should submit it
         # to the executor.
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = self.transfer_coordinator.submit(
-                executor,
-                return_call_args,
-                tag='my-tag'
-            )
+        executor = RecordingExecutor(
+            BoundedExecutor(1, 1, {'my-tag': TaskSemaphore(1)}))
+        task = ReturnFooTask(self.transfer_coordinator)
+        future = self.transfer_coordinator.submit(executor, task, tag='my-tag')
+        executor.shutdown()
         # Make sure the future got submit and executed as well by checking its
         # result value which should include the provided future tag.
-        self.assertEqual(future.result(), ((), {'tag': 'my-tag'}))
+        self.assertEqual(
+            executor.submissions,
+            [{'block': True, 'tag': 'my-tag', 'task': task}]
+        )
+        self.assertEqual(future.result(), 'foo')
 
     def test_association_and_disassociation_on_submit(self):
         self.transfer_coordinator = RecordingTransferCoordinator()
 
         # Submit a callable to the transfer coordinator.
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = self.transfer_coordinator.submit(
-                executor, return_call_args)
+        executor = BoundedExecutor(1, 1)
+        task = ReturnFooTask(self.transfer_coordinator)
+        future = self.transfer_coordinator.submit(executor, task)
+        executor.shutdown()
 
         # Make sure the future that got submitted was associated to the
         # transfer future at some point.
@@ -372,9 +377,7 @@ class TestBoundedExecutor(unittest.TestCase):
             self.fail('Task %s should not have been blocked' % task)
 
     def add_done_callback_to_future(self, future, fn, *args, **kwargs):
-        def callback_for_future(f):
-            fn(*args, **kwargs)
-
+        callback_for_future = FunctionContainer(fn, *args, **kwargs)
         future.add_done_callback(callback_for_future)
 
     def test_submit_single_task(self):
@@ -383,7 +386,7 @@ class TestBoundedExecutor(unittest.TestCase):
         future = self.executor.submit(task)
 
         # Ensure what we get back is a Future
-        self.assertIsInstance(future, Future)
+        self.assertIsInstance(future, ExecutorFuture)
         # Ensure the callable got executed.
         self.assertEqual(future.result(), 'foo')
 
@@ -448,3 +451,26 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown returns immediately even if the task is
         # not done, which it should not be because it it slow.
         self.assertFalse(future.done())
+
+
+class TestExecutorFuture(unittest.TestCase):
+    def test_result(self):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+        self.assertEqual(wrapped_future.result(), (('foo',), {'biz': 'baz'}))
+
+    def test_done(self):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+        self.assertTrue(wrapped_future.done())
+
+    def test_add_done_callback(self):
+        done_callbacks = []
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+            wrapped_future.add_done_callback(
+                FunctionContainer(done_callbacks.append, 'called'))
+        self.assertEqual(done_callbacks, ['called'])

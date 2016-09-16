@@ -250,7 +250,8 @@ class TransferCoordinator(object):
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.
         self.add_associated_future(future)
-        future.add_done_callback(self.remove_associated_future)
+        future.add_done_callback(
+            FunctionContainer(self.remove_associated_future, future))
         return future
 
     def done(self):
@@ -384,23 +385,49 @@ class BoundedExecutor(object):
         release_callback = FunctionContainer(
             semaphore.release, task.transfer_id, acquire_token)
         # Submit the task to the underlying executor.
-        future = self._executor.submit(task)
+        future = ExecutorFuture(self._executor.submit(task))
         # Add the Semaphore.release() callback to the future such that
         # it is invoked once the future completes.
-        self._add_done_callback_to_future(future, release_callback)
+        future.add_done_callback(release_callback)
         return future
 
     def shutdown(self, wait=True):
         self._executor.shutdown(wait)
 
-    def _add_done_callback_to_future(self, future, callback):
+
+class ExecutorFuture(object):
+    def __init__(self, future):
+        """A future returned from the executor
+
+        Currently, it is just a wrapper around a concurrent.futures.Future.
+        However, this can eventually grow to implement the needed functionality
+        of concurrent.futures.Future if we move off of the library and not
+        affect the rest of the codebase.
+
+        :type future: concurrent.futures.Future
+        :param future: The underlying future
+        """
+        self._future = future
+
+    def result(self):
+        return self._future.result()
+
+    def add_done_callback(self, fn):
+        """Adds a callback to be completed once future is done
+
+        :parm fn: A callable that takes no arguments. Note that is different
+            than concurrent.futures.Future.add_done_callback that requires
+            a single argument for the future.
+        """
         # The done callback for concurrent.futures.Future will always pass a
         # the future in as the only argument. So we need to create the
         # proper signature wrapper that will invoke the callback provided.
         def done_callback(future_passed_to_callback):
-            return callback()
-        # Add the wrapped done callback to the future.
-        future.add_done_callback(done_callback)
+            return fn()
+        self._future.add_done_callback(done_callback)
+
+    def done(self):
+        return self._future.done()
 
 
 TaskTag = namedtuple('TaskTag', ['name'])

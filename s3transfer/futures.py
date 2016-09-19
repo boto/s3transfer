@@ -119,7 +119,7 @@ class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
-        self._status = 'queued'
+        self._status = 'not-started'
         self._result = None
         self._exception = None
         self._associated_futures = set()
@@ -162,7 +162,9 @@ class TransferCoordinator(object):
         """The status of the TransferFuture
 
         The currently supported states are:
-            * queued - Has yet to start
+            * not-started - Has yet to start. If in this state, a transfer
+              can be canceled immediately and nothing will happen.
+            * queued - SubmissionTask is about to submit tasks
             * running - Is inprogress. In-progress as of now means that
               the SubmissionTask that runs the transfer is being executed. So
               there is no guarantee any transfer requests had been made to
@@ -171,8 +173,7 @@ class TransferCoordinator(object):
             * failed - An exception other than CancelledError was thrown
             * success - No exceptions were thrown and is done.
         """
-        with self._lock:
-            return self._status
+        return self._status
 
     def set_result(self, result):
         """Set a result for the TransferFuture
@@ -223,9 +224,18 @@ class TransferCoordinator(object):
         """Cancels the TransferFuture"""
         if not self.done():
             with self._lock:
+                should_announce_done = False
                 logger.debug('TransferCoordinator cancel() called')
                 self._exception = futures.CancelledError
+                if self._status == 'not-started':
+                    should_announce_done = True
                 self._status = 'cancelled'
+                if should_announce_done:
+                    self.announce_done()
+
+    def set_status_to_queued(self):
+        """Sets the TransferFutrue's status to running"""
+        self._status = 'queued'
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""

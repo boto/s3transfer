@@ -20,6 +20,7 @@ from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
+from s3transfer.subscribers import BaseSubscriber
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
@@ -78,6 +79,32 @@ class ExceptionSubmissionTask(SubmissionTask):
         raise TaskFailureException()
 
 
+class StatusRecordingTransferCoordinator(TransferCoordinator):
+    def __init__(self, transfer_id=None):
+        super(StatusRecordingTransferCoordinator, self).__init__(transfer_id)
+        self.status_changes = [self._status]
+
+    def set_status_to_queued(self):
+        super(StatusRecordingTransferCoordinator, self).set_status_to_queued()
+        self._record_status_change()
+
+    def set_status_to_running(self):
+        super(StatusRecordingTransferCoordinator, self).set_status_to_running()
+        self._record_status_change()
+
+    def _record_status_change(self):
+        self.status_changes.append(self._status)
+
+
+class RecordingStateSubscriber(BaseSubscriber):
+    def __init__(self, transfer_coordinator):
+        self._transfer_coordinator = transfer_coordinator
+        self.status_during_on_queued = None
+
+    def on_queued(self, **kwargs):
+        self.status_during_on_queued = self._transfer_coordinator.status
+
+
 class TestSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
         super(TestSubmissionTask, self).setUp()
@@ -86,15 +113,22 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.transfer_future = self.get_transfer_future(self.call_args)
         self.main_kwargs = {'transfer_future': self.transfer_future}
 
-    def test_sets_running_status(self):
+    def test_transitions_from_not_started_to_queued_to_running(self):
+        self.transfer_coordinator = StatusRecordingTransferCoordinator()
         submission_task = self.get_task(
             NOOPSubmissionTask, main_kwargs=self.main_kwargs)
         # Status should be queued until submission task has been ran.
-        self.assertEqual(self.transfer_coordinator.status, 'queued')
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
 
         submission_task()
         # Once submission task has been ran, the status should now be running.
         self.assertEqual(self.transfer_coordinator.status, 'running')
+
+        # Ensure the transitions were as expected as well.
+        self.assertEqual(
+            self.transfer_coordinator.status_changes,
+            ['not-started', 'queued', 'running']
+        )
 
     def test_on_queued_callbacks(self):
         submission_task = self.get_task(
@@ -106,6 +140,16 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # Make sure the on_queued callback of the subscriber is called.
         self.assertEqual(
             subscriber.on_queued_calls, [{'future': self.transfer_future}])
+
+    def test_on_queued_status_in_callbacks(self):
+        submission_task = self.get_task(
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+
+        subscriber = RecordingStateSubscriber(self.transfer_coordinator)
+        self.call_args.subscribers.append(subscriber)
+        submission_task()
+        # Make sure the status was queued during on_queued callback.
+        self.assertEqual(subscriber.status_during_on_queued, 'queued')
 
     def test_sets_exception_from_submit(self):
         submission_task = self.get_task(

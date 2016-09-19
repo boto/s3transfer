@@ -240,6 +240,8 @@ class SubmissionTask(Task):
             to the _submit() method
         """
         try:
+            self._transfer_coordinator.set_status_to_queued()
+
             # Before submitting any tasks, run all of the on_queued callbacks
             on_queued_callbacks = get_callbacks(transfer_future, 'queued')
             for on_queued_callback in on_queued_callbacks:

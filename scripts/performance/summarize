@@ -185,7 +185,7 @@ class Summarizer(object):
             self.total_files += 1
 
     def process_individual_file(self, benchmark_file):
-        with open(benchmark_file, 'rb') as f:
+        with open(benchmark_file, 'r') as f:
             reader = csv.reader(f)
             # Process each row from the CSV file
             row = None

@@ -235,12 +235,19 @@ class TransferCoordinator(object):
 
     def set_status_to_queued(self):
         """Sets the TransferFutrue's status to running"""
-        self._status = 'queued'
+        self._transition_to_non_done_state('queued')
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""
+        self._transition_to_non_done_state('running')
+
+    def _transition_to_non_done_state(self, desired_state):
         with self._lock:
-            self._status = 'running'
+            if self.done():
+                raise RuntimeError(
+                    'Unable to transition from done state %s to non-done '
+                    'state %s.' % (self.status, desired_state))
+            self._status = desired_state
 
     def submit(self, executor, task, tag=None):
         """Submits a task to a provided executor

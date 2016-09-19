@@ -142,9 +142,19 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.set_status_to_queued()
         self.assertEqual(self.transfer_coordinator.status, 'queued')
 
+    def test_cannot_set_status_to_queued_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_queued()
+
     def test_status_running(self):
         self.transfer_coordinator.set_status_to_running()
         self.assertEqual(self.transfer_coordinator.status, 'running')
+
+    def test_cannot_set_status_to_running_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_running()
 
     def test_set_result(self):
         success_result = 'foo'

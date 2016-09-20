@@ -195,8 +195,8 @@ class TransferCoordinator(object):
 
         Implies the TransferFuture failed.
         """
-        if not self.done():
-            with self._lock:
+        with self._lock:
+            if not self.done():
                 self._exception = exception
                 self._status = 'failed'
 
@@ -222,8 +222,8 @@ class TransferCoordinator(object):
 
     def cancel(self):
         """Cancels the TransferFuture"""
-        if not self.done():
-            with self._lock:
+        with self._lock:
+            if not self.done():
                 should_announce_done = False
                 logger.debug('TransferCoordinator cancel() called')
                 self._exception = futures.CancelledError

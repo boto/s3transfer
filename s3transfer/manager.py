@@ -579,6 +579,7 @@ class TransferCoordinatorController(object):
         a KeyboardInterrupt.
         """
         try:
+            transfer_coordinator = None
             for transfer_coordinator in self.tracked_transfer_coordinators:
                 transfer_coordinator.result()
         except KeyboardInterrupt:

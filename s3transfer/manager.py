@@ -515,13 +515,15 @@ class TransferManager(object):
             # wrapped in a try statement because this can be interrupted
             # with a KeyboardInterrupt that needs to be caught.
             self._coordinator_controller.wait()
-        finally:
+        except KeyboardInterrupt as e:
             # If not errors were raised in the try block, the cancel should
             # have no coordinators it needs to run cancel on. If there was
             # an error raised in the try statement we want to cancel all of
             # the inflight transfers before shutting down to speed that
             # process up.
-            self._coordinator_controller.cancel()
+            self._coordinator_controller.cancel('keyboard interrupt')
+            raise e
+        finally:
             # Shutdown all of the executors.
             self._submission_executor.shutdown()
             self._request_executor.shutdown()

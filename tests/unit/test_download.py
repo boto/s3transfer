@@ -515,6 +515,7 @@ class TestGetObjectTask(BaseTaskTest):
             'io_chunksize': self.io_chunksize,
         }
         default_kwargs.update(kwargs)
+        self.transfer_coordinator.set_status_to_queued()
         return self.get_task(GetObjectTask, main_kwargs=default_kwargs)
 
     def assert_io_writes(self, expected_writes):

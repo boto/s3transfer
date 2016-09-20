@@ -579,6 +579,7 @@ class TransferCoordinatorController(object):
         a KeyboardInterrupt.
         """
         try:
+            transfer_coordinator = None
             for transfer_coordinator in self.tracked_transfer_coordinators:
                 transfer_coordinator.result()
         except KeyboardInterrupt:
@@ -586,6 +587,10 @@ class TransferCoordinatorController(object):
             # If Keyboard interrupt is raised while waiting for
             # the result, then exit out of the wait and raise the
             # exception
+            if transfer_coordinator:
+                logger.debug(
+                    'On KeyboardInterrupt was waiting for %s',
+                    transfer_coordinator)
             raise
         except Exception:
             # A general exception could have been thrown because

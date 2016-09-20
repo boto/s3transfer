@@ -119,7 +119,7 @@ class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
-        self._status = 'queued'
+        self._status = 'not-started'
         self._result = None
         self._exception = None
         self._associated_futures = set()
@@ -130,6 +130,10 @@ class TransferCoordinator(object):
         self._associated_futures_lock = threading.Lock()
         self._done_callbacks_lock = threading.Lock()
         self._failure_cleanups_lock = threading.Lock()
+
+    def __repr__(self):
+        return '%s(transfer_id=%s)' % (
+            self.__class__.__name__, self.transfer_id)
 
     @property
     def exception(self):
@@ -158,7 +162,9 @@ class TransferCoordinator(object):
         """The status of the TransferFuture
 
         The currently supported states are:
-            * queued - Has yet to start
+            * not-started - Has yet to start. If in this state, a transfer
+              can be canceled immediately and nothing will happen.
+            * queued - SubmissionTask is about to submit tasks
             * running - Is inprogress. In-progress as of now means that
               the SubmissionTask that runs the transfer is being executed. So
               there is no guarantee any transfer requests had been made to
@@ -189,8 +195,8 @@ class TransferCoordinator(object):
 
         Implies the TransferFuture failed.
         """
-        if not self.done():
-            with self._lock:
+        with self._lock:
+            if not self.done():
                 self._exception = exception
                 self._status = 'failed'
 
@@ -216,16 +222,32 @@ class TransferCoordinator(object):
 
     def cancel(self):
         """Cancels the TransferFuture"""
-        if not self.done():
-            with self._lock:
+        with self._lock:
+            if not self.done():
+                should_announce_done = False
                 logger.debug('TransferCoordinator cancel() called')
                 self._exception = futures.CancelledError
+                if self._status == 'not-started':
+                    should_announce_done = True
                 self._status = 'cancelled'
+                if should_announce_done:
+                    self.announce_done()
+
+    def set_status_to_queued(self):
+        """Sets the TransferFutrue's status to running"""
+        self._transition_to_non_done_state('queued')
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""
+        self._transition_to_non_done_state('running')
+
+    def _transition_to_non_done_state(self, desired_state):
         with self._lock:
-            self._status = 'running'
+            if self.done():
+                raise RuntimeError(
+                    'Unable to transition from done state %s to non-done '
+                    'state %s.' % (self.status, desired_state))
+            self._status = desired_state
 
     def submit(self, executor, task, tag=None):
         """Submits a task to a provided executor

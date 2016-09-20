@@ -129,14 +129,33 @@ class TestTransferCoordinator(unittest.TestCase):
         transfer_coordinator = TransferCoordinator(transfer_id=1)
         self.assertEqual(transfer_coordinator.transfer_id, 1)
 
+    def test_repr(self):
+        transfer_coordinator = TransferCoordinator(transfer_id=1)
+        self.assertEqual(
+            repr(transfer_coordinator), 'TransferCoordinator(transfer_id=1)')
+
     def test_initial_status(self):
         # A TransferCoordinator with no progress should have the status
-        # of queued
+        # of not-started
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
+
+    def test_set_status_to_queued(self):
+        self.transfer_coordinator.set_status_to_queued()
         self.assertEqual(self.transfer_coordinator.status, 'queued')
+
+    def test_cannot_set_status_to_queued_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_queued()
 
     def test_status_running(self):
         self.transfer_coordinator.set_status_to_running()
         self.assertEqual(self.transfer_coordinator.status, 'running')
+
+    def test_cannot_set_status_to_running_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_running()
 
     def test_set_result(self):
         success_result = 'foo'
@@ -166,10 +185,11 @@ class TestTransferCoordinator(unittest.TestCase):
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_cancel(self):
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
         self.transfer_coordinator.cancel()
-        self.transfer_coordinator.announce_done()
         # This should set the state to cancelled and raise the CancelledError
-        # exception.
+        # exception and should have also set the done event so that result()
+        # is no longer set.
         self.assertEqual(self.transfer_coordinator.status, 'cancelled')
         with self.assertRaises(CancelledError):
             self.transfer_coordinator.result()

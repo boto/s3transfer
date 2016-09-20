@@ -84,7 +84,11 @@ class TestDownload(BaseTransferManagerIntegTest):
         # This means that it should take less than a couple second after
         # sleeping to exit.
         max_allowed_exit_time = sleep_time + 1
-        self.assertTrue(end_time - start_time < max_allowed_exit_time)
+        self.assertLess(
+            end_time - start_time, max_allowed_exit_time,
+            "Failed to exit under %s. Instead exited in %s." % (
+                max_allowed_exit_time, end_time - start_time)
+        )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt
         with self.assertRaises(CancelledError):
@@ -93,6 +97,55 @@ class TestDownload(BaseTransferManagerIntegTest):
         # Make sure the actual file and the temporary do not exist
         # by globbing for the file and any of its extensions
         possible_matches = glob.glob('%s*' % download_path)
+        self.assertEqual(possible_matches, [])
+
+    def test_many_files_exits_quicky_on_exception(self):
+        # Set the max request queue size and number of submission threads
+        # to something small to simulate having a large queue
+        # of transfer requests to complete and it is backed up.
+        self.config.max_request_queue_size = 1
+        self.config.max_submission_concurrency = 1
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=1024 * 1024)
+        self.upload_file(filename, '1mb.txt')
+
+        filenames = []
+        futures = []
+        for i in range(10):
+            filenames.append(
+                os.path.join(self.files.rootdir, 'file'+str(i)))
+
+        try:
+            with transfer_manager:
+                start_time = time.time()
+                for filename in filenames:
+                    futures.append(transfer_manager.download(
+                        self.bucket_name, '1mb.txt', filename))
+                # Raise an exception which should cause the preceeding
+                # transfer to cancel and exit quickly
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+        end_time = time.time()
+        # The maximum time allowed for the transfer manager to exit.
+        # This means that it should take less than a couple seconds to exit.
+        max_allowed_exit_time = 2
+        self.assertLess(
+            end_time - start_time, max_allowed_exit_time,
+            "Failed to exit under %s. Instead exited in %s." % (
+                max_allowed_exit_time, end_time - start_time)
+        )
+
+        # Make sure at least one of the futures got cancelled
+        with self.assertRaises(CancelledError):
+            for future in futures:
+                future.result()
+
+        # For the transfer that did get cancelled, make sure the temporary
+        # file got removed.
+        possible_matches = glob.glob('%s*' % future.meta.call_args.fileobj)
         self.assertEqual(possible_matches, [])
 
     def test_progress_subscribers_on_download(self):

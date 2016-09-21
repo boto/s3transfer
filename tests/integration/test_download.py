@@ -91,7 +91,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt
-        with self.assertRaises(CancelledError):
+        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
             future.result()
 
         # Make sure the actual file and the temporary do not exist
@@ -139,7 +139,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         )
 
         # Make sure at least one of the futures got cancelled
-        with self.assertRaises(CancelledError):
+        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
             for future in futures:
                 future.result()
 

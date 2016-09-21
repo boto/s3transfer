@@ -12,11 +12,11 @@
 # language governing permissions and limitations under the License.
 import time
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import CancelledError
 
 from tests import unittest
 from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
+from s3transfer.exceptions import CancelledError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -192,6 +192,13 @@ class TestTransferCoordinator(unittest.TestCase):
         # is no longer set.
         self.assertEqual(self.transfer_coordinator.status, 'cancelled')
         with self.assertRaises(CancelledError):
+            self.transfer_coordinator.result()
+
+    def test_cancel_with_message(self):
+        message = 'my message'
+        self.transfer_coordinator.cancel(message)
+        self.transfer_coordinator.announce_done()
+        with self.assertRaisesRegexp(CancelledError, message):
             self.transfer_coordinator.result()
 
     def test_cancel_cannot_override_done_state(self):

@@ -183,7 +183,7 @@ class Summarizer(object):
             ['Average CPU (percent)', '%.1f' % self.average_cpu,
              self.std_dev_average_cpu],
         ]
-        result = tabulate(
+        return tabulate(
             table,
             headers=[
                 'Metric over %s run(s)' % (self.total_files),
@@ -192,13 +192,11 @@ class Summarizer(object):
             ],
             tablefmt="grid"
         )
-        return result
 
     def summarize_as_json(self):
         """Return JSON summary of processed data.
 
         :return: str of formatted JSON
-
         """
         return json.dumps({
             'total_time': self.total_time,
@@ -304,7 +302,7 @@ def main():
         result = summarizer.summarize_as_table()
     else:
         result = summarizer.summarize_as_json()
-    print result
+    print(result)
 
 
 if __name__ == '__main__':

@@ -14,9 +14,11 @@ from concurrent import futures
 from collections import namedtuple
 import copy
 import logging
+import sys
 import threading
 
 from s3transfer.compat import MAXINT
+from s3transfer.compat import queue
 from s3transfer.exceptions import CancelledError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
@@ -353,8 +355,121 @@ class TransferCoordinator(object):
             logger.debug("Exception raised in %s." % callback, exc_info=True)
 
 
+class ThreadPoolExecutor(object):
+    def __init__(self, max_workers):
+        """Executor with threads as its workers
+
+        :type max_workers: int
+        :param max_workers: The maximum number of threads to use
+        """
+        self._max_workers = max_workers
+        self._queue = queue.Queue()
+        self._threads = []
+        self._start_threads()
+
+    def _start_threads(self):
+        logger.debug('Creating thread pool of size %s', self._max_workers)
+        for _ in range(self._max_workers):
+            worker = ExecutorWorker(queue=self._queue)
+            # Make the thread a daemon so that program can always be exited
+            # with cntl-c if the worker is say stuck in the while loop.
+            worker.setDaemon(True)
+            self._threads.append(worker)
+            worker.start()
+
+    def submit(self, fn, *args, **kwargs):
+        """Submit a task to complete
+
+        :param fn: The callable to execute
+        :param args: The positional arguments to pass to the callable
+        :param kwargs: The keyword arguments to pass to the callable
+
+        :returns: An ExecutorFuture representing the callable passed in. This
+            is immediately returned to the user even if the callable has
+            not been executed.
+        """
+        fn = FunctionContainer(fn, *args, **kwargs)
+        future = futures.Future()
+        task = ExecutorWorkerTask(future, fn)
+        logger.debug('Submitting executor task: %s', task)
+        self._queue.put(task)
+        return future
+
+    def shutdown(self, wait=True):
+        """Signals to shutdown the threads of the executor
+
+        :param wait: If True, wait for the threads to completely
+            shutdown. Otherwise, signal to the threads to shutdown but
+            do not wait for them to shutdown.
+        """
+        logger.debug('Shutting down with wait=%s', wait)
+        for _ in range(self._max_workers):
+            shutdown_task = ExecutorWorkerShutdownTask()
+            logger.debug('Submitting %s to shutdown threads', shutdown_task)
+            self._queue.put(shutdown_task)
+        if wait:
+            logger.debug('Joining threads: %s', self._threads)
+            for thread in self._threads:
+                logger.debug('Joining %s', thread)
+                # Doing a join with no timeout cannot be interrupted in
+                # python2 but can be keyboard interrupted in python3 so we
+                # just wait with the largest possible value integer value,
+                # which is on the scale of billions of years...
+                thread.join(timeout=MAXINT)
+                logger.debug('Joined %s', thread)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.shutdown(wait=True)
+        return False
+
+
+class ExecutorWorker(threading.Thread):
+    def __init__(self, queue):
+        """Worker for ThreadPoolExecutor
+
+        :type queue: queue.Queue
+        :param queue: The queue to pull tasks off of. A task can be of type
+            ExecutorWorkerTask or ExecutorWorkerShutdownTask.
+        """
+        threading.Thread.__init__(self)
+        self._queue = queue
+
+    def run(self):
+        while True:
+            try:
+                task = self._queue.get(True)
+                if isinstance(task, ExecutorWorkerShutdownTask):
+                    logger.debug('Received %s. Thread shutting down.', task)
+                    break
+                self._run_task(task)
+            except queue.Empty:
+                pass
+
+    def _run_task(self, task):
+        future, fn = task
+        try:
+            logger.debug('Running fn: %s', fn)
+            result = fn()
+            logger.debug('Setting result for %s to %s', future, result)
+            future.set_result(result)
+        except BaseException:
+            e, tb = sys.exc_info()[1:]
+            logger.debug(
+                'Setting exception for %s to %s with traceback %s',
+                future, e, tb
+            )
+            future.set_exception_info(e, tb)
+
+
+ExecutorWorkerTask = namedtuple('ExecutorWorkerTask', ['future', 'fn'])
+ExecutorWorkerShutdownTask = namedtuple('ExecutorWorkerShutdownTask', [])
+
+
 class BoundedExecutor(object):
-    EXECUTOR_CLS = futures.ThreadPoolExecutor
+    EXECUTOR_CLS = ThreadPoolExecutor
 
     def __init__(self, max_size, max_num_threads, tag_semaphores=None):
         """An executor implentation that has a maximum queued up tasks

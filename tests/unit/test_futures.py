@@ -11,16 +11,21 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 
 from tests import unittest
 from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
+from s3transfer.compat import queue
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
+from s3transfer.futures import ExecutorWorker
+from s3transfer.futures import ThreadPoolExecutor
+from s3transfer.futures import ExecutorWorkerTask
+from s3transfer.futures import ExecutorWorkerShutdownTask
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import ExecutorFuture
 from s3transfer.tasks import Task
@@ -503,6 +508,78 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown returns immediately even if the task is
         # not done, which it should not be because it it slow.
         self.assertFalse(future.done())
+
+
+class TestThreadPoolExecutor(unittest.TestCase):
+    def test_submit(self):
+        def return_foo():
+            return 'foo'
+
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_foo)
+
+        self.assertIsInstance(future, Future)
+        self.assertEqual(future.result(), 'foo')
+
+    def test_submit_with_positional_args(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, 1, 2)
+
+        self.assertEqual(future.result(), ((1, 2), {}))
+
+    def test_submit_with_kwarg_args(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, foo='bar', biz='baz')
+
+        self.assertEqual(future.result(), ((), {'foo': 'bar', 'biz': 'baz'}))
+
+    def test_submit_with_both_positional_and_kwargs(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, 1, foo='bar')
+
+        self.assertEqual(future.result(), ((1, ), {'foo': 'bar'}))
+
+    def test_submit_no_wait(self):
+        thread_sleep_time = 0.25
+        executor = ThreadPoolExecutor(1)
+        start_time = time.time()
+        executor.submit(time.sleep, thread_sleep_time)
+        executor.shutdown(False)
+        end_time = time.time()
+        # Since the executor should not wait for the thread to finish
+        # it should pretty much return immediately from shutdown and be less
+        # than however long period of time the thread slept for.
+        self.assertTrue(end_time - start_time, thread_sleep_time)
+
+
+class TestExecutorWorker(unittest.TestCase):
+    def setUp(self):
+        self.task_queue = queue.Queue()
+
+    def test_sets_result(self):
+        def return_foo():
+            return 'foo'
+
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = Future()
+        self.task_queue.put(ExecutorWorkerTask(future, return_foo))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+        self.assertEqual(future.result(), 'foo')
+
+    def test_sets_exception(self):
+        def raise_runtime_error():
+            raise RuntimeError()
+
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = Future()
+        self.task_queue.put(ExecutorWorkerTask(future, raise_runtime_error))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+        with self.assertRaises(RuntimeError):
+            future.result()
 
 
 class TestExecutorFuture(unittest.TestCase):

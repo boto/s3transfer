@@ -10,16 +10,15 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from concurrent import futures
 from collections import namedtuple
 import copy
 import logging
 import sys
 import threading
 
-from s3transfer.compat import MAXINT
 from s3transfer.compat import queue
-from s3transfer.exceptions import CancelledError
+from s3transfer.compat import MAXINT, six
+from s3transfer.exceptions import CancelledError, TimeoutError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
@@ -389,7 +388,7 @@ class ThreadPoolExecutor(object):
             not been executed.
         """
         fn = FunctionContainer(fn, *args, **kwargs)
-        future = futures.Future()
+        future = ExecutorFuture()
         task = ExecutorWorkerTask(future, fn)
         logger.debug('Submitting executor task: %s', task)
         self._queue.put(task)
@@ -526,7 +525,7 @@ class BoundedExecutor(object):
         release_callback = FunctionContainer(
             semaphore.release, task.transfer_id, acquire_token)
         # Submit the task to the underlying executor.
-        future = ExecutorFuture(self._executor.submit(task))
+        future = self._executor.submit(task)
         # Add the Semaphore.release() callback to the future such that
         # it is invoked once the future completes.
         future.add_done_callback(release_callback)
@@ -537,38 +536,91 @@ class BoundedExecutor(object):
 
 
 class ExecutorFuture(object):
-    def __init__(self, future):
-        """A future returned from the executor
+    def __init__(self):
+        """A future returned from the executor.
 
-        Currently, it is just a wrapper around a concurrent.futures.Future.
-        However, this can eventually grow to implement the needed functionality
-        of concurrent.futures.Future if we move off of the library and not
-        affect the rest of the codebase.
-
-        :type future: concurrent.futures.Future
-        :param future: The underlying future
+        This is a pared down version of concurrent.futures.Future, stripping
+        away all the features that we don't use and modifying the interface
+        somewhat (namely removing the argument from callbacks).
         """
-        self._future = future
+        self._condition = threading.Condition()
+        self._done = False
+        self._result = None
+        self._exception = None
+        self._traceback = None
+        self._done_callbacks = []
 
-    def result(self):
-        return self._future.result()
+    def _invoke_callbacks(self):
+        """Invokes all the queued done callbacks."""
+        for callback in self._done_callbacks:
+            try:
+                callback()
+            except Exception:
+                logger.debug('exception calling callback for %r', self)
+
+    def done(self):
+        """Return True if the future has finished."""
+        with self._condition:
+            return self._done
+
+    def _get_result(self):
+        """Returns the future's result or reraises the thrown exception."""
+        if self._exception:
+            six.reraise(
+                type(self._exception), self._exception, self._traceback)
+        else:
+            return self._result
 
     def add_done_callback(self, fn):
-        """Adds a callback to be completed once future is done
+        """Add a callback to be called when the future is done.
 
-        :parm fn: A callable that takes no arguments. Note that is different
+        :type fn: function
+        :param fn: A callable that takes no arguments. Note that is different
             than concurrent.futures.Future.add_done_callback that requires
             a single argument for the future.
         """
-        # The done callback for concurrent.futures.Future will always pass a
-        # the future in as the only argument. So we need to create the
-        # proper signature wrapper that will invoke the callback provided.
-        def done_callback(future_passed_to_callback):
-            return fn()
-        self._future.add_done_callback(done_callback)
+        with self._condition:
+            if not self._done:
+                self._done_callbacks.append(fn)
+                return
+        # Call the callback now if the future is already done.
+        fn()
 
-    def done(self):
-        return self._future.done()
+    def result(self, timeout=None):
+        """Return the result of the future.
+
+        :type timeout: int
+        :param timeout: A number of seconds to wait for the result. A
+            TimeoutError will be raised if the future is not done in time.
+        """
+        with self._condition:
+            if self._done:
+                return self._get_result()
+
+            # Wait until notify/notify_all is called or timeout seconds passes
+            self._condition.wait(timeout)
+
+            if self._done:
+                return self._get_result()
+            else:
+                raise TimeoutError()
+
+    def set_result(self, result):
+        """Sets the return value of the future."""
+        with self._condition:
+            self._result = result
+            self._done = True
+            self._condition.notify_all()
+        self._invoke_callbacks()
+
+    def set_exception_info(self, exception, traceback):
+        """Sets the result of the future as an exception."""
+        with self._condition:
+            self._exception = exception
+            self._traceback = traceback
+            self._done = True
+            self._condition.notify_all()
+        self._invoke_callbacks()
 
 
 TaskTag = namedtuple('TaskTag', ['name'])

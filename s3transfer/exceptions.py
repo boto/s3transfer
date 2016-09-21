@@ -12,6 +12,8 @@
 # language governing permissions and limitations under the License.
 from concurrent.futures import CancelledError
 
+from s3transfer.compat import TimeoutError
+
 
 class RetriesExceededError(Exception):
     def __init__(self, last_exception, msg='Max Retries Exceeded'):

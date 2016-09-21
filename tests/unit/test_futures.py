@@ -11,7 +11,8 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-from concurrent.futures import Future
+import sys
+import traceback
 
 from tests import unittest
 from tests import RecordingExecutor
@@ -518,7 +519,7 @@ class TestThreadPoolExecutor(unittest.TestCase):
         with ThreadPoolExecutor(1) as e:
             future = e.submit(return_foo)
 
-        self.assertIsInstance(future, Future)
+        self.assertIsInstance(future, ExecutorFuture)
         self.assertEqual(future.result(), 'foo')
 
     def test_submit_with_positional_args(self):
@@ -562,7 +563,7 @@ class TestExecutorWorker(unittest.TestCase):
 
         worker = ExecutorWorker(self.task_queue)
         worker.start()
-        future = Future()
+        future = ExecutorFuture()
         self.task_queue.put(ExecutorWorkerTask(future, return_foo))
         self.task_queue.put(ExecutorWorkerShutdownTask())
         worker.join()
@@ -574,7 +575,7 @@ class TestExecutorWorker(unittest.TestCase):
 
         worker = ExecutorWorker(self.task_queue)
         worker.start()
-        future = Future()
+        future = ExecutorFuture()
         self.task_queue.put(ExecutorWorkerTask(future, raise_runtime_error))
         self.task_queue.put(ExecutorWorkerShutdownTask())
         worker.join()
@@ -583,23 +584,61 @@ class TestExecutorWorker(unittest.TestCase):
 
 
 class TestExecutorFuture(unittest.TestCase):
+    def setUp(self):
+        self.future = ExecutorFuture()
+
+    def _get_exc_info(self, exception):
+        try:
+            raise exception
+        except type(exception):
+            return sys.exc_info()
+
+    def test_done_starts_false(self):
+        self.assertFalse(self.future.done())
+
+    def test_done_after_setting_result(self):
+        self.future.set_result('result')
+        self.assertTrue(self.future.done())
+
+    def test_done_after_setting_exception(self):
+        self.future.set_exception_info(Exception(), None)
+        self.assertTrue(self.future.done())
+
     def test_result(self):
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-        self.assertEqual(wrapped_future.result(), (('foo',), {'biz': 'baz'}))
+        self.future.set_result('result')
+        self.assertEqual(self.future.result(), 'result')
 
-    def test_done(self):
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-        self.assertTrue(wrapped_future.done())
+    def test_exception_result(self):
+        exception = ValueError('message')
+        self.future.set_exception_info(exception, None)
+        with self.assertRaisesRegexp(ValueError, 'message'):
+            self.future.result()
 
-    def test_add_done_callback(self):
+    def test_exception_result_doesnt_modify_last_frame(self):
+        exception = ValueError('message')
+        tb = self._get_exc_info(exception)[2]
+        self.future.set_exception_info(exception, tb)
+        try:
+            self.future.result()
+            # An exception should have been raised
+            self.fail()
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
+    def test_done_callback(self):
         done_callbacks = []
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-            wrapped_future.add_done_callback(
-                FunctionContainer(done_callbacks.append, 'called'))
+        self.future.add_done_callback(
+            FunctionContainer(done_callbacks.append, 'called'))
+        self.assertEqual(done_callbacks, [])
+        self.future.set_result('result')
+        self.assertEqual(done_callbacks, ['called'])
+
+    def test_done_callback_after_done(self):
+        self.future.set_result('result')
+        done_callbacks = []
+        self.future.add_done_callback(
+            FunctionContainer(done_callbacks.append, 'called'))
         self.assertEqual(done_callbacks, ['called'])

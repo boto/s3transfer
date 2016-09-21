@@ -85,7 +85,7 @@ class TestUpload(BaseTransferManagerIntegTest):
                 'Upload completed before interrupted and therefore '
                 'could not cancel the upload')
         except CancelledError as e:
-            self.assertEqual(str(e), 'keyboard interrupt')
+            self.assertEqual(str(e), 'KeyboardInterrupt()')
             # If the transfer did get cancelled,
             # make sure the object does not exist.
             self.assertFalse(self.object_exists('20mb.txt'))
@@ -129,7 +129,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         )
 
         # Make sure at least one of the futures got cancelled
-        with self.assertRaisesRegexp(CancelledError, 'keyboard interrupt'):
+        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
             for future in futures:
                 future.result()
         # For the transfer that did get cancelled, make sure the object

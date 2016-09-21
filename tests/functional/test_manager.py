@@ -80,6 +80,7 @@ class TestTransferManager(StubbedClientTest):
         except KeyboardInterrupt:
             # At least one of the submitted futures should have been
             # cancelled.
-            with self.assertRaisesRegexp(CancelledError, 'keyboard interrupt'):
+            with self.assertRaisesRegexp(
+                    CancelledError, 'KeyboardInterrupt()'):
                 for future in futures:
                     future.result()

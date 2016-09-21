@@ -486,9 +486,9 @@ class TransferManager(object):
         # all of the inprogress futures in the shutdown.
         if exc_type:
             cancel = True
-            cancel_msg = exc_value
-            if exc_type == KeyboardInterrupt:
-                cancel_msg = 'keyboard interrupt'
+            cancel_msg = str(exc_value)
+            if not cancel_msg:
+                cancel_msg = repr(exc_value)
         self.shutdown(cancel, cancel_msg)
 
     def shutdown(self, cancel=False, cancel_msg=''):
@@ -515,14 +515,14 @@ class TransferManager(object):
             # wrapped in a try statement because this can be interrupted
             # with a KeyboardInterrupt that needs to be caught.
             self._coordinator_controller.wait()
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             # If not errors were raised in the try block, the cancel should
             # have no coordinators it needs to run cancel on. If there was
             # an error raised in the try statement we want to cancel all of
             # the inflight transfers before shutting down to speed that
             # process up.
-            self._coordinator_controller.cancel('keyboard interrupt')
-            raise e
+            self._coordinator_controller.cancel('KeyboardInterrupt()')
+            raise
         finally:
             # Shutdown all of the executors.
             self._submission_executor.shutdown()

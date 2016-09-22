@@ -25,3 +25,8 @@ class S3UploadFailedError(Exception):
 
 class InvalidSubscriberMethodError(Exception):
     pass
+
+
+class UnexpectedCancelledError(CancelledError):
+    """A CancelledError that the user did not explicitly set"""
+    pass

@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tests import unittest
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.futures import TransferCoordinator
 from s3transfer.manager import TransferConfig
 from s3transfer.manager import TransferCoordinatorController
@@ -84,6 +85,16 @@ class TestTransferCoordinatorController(unittest.TestCase):
         self.coordinator_controller.cancel(message)
         transfer_coordinator.announce_done()
         with self.assertRaisesRegexp(CancelledError, message):
+            transfer_coordinator.result()
+
+    def test_cancel_with_provided_exception(self):
+        message = 'my cancel message'
+        transfer_coordinator = TransferCoordinator()
+        self.coordinator_controller.add_transfer_coordinator(
+            transfer_coordinator)
+        self.coordinator_controller.cancel(message, exc_type=FatalError)
+        transfer_coordinator.announce_done()
+        with self.assertRaisesRegexp(FatalError, message):
             transfer_coordinator.result()
 
     def test_wait_for_done_transfer_coordinators(self):

@@ -17,6 +17,7 @@ from tests import unittest
 from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -199,6 +200,13 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.cancel(message)
         self.transfer_coordinator.announce_done()
         with self.assertRaisesRegexp(CancelledError, message):
+            self.transfer_coordinator.result()
+
+    def test_cancel_with_provided_exception(self):
+        message = 'my message'
+        self.transfer_coordinator.cancel(message, exc_type=FatalError)
+        self.transfer_coordinator.announce_done()
+        with self.assertRaisesRegexp(FatalError, message):
             self.transfer_coordinator.result()
 
     def test_cancel_cannot_override_done_state(self):

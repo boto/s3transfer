@@ -25,3 +25,8 @@ class S3UploadFailedError(Exception):
 
 class InvalidSubscriberMethodError(Exception):
     pass
+
+
+class FatalError(CancelledError):
+    """A CancelledError raised from an error in the TransferManager"""
+    pass

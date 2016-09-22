@@ -221,16 +221,17 @@ class TransferCoordinator(object):
                 raise self._exception
             return self._result
 
-    def cancel(self, msg=''):
+    def cancel(self, msg='', exc_type=CancelledError):
         """Cancels the TransferFuture
 
         :param msg: The message to attach to the cancellation
+        :param exc_type: The type of exception to set for the cancellation
         """
         with self._lock:
             if not self.done():
                 should_announce_done = False
                 logger.debug('%s cancel(%s) called', self, msg)
-                self._exception = CancelledError(msg)
+                self._exception = exc_type(msg)
                 if self._status == 'not-started':
                     should_announce_done = True
                 self._status = 'cancelled'

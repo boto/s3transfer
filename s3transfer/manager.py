@@ -22,6 +22,8 @@ from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
+from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
@@ -482,7 +484,7 @@ class TransferManager(object):
     def __exit__(self, exc_type, exc_value, *args):
         cancel = False
         cancel_msg = ''
-        by_user = False
+        cancel_exc_type = FatalError
         # If a exception was raised in the context handler, signal to cancel
         # all of the inprogress futures in the shutdown.
         if exc_type:
@@ -492,9 +494,9 @@ class TransferManager(object):
                 cancel_msg = repr(exc_value)
             # If it was a KeyboardInterrupt, the cancellation was initiated
             # by the user.
-            if exc_type == KeyboardInterrupt:
-                by_user = True
-        self._shutdown(cancel, cancel_msg, by_user)
+            if isinstance(exc_value, KeyboardInterrupt):
+                cancel_exc_type = CancelledError
+        self._shutdown(cancel, cancel_msg, cancel_exc_type)
 
     def shutdown(self, cancel=False, cancel_msg=''):
         """Shutdown the TransferManager
@@ -513,11 +515,11 @@ class TransferManager(object):
         """
         self._shutdown(cancel, cancel, cancel_msg)
 
-    def _shutdown(self, cancel, cancel_msg, by_user=True):
+    def _shutdown(self, cancel, cancel_msg, exc_type=CancelledError):
         if cancel:
             # Cancel all in-flight transfers if requested, before waiting
             # for them to complete.
-            self._coordinator_controller.cancel(cancel_msg, by_user)
+            self._coordinator_controller.cancel(cancel_msg, exc_type)
         try:
             # Wait until there are no more in-progress transfers. This is
             # wrapped in a try statement because this can be interrupted
@@ -580,7 +582,7 @@ class TransferCoordinatorController(object):
         with self._lock:
             self._tracked_transfer_coordinators.remove(transfer_coordinator)
 
-    def cancel(self, msg='', by_user=True):
+    def cancel(self, msg='', exc_type=CancelledError):
         """Cancels all inprogress transfers
 
         This cancels the inprogress transfers by calling cancel() on all
@@ -589,12 +591,10 @@ class TransferCoordinatorController(object):
         :param msg: The message to pass on to each transfer coordinator that
             gets cancelled.
 
-        :param by_user: True if the user explictly called cancel. Otherwise,
-            False for the case if an non-KeyboardInterrupt was encountered
-            in the context manager of the TransferManager.
+        :param exc_type: The type of exception to set for the cancellation
         """
         for transfer_coordinator in self.tracked_transfer_coordinators:
-            transfer_coordinator.cancel(msg, by_user)
+            transfer_coordinator.cancel(msg, exc_type)
 
     def wait(self):
         """Wait until there are no more inprogress transfers

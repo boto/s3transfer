@@ -12,7 +12,7 @@
 # language governing permissions and limitations under the License.
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError
-from s3transfer.exceptions import UnexpectedCancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
 
@@ -50,8 +50,7 @@ class TestTransferManager(StubbedClientTest):
         except ArbitraryException:
             # At least one of the submitted futures should have been
             # cancelled.
-            with self.assertRaisesRegexp(
-                    UnexpectedCancelledError, ref_exception_msg):
+            with self.assertRaisesRegexp(FatalError, ref_exception_msg):
                 for future in futures:
                     future.result()
 

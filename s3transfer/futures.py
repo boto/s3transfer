@@ -18,7 +18,6 @@ import threading
 
 from s3transfer.compat import MAXINT
 from s3transfer.exceptions import CancelledError
-from s3transfer.exceptions import UnexpectedCancelledError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
@@ -222,23 +221,17 @@ class TransferCoordinator(object):
                 raise self._exception
             return self._result
 
-    def cancel(self, msg='', by_user=True):
+    def cancel(self, msg='', exc_type=CancelledError):
         """Cancels the TransferFuture
 
         :param msg: The message to attach to the cancellation
-        :param by_user: Whether or not if the cancel() was called by the user.
-            Cancel can be called by the context manager of the TransferManager
-            if it encounters an error inside. If True a CancelledError will be
-            used. Otherwise, an UnexpectedCancelledError is used.
+        :param exc_type: The type of exception to set for the cancellation
         """
         with self._lock:
             if not self.done():
                 should_announce_done = False
                 logger.debug('%s cancel(%s) called', self, msg)
-                exception_cls = CancelledError
-                if not by_user:
-                    exception_cls = UnexpectedCancelledError
-                self._exception = exception_cls(msg)
+                self._exception = exc_type(msg)
                 if self._status == 'not-started':
                     should_announce_done = True
                 self._status = 'cancelled'

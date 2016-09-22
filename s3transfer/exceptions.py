@@ -27,6 +27,6 @@ class InvalidSubscriberMethodError(Exception):
     pass
 
 
-class UnexpectedCancelledError(CancelledError):
-    """A CancelledError that the user did not explicitly set"""
+class FatalError(CancelledError):
+    """A CancelledError raised from an error in the TransferManager"""
     pass

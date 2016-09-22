@@ -572,17 +572,21 @@ class TransferCoordinatorController(object):
         with self._lock:
             self._tracked_transfer_coordinators.remove(transfer_coordinator)
 
-    def cancel(self, msg=''):
+    def cancel(self, msg='', by_user=True):
         """Cancels all inprogress transfers
 
         This cancels the inprogress transfers by calling cancel() on all
         tracked transfer coordinators.
 
-        :params msg: The message to pass on to each transfer coordinator that
+        :param msg: The message to pass on to each transfer coordinator that
             gets cancelled.
+
+        :param by_user: True if the user explictly called cancel. Otherwise,
+            False for the case if an non-KeyboardInterrupt was encountered
+            in the context manager of the TransferManager.
         """
         for transfer_coordinator in self.tracked_transfer_coordinators:
-            transfer_coordinator.cancel(msg)
+            transfer_coordinator.cancel(msg, by_user)
 
     def wait(self):
         """Wait until there are no more inprogress transfers

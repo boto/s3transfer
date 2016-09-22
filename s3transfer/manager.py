@@ -482,6 +482,7 @@ class TransferManager(object):
     def __exit__(self, exc_type, exc_value, *args):
         cancel = False
         cancel_msg = ''
+        by_user = False
         # If a exception was raised in the context handler, signal to cancel
         # all of the inprogress futures in the shutdown.
         if exc_type:
@@ -489,7 +490,11 @@ class TransferManager(object):
             cancel_msg = str(exc_value)
             if not cancel_msg:
                 cancel_msg = repr(exc_value)
-        self.shutdown(cancel, cancel_msg)
+            # If it was a KeyboardInterrupt, the cancellation was initiated
+            # by the user.
+            if exc_type == KeyboardInterrupt:
+                by_user = True
+        self._shutdown(cancel, cancel_msg, by_user)
 
     def shutdown(self, cancel=False, cancel_msg=''):
         """Shutdown the TransferManager
@@ -506,10 +511,13 @@ class TransferManager(object):
         :param cancel_msg: The message to specify if canceling all in-progress
             transfers.
         """
+        self._shutdown(cancel, cancel, cancel_msg)
+
+    def _shutdown(self, cancel, cancel_msg, by_user=True):
         if cancel:
             # Cancel all in-flight transfers if requested, before waiting
             # for them to complete.
-            self._coordinator_controller.cancel(cancel_msg)
+            self._coordinator_controller.cancel(cancel_msg, by_user)
         try:
             # Wait until there are no more in-progress transfers. This is
             # wrapped in a try statement because this can be interrupted

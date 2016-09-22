@@ -35,8 +35,23 @@ from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import NoResourcesAvailable
 
 
+def return_foo():
+    return 'foo'
+
+
 def return_call_args(*args, **kwargs):
     return args, kwargs
+
+
+def raise_exception(exception):
+    raise exception
+
+
+def get_exc_info(exception, ):
+    try:
+        raise_exception(exception)
+    except type(exception):
+        return sys.exc_info()
 
 
 class RecordingTransferCoordinator(TransferCoordinator):
@@ -513,9 +528,6 @@ class TestBoundedExecutor(unittest.TestCase):
 
 class TestThreadPoolExecutor(unittest.TestCase):
     def test_submit(self):
-        def return_foo():
-            return 'foo'
-
         with ThreadPoolExecutor(1) as e:
             future = e.submit(return_foo)
 
@@ -558,9 +570,6 @@ class TestExecutorWorker(unittest.TestCase):
         self.task_queue = queue.Queue()
 
     def test_sets_result(self):
-        def return_foo():
-            return 'foo'
-
         worker = ExecutorWorker(self.task_queue)
         worker.start()
         future = ExecutorFuture()
@@ -570,28 +579,42 @@ class TestExecutorWorker(unittest.TestCase):
         self.assertEqual(future.result(), 'foo')
 
     def test_sets_exception(self):
-        def raise_runtime_error():
-            raise RuntimeError()
-
         worker = ExecutorWorker(self.task_queue)
         worker.start()
         future = ExecutorFuture()
-        self.task_queue.put(ExecutorWorkerTask(future, raise_runtime_error))
+        exception_task = FunctionContainer(raise_exception, RuntimeError())
+        self.task_queue.put(ExecutorWorkerTask(future, exception_task))
         self.task_queue.put(ExecutorWorkerShutdownTask())
         worker.join()
         with self.assertRaises(RuntimeError):
             future.result()
 
+    def test_sets_exception_and_captures_info(self):
+        exception = ValueError('message')
+        tb = get_exc_info(exception)[2]
+        exception_task = FunctionContainer(raise_exception, exception)
+
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = ExecutorFuture()
+        self.task_queue.put(ExecutorWorkerTask(future, exception_task))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+
+        try:
+            future.result()
+            # An exception should have been raised
+            self.fail('Future should have raised a ValueError')
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
 
 class TestExecutorFuture(unittest.TestCase):
     def setUp(self):
         self.future = ExecutorFuture()
-
-    def _get_exc_info(self, exception):
-        try:
-            raise exception
-        except type(exception):
-            return sys.exc_info()
 
     def test_done_starts_false(self):
         self.assertFalse(self.future.done())
@@ -616,7 +639,7 @@ class TestExecutorFuture(unittest.TestCase):
 
     def test_exception_result_doesnt_modify_last_frame(self):
         exception = ValueError('message')
-        tb = self._get_exc_info(exception)[2]
+        tb = get_exc_info(exception)[2]
         self.future.set_exception_info(exception, tb)
         try:
             self.future.result()

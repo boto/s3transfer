@@ -195,6 +195,23 @@ class TestTransferCoordinator(unittest.TestCase):
         with self.assertRaises(CancelledError):
             self.transfer_coordinator.result()
 
+    def test_cancel_can_run_done_callbacks_that_uses_result(self):
+        exceptions = []
+
+        def capture_exception(transfer_coordinator, captured_exceptions):
+            try:
+                transfer_coordinator.result()
+            except Exception as e:
+                captured_exceptions.append(e)
+
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
+        self.transfer_coordinator.add_done_callback(
+            capture_exception, self.transfer_coordinator, exceptions)
+        self.transfer_coordinator.cancel()
+
+        self.assertEqual(len(exceptions), 1)
+        self.assertIsInstance(exceptions[0], CancelledError)
+
     def test_cancel_with_message(self):
         message = 'my message'
         self.transfer_coordinator.cancel(message)

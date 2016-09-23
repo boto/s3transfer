@@ -216,10 +216,9 @@ class TransferCoordinator(object):
 
         # Once done waiting, raise an exception if present or return the
         # final result.
-        with self._lock:
-            if self._exception:
-                raise self._exception
-            return self._result
+        if self._exception:
+            raise self._exception
+        return self._result
 
     def cancel(self, msg='', exc_type=CancelledError):
         """Cancels the TransferFuture

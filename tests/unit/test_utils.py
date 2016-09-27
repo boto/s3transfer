@@ -294,11 +294,28 @@ class TestDefferedOpenFile(BaseUtilsTest):
         deferred_open_file.OPEN_METHOD = self.counting_open_method
         self.assertEqual(self.open_called_count, 0)
 
+    def test_name(self):
+        self.assertEqual(self.deferred_open_file.name, self.filename)
+
     def test_read(self):
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[0:2])
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[2:4])
+        self.assertEqual(self.open_called_count, 1)
+
+    def test_write(self):
+        self.deferred_open_file = DeferredOpenFile(self.filename, mode='wb')
+        self.deferred_open_file.OPEN_METHOD = self.counting_open_method
+
+        write_content = b'foo'
+        self.deferred_open_file.write(write_content)
+        self.deferred_open_file.write(write_content)
+        self.deferred_open_file.close()
+        # Both of the writes should now be in the file.
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(f.read(), write_content*2)
+        # Open should have only been called once.
         self.assertEqual(self.open_called_count, 1)
 
     def test_seek(self):

@@ -34,6 +34,7 @@ from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import CountCallbackInvoker
 from s3transfer.utils import StreamReaderProgress
+from s3transfer.utils import DeferredOpenFile
 from s3transfer.tasks import Task
 from s3transfer.tasks import SubmissionTask
 
@@ -190,7 +191,8 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
         return f
 
     def _get_fileobj(self, filename):
-        f = self._osutil.open(filename, 'wb')
+        f = DeferredOpenFile(filename, mode='wb')
+        f.OPEN_METHOD = self._osutil.open
         # Make sure the file gets closed and we remove the temporary file
         # if anything goes wrong during the process.
         self._transfer_coordinator.add_failure_cleanup(f.close)

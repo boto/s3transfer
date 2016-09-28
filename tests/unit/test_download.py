@@ -31,6 +31,7 @@ from s3transfer.download import DownloadSeekableOutputManager
 from s3transfer.download import DownloadNonSeekableOutputManager
 from s3transfer.download import DownloadSubmissionTask
 from s3transfer.download import GetObjectTask
+from s3transfer.download import ImmediatelyWriteIOGetObjectTask
 from s3transfer.download import IOWriteTask
 from s3transfer.download import IOStreamingWriteTask
 from s3transfer.download import IORenameFileTask
@@ -160,6 +161,15 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
         self.io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
+    def test_get_file_io_write_task(self):
+        fileobj = WriteCollector()
+        io_write_task = self.download_output_manager.get_io_write_task(
+            fileobj=fileobj, data='foo', offset=3)
+        self.assertIsInstance(io_write_task, IOWriteTask)
+
+        io_write_task()
+        self.assertEqual(fileobj.writes, [(3, 'foo')])
+
 
 class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
@@ -257,6 +267,15 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
         self.io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
+    def test_get_file_io_write_task(self):
+        fileobj = WriteCollector()
+        io_write_task = self.download_output_manager.get_io_write_task(
+            fileobj=fileobj, data='foo', offset=3)
+        self.assertIsInstance(io_write_task, IOWriteTask)
+
+        io_write_task()
+        self.assertEqual(fileobj.writes, [(3, 'foo')])
+
 
 class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
@@ -313,6 +332,15 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
             fileobj=fileobj, data='foo', offset=1)
         io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
+
+    def test_get_file_io_write_task(self):
+        fileobj = WriteCollector()
+        io_write_task = self.download_output_manager.get_io_write_task(
+            fileobj=fileobj, data='foo', offset=1)
+        self.assertIsInstance(io_write_task, IOStreamingWriteTask)
+
+        io_write_task()
+        self.assertEqual(fileobj.writes, [(0, 'foo')])
 
 
 class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
@@ -502,6 +530,7 @@ class TestGetObjectTask(BaseTaskTest):
         self.fileobj = WriteCollector()
         self.osutil = OSUtils()
         self.io_chunksize = 64 * (1024 ** 2)
+        self.task_cls = GetObjectTask
         self.download_output_manager = DownloadSeekableOutputManager(
             self.osutil, self.transfer_coordinator, self.io_executor)
 
@@ -516,7 +545,7 @@ class TestGetObjectTask(BaseTaskTest):
         }
         default_kwargs.update(kwargs)
         self.transfer_coordinator.set_status_to_queued()
-        return self.get_task(GetObjectTask, main_kwargs=default_kwargs)
+        return self.get_task(self.task_cls, main_kwargs=default_kwargs)
 
     def assert_io_writes(self, expected_writes):
         # Let the io executor process all of the writes before checking
@@ -659,6 +688,22 @@ class TestGetObjectTask(BaseTaskTest):
         # should have been canceled before trying to add the contents to the
         # io queue.
         self.assert_io_writes([])
+
+
+class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):
+    def setUp(self):
+        super(TestImmediatelyWriteIOGetObjectTask, self).setUp()
+        self.task_cls = ImmediatelyWriteIOGetObjectTask
+        # When data is written out, it should not use the io executor at all
+        # if it does use the io executor that is a deviation from expected
+        # behavior as the data should be written immediately to the file
+        # object once downloaded.
+        self.io_executor = None
+        self.download_output_manager = DownloadSeekableOutputManager(
+            self.osutil, self.transfer_coordinator, self.io_executor)
+
+    def assert_io_writes(self, expected_writes):
+        self.assertEqual(self.fileobj.writes, expected_writes)
 
 
 class BaseIOTaskTest(BaseTaskTest):

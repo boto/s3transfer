@@ -106,14 +106,33 @@ class DownloadOutputManager(object):
         """
         self._transfer_coordinator.submit(
             self._io_executor,
-            IOWriteTask(
-                self._transfer_coordinator,
-                main_kwargs={
-                    'fileobj': fileobj,
-                    'data': data,
-                    'offset': offset,
-                }
-            )
+            self.get_io_write_task(fileobj, data, offset)
+         )
+
+    def get_io_write_task(self, fileobj, data, offset):
+        """Get an IO write task for the requested set of data
+
+        This task can be ran immediately or be submitted to the IO executor
+        for it to run.
+
+        :type fileobj: file-like object
+        :param fileobj: The file-like object to write to
+
+        :type data: bytes
+        :param data: The data to write out
+
+        :type offset: integer
+        :param offset: The offset to write the data to in the file-like object
+
+        :returns: An IO task to be used to write data to a file-like object
+        """
+        return IOWriteTask(
+            self._transfer_coordinator,
+            main_kwargs={
+                'fileobj': fileobj,
+                'data': data,
+                'offset': offset,
+            }
         )
 
     def get_final_io_task(self):
@@ -244,16 +263,18 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
                 data = write['data']
                 logger.debug("Queueing IO offset %s for fileobj: %s",
                              write['offset'], fileobj)
-                self._transfer_coordinator.submit(
-                    self._io_executor,
-                    IOStreamingWriteTask(
-                        self._transfer_coordinator,
-                        main_kwargs={
-                            'fileobj': fileobj,
-                            'data': data,
-                        }
-                    )
-                )
+                super(
+                    DownloadNonSeekableOutputManager, self).queue_file_io_task(
+                        fileobj, data, offset)
+
+    def get_io_write_task(self, fileobj, data, offset):
+        return IOStreamingWriteTask(
+            self._transfer_coordinator,
+            main_kwargs={
+                'fileobj': fileobj,
+                'data': data,
+            }
+        )
 
 
 class DownloadSubmissionTask(SubmissionTask):
@@ -353,18 +374,13 @@ class DownloadSubmissionTask(SubmissionTask):
         # Get any associated tags for the get object task.
         get_object_tag = download_output_manager.get_download_task_tag()
 
-        # Callback invoker to submit the final io task once the download
-        # is complete.
-        finalize_download_invoker = CountCallbackInvoker(
-            self._get_final_io_task_submission_callback(
-                download_output_manager, io_executor
-            )
-        )
-        finalize_download_invoker.increment()
+        # Get the final io task to run once the download is complete.
+        final_task = download_output_manager.get_final_io_task()
+
         # Submit the task to download the object.
         self._transfer_coordinator.submit(
             request_executor,
-            GetObjectTask(
+            ImmediatelyWriteIOGetObjectTask(
                 transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
                     'client': client,
@@ -377,12 +393,10 @@ class DownloadSubmissionTask(SubmissionTask):
                     'download_output_manager': download_output_manager,
                     'io_chunksize': config.io_chunksize,
                 },
-                done_callbacks=[finalize_download_invoker.decrement]
+                done_callbacks=[final_task]
             ),
             tag=get_object_tag
         )
-
-        finalize_download_invoker.finalize()
 
     def _submit_ranged_download_request(self, client, config, osutil,
                                         request_executor, io_executor,
@@ -499,8 +513,10 @@ class GetObjectTask(Task):
                     # or error somewhere else, stop trying to submit more
                     # data to be written and break out of the download.
                     if not self._transfer_coordinator.done():
-                        download_output_manager.queue_file_io_task(
-                            fileobj, chunk, current_index)
+                        self._handle_io(
+                            download_output_manager, fileobj, chunk,
+                            current_index
+                        )
                         current_index += len(chunk)
                     else:
                         return
@@ -517,6 +533,21 @@ class GetObjectTask(Task):
                     callbacks, start_index - current_index)
                 continue
         raise RetriesExceededError(last_exception)
+
+    def _handle_io(self, download_output_manager, fileobj, chunk, index):
+        download_output_manager.queue_file_io_task(fileobj, chunk, index)
+
+
+class ImmediatelyWriteIOGetObjectTask(GetObjectTask):
+    """GetObjectTask that immediately writes to the provided file object
+
+    This is useful for downloads where it is known only one thread is
+    downloading the object so there is no reason to go through the
+    overhead of using an IO queue and executor.
+    """
+    def _handle_io(self, download_output_manager, fileobj, chunk, index):
+        task = download_output_manager.get_io_write_task(fileobj, chunk, index)
+        task()
 
 
 class IOWriteTask(Task):

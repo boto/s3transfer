@@ -77,6 +77,9 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         }
 
     def create_stubbed_responses(self):
+        # We want to make sure the beginning of the stream is always used
+        # incase this gets called twice.
+        self.stream.seek(0)
         return [
             {
                 'method': 'head_object',

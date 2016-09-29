@@ -278,8 +278,8 @@ class UploadFilenameInputManager(UploadInputManager):
             yield part_number, read_file_chunk
 
     def _get_deferred_open_file(self, fileobj, start_byte):
-        fileobj = DeferredOpenFile(fileobj, start_byte)
-        fileobj.OPEN_METHOD = self._osutil.open
+        fileobj = DeferredOpenFile(
+            fileobj, start_byte, open_method=self._osutil.open)
         return fileobj
 
     def _get_put_object_fileobj_with_full_size(self, transfer_future):

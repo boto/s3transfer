@@ -276,9 +276,9 @@ class TestDefferedOpenFile(BaseUtilsTest):
         self.contents = b'my contents'
         with open(self.filename, 'wb') as f:
             f.write(self.contents)
-        self.deferred_open_file = DeferredOpenFile(self.filename)
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, open_method=self.counting_open_method)
         self.open_called_count = 0
-        self.deferred_open_file.OPEN_METHOD = self.counting_open_method
 
     def tearDown(self):
         self.deferred_open_file.close()
@@ -289,9 +289,9 @@ class TestDefferedOpenFile(BaseUtilsTest):
         return open(filename, mode)
 
     def test_instantiation_does_not_open_file(self):
-        deferred_open_file = DeferredOpenFile(self.filename)
+        DeferredOpenFile(
+            self.filename, open_method=self.counting_open_method)
         self.open_called_count = 0
-        deferred_open_file.OPEN_METHOD = self.counting_open_method
         self.assertEqual(self.open_called_count, 0)
 
     def test_name(self):
@@ -305,8 +305,8 @@ class TestDefferedOpenFile(BaseUtilsTest):
         self.assertEqual(self.open_called_count, 1)
 
     def test_write(self):
-        self.deferred_open_file = DeferredOpenFile(self.filename, mode='wb')
-        self.deferred_open_file.OPEN_METHOD = self.counting_open_method
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, mode='wb', open_method=self.counting_open_method)
 
         write_content = b'foo'
         self.deferred_open_file.write(write_content)

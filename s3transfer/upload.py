@@ -279,7 +279,7 @@ class UploadFilenameInputManager(UploadInputManager):
 
     def _get_deferred_open_file(self, fileobj, start_byte):
         fileobj = DeferredOpenFile(
-            fileobj, start_byte, open_method=self._osutil.open)
+            fileobj, start_byte, open_function=self._osutil.open)
         return fileobj
 
     def _get_put_object_fileobj_with_full_size(self, transfer_future):

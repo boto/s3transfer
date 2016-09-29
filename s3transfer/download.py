@@ -192,7 +192,7 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
 
     def _get_fileobj(self, filename):
         f = DeferredOpenFile(
-            filename, mode='wb', open_method=self._osutil.open)
+            filename, mode='wb', open_function=self._osutil.open)
         # Make sure the file gets closed and we remove the temporary file
         # if anything goes wrong during the process.
         self._transfer_coordinator.add_failure_cleanup(f.close)

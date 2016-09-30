@@ -2,6 +2,13 @@
 CHANGELOG
 =========
 
+0.1.5
+=====
+
+* bugfix:Cntrl-C: Fix issue of hangs when Cntrl-C happens for many queued transfers
+* feature:cancel: Expose messages for cancels
+
+
 0.1.4
 =====
 

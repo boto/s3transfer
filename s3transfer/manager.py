@@ -22,6 +22,8 @@ from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
+from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.futures import BoundedExecutor
@@ -479,15 +481,24 @@ class TransferManager(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, *args):
+    def __exit__(self, exc_type, exc_value, *args):
         cancel = False
+        cancel_msg = ''
+        cancel_exc_type = FatalError
         # If a exception was raised in the context handler, signal to cancel
         # all of the inprogress futures in the shutdown.
         if exc_type:
             cancel = True
-        self.shutdown(cancel)
+            cancel_msg = str(exc_value)
+            if not cancel_msg:
+                cancel_msg = repr(exc_value)
+            # If it was a KeyboardInterrupt, the cancellation was initiated
+            # by the user.
+            if isinstance(exc_value, KeyboardInterrupt):
+                cancel_exc_type = CancelledError
+        self._shutdown(cancel, cancel_msg, cancel_exc_type)
 
-    def shutdown(self, cancel=False):
+    def shutdown(self, cancel=False, cancel_msg=''):
         """Shutdown the TransferManager
 
         It will wait till all transfers complete before it completely shuts
@@ -497,23 +508,32 @@ class TransferManager(object):
         :param cancel: If True, calls TransferFuture.cancel() for
             all in-progress in transfers. This is useful if you want the
             shutdown to happen quicker.
+
+        :type cancel_msg: str
+        :param cancel_msg: The message to specify if canceling all in-progress
+            transfers.
         """
+        self._shutdown(cancel, cancel, cancel_msg)
+
+    def _shutdown(self, cancel, cancel_msg, exc_type=CancelledError):
         if cancel:
             # Cancel all in-flight transfers if requested, before waiting
             # for them to complete.
-            self._coordinator_controller.cancel()
+            self._coordinator_controller.cancel(cancel_msg, exc_type)
         try:
             # Wait until there are no more in-progress transfers. This is
             # wrapped in a try statement because this can be interrupted
             # with a KeyboardInterrupt that needs to be caught.
             self._coordinator_controller.wait()
-        finally:
+        except KeyboardInterrupt:
             # If not errors were raised in the try block, the cancel should
             # have no coordinators it needs to run cancel on. If there was
             # an error raised in the try statement we want to cancel all of
             # the inflight transfers before shutting down to speed that
             # process up.
-            self._coordinator_controller.cancel()
+            self._coordinator_controller.cancel('KeyboardInterrupt()')
+            raise
+        finally:
             # Shutdown all of the executors.
             self._submission_executor.shutdown()
             self._request_executor.shutdown()
@@ -562,14 +582,19 @@ class TransferCoordinatorController(object):
         with self._lock:
             self._tracked_transfer_coordinators.remove(transfer_coordinator)
 
-    def cancel(self):
+    def cancel(self, msg='', exc_type=CancelledError):
         """Cancels all inprogress transfers
 
         This cancels the inprogress transfers by calling cancel() on all
         tracked transfer coordinators.
+
+        :param msg: The message to pass on to each transfer coordinator that
+            gets cancelled.
+
+        :param exc_type: The type of exception to set for the cancellation
         """
         for transfer_coordinator in self.tracked_transfer_coordinators:
-            transfer_coordinator.cancel()
+            transfer_coordinator.cancel(msg, exc_type)
 
     def wait(self):
         """Wait until there are no more inprogress transfers
@@ -579,6 +604,7 @@ class TransferCoordinatorController(object):
         a KeyboardInterrupt.
         """
         try:
+            transfer_coordinator = None
             for transfer_coordinator in self.tracked_transfer_coordinators:
                 transfer_coordinator.result()
         except KeyboardInterrupt:
@@ -586,6 +612,10 @@ class TransferCoordinatorController(object):
             # If Keyboard interrupt is raised while waiting for
             # the result, then exit out of the wait and raise the
             # exception
+            if transfer_coordinator:
+                logger.debug(
+                    'On KeyboardInterrupt was waiting for %s',
+                    transfer_coordinator)
             raise
         except Exception:
             # A general exception could have been thrown because

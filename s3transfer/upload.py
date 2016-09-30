@@ -25,34 +25,35 @@ from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
 
 
 class AggregatedProgressCallback(object):
-    def __init__(self, callback, threshold=1024 * 256):
-        """Aggregates progress updates into a single update
+    def __init__(self, callbacks, threshold=1024 * 256):
+        """Aggregates progress updates for every provided progress callback
 
-        :type callback: Function that accepts bytes_transferred as a single
-            argument
-        :param callback: The callback to invoke when threshold is reached
+        :type callbacks: A list of functions that accepts bytes_transferred
+            as a single argument
+        :param callbacks: The callbacks to invoke when threshold is reached
 
         :type threshold: int
         :param threshold: The progress threshold in which to take the
             aggregated progress and invoke the progress callback with that
             aggregated progress total
         """
-        self._callback = callback
+        self._callbacks = callbacks
         self._threshold = threshold
         self._bytes_seen = 0
 
     def __call__(self, bytes_transferred):
         self._bytes_seen += bytes_transferred
         if self._bytes_seen >= self._threshold:
-            self._trigger_callback()
+            self._trigger_callbacks()
 
     def flush(self):
-        """Flushes out any progress that has not been sent to its callback"""
+        """Flushes out any progress that has not been sent to its callbacks"""
         if self._bytes_seen > 0:
-            self._trigger_callback()
+            self._trigger_callbacks()
 
-    def _trigger_callback(self):
-        self._callback(bytes_transferred=self._bytes_seen)
+    def _trigger_callbacks(self):
+        for callback in self._callbacks:
+            callback(bytes_transferred=self._bytes_seen)
         self._bytes_seen = 0
 
 
@@ -204,7 +205,12 @@ class UploadInputManager(object):
 
     def _get_progress_callbacks(self, transfer_future):
         callbacks = get_callbacks(transfer_future, 'progress')
-        return [AggregatedProgressCallback(callback) for callback in callbacks]
+        # We only want to be wrapping the callbacks if there are callbacks to
+        # invoke because we do not want to be doing any unnecessary work if
+        # there are no callbacks to invoke.
+        if callbacks:
+            return [AggregatedProgressCallback(callbacks)]
+        return []
 
     def _get_close_callbacks(self, aggregated_progress_callbacks):
         return [callback.flush for callback in aggregated_progress_callbacks]
@@ -272,8 +278,8 @@ class UploadFilenameInputManager(UploadInputManager):
             yield part_number, read_file_chunk
 
     def _get_deferred_open_file(self, fileobj, start_byte):
-        fileobj = DeferredOpenFile(fileobj, start_byte)
-        fileobj.OPEN_METHOD = self._osutil.open
+        fileobj = DeferredOpenFile(
+            fileobj, start_byte, open_function=self._osutil.open)
         return fileobj
 
     def _get_put_object_fileobj_with_full_size(self, transfer_future):

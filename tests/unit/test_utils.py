@@ -276,29 +276,47 @@ class TestDefferedOpenFile(BaseUtilsTest):
         self.contents = b'my contents'
         with open(self.filename, 'wb') as f:
             f.write(self.contents)
-        self.deferred_open_file = DeferredOpenFile(self.filename)
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, open_function=self.counting_open_function)
         self.open_called_count = 0
-        self.deferred_open_file.OPEN_METHOD = self.counting_open_method
 
     def tearDown(self):
         self.deferred_open_file.close()
         super(TestDefferedOpenFile, self).tearDown()
 
-    def counting_open_method(self, filename, mode):
+    def counting_open_function(self, filename, mode):
         self.open_called_count += 1
         return open(filename, mode)
 
     def test_instantiation_does_not_open_file(self):
-        deferred_open_file = DeferredOpenFile(self.filename)
+        DeferredOpenFile(
+            self.filename, open_function=self.counting_open_function)
         self.open_called_count = 0
-        deferred_open_file.OPEN_METHOD = self.counting_open_method
         self.assertEqual(self.open_called_count, 0)
+
+    def test_name(self):
+        self.assertEqual(self.deferred_open_file.name, self.filename)
 
     def test_read(self):
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[0:2])
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[2:4])
+        self.assertEqual(self.open_called_count, 1)
+
+    def test_write(self):
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, mode='wb',
+            open_function=self.counting_open_function)
+
+        write_content = b'foo'
+        self.deferred_open_file.write(write_content)
+        self.deferred_open_file.write(write_content)
+        self.deferred_open_file.close()
+        # Both of the writes should now be in the file.
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(f.read(), write_content*2)
+        # Open should have only been called once.
         self.assertEqual(self.open_called_count, 1)
 
     def test_seek(self):

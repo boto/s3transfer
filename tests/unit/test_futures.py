@@ -11,16 +11,18 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import CancelledError
 
 from tests import unittest
+from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
+from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import FatalError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
+from s3transfer.futures import ExecutorFuture
 from s3transfer.tasks import Task
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
@@ -128,14 +130,33 @@ class TestTransferCoordinator(unittest.TestCase):
         transfer_coordinator = TransferCoordinator(transfer_id=1)
         self.assertEqual(transfer_coordinator.transfer_id, 1)
 
+    def test_repr(self):
+        transfer_coordinator = TransferCoordinator(transfer_id=1)
+        self.assertEqual(
+            repr(transfer_coordinator), 'TransferCoordinator(transfer_id=1)')
+
     def test_initial_status(self):
         # A TransferCoordinator with no progress should have the status
-        # of queued
+        # of not-started
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
+
+    def test_set_status_to_queued(self):
+        self.transfer_coordinator.set_status_to_queued()
         self.assertEqual(self.transfer_coordinator.status, 'queued')
+
+    def test_cannot_set_status_to_queued_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_queued()
 
     def test_status_running(self):
         self.transfer_coordinator.set_status_to_running()
         self.assertEqual(self.transfer_coordinator.status, 'running')
+
+    def test_cannot_set_status_to_running_from_done_state(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.set_status_to_running()
 
     def test_set_result(self):
         success_result = 'foo'
@@ -165,12 +186,44 @@ class TestTransferCoordinator(unittest.TestCase):
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_cancel(self):
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
         self.transfer_coordinator.cancel()
-        self.transfer_coordinator.announce_done()
         # This should set the state to cancelled and raise the CancelledError
-        # exception.
+        # exception and should have also set the done event so that result()
+        # is no longer set.
         self.assertEqual(self.transfer_coordinator.status, 'cancelled')
         with self.assertRaises(CancelledError):
+            self.transfer_coordinator.result()
+
+    def test_cancel_can_run_done_callbacks_that_uses_result(self):
+        exceptions = []
+
+        def capture_exception(transfer_coordinator, captured_exceptions):
+            try:
+                transfer_coordinator.result()
+            except Exception as e:
+                captured_exceptions.append(e)
+
+        self.assertEqual(self.transfer_coordinator.status, 'not-started')
+        self.transfer_coordinator.add_done_callback(
+            capture_exception, self.transfer_coordinator, exceptions)
+        self.transfer_coordinator.cancel()
+
+        self.assertEqual(len(exceptions), 1)
+        self.assertIsInstance(exceptions[0], CancelledError)
+
+    def test_cancel_with_message(self):
+        message = 'my message'
+        self.transfer_coordinator.cancel(message)
+        self.transfer_coordinator.announce_done()
+        with self.assertRaisesRegexp(CancelledError, message):
+            self.transfer_coordinator.result()
+
+    def test_cancel_with_provided_exception(self):
+        message = 'my message'
+        self.transfer_coordinator.cancel(message, exc_type=FatalError)
+        self.transfer_coordinator.announce_done()
+        with self.assertRaisesRegexp(FatalError, message):
             self.transfer_coordinator.result()
 
     def test_cancel_cannot_override_done_state(self):
@@ -191,23 +244,27 @@ class TestTransferCoordinator(unittest.TestCase):
     def test_submit(self):
         # Submit a callable to the transfer coordinator. It should submit it
         # to the executor.
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = self.transfer_coordinator.submit(
-                executor,
-                return_call_args,
-                tag='my-tag'
-            )
+        executor = RecordingExecutor(
+            BoundedExecutor(1, 1, {'my-tag': TaskSemaphore(1)}))
+        task = ReturnFooTask(self.transfer_coordinator)
+        future = self.transfer_coordinator.submit(executor, task, tag='my-tag')
+        executor.shutdown()
         # Make sure the future got submit and executed as well by checking its
         # result value which should include the provided future tag.
-        self.assertEqual(future.result(), ((), {'tag': 'my-tag'}))
+        self.assertEqual(
+            executor.submissions,
+            [{'block': True, 'tag': 'my-tag', 'task': task}]
+        )
+        self.assertEqual(future.result(), 'foo')
 
     def test_association_and_disassociation_on_submit(self):
         self.transfer_coordinator = RecordingTransferCoordinator()
 
         # Submit a callable to the transfer coordinator.
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = self.transfer_coordinator.submit(
-                executor, return_call_args)
+        executor = BoundedExecutor(1, 1)
+        task = ReturnFooTask(self.transfer_coordinator)
+        future = self.transfer_coordinator.submit(executor, task)
+        executor.shutdown()
 
         # Make sure the future that got submitted was associated to the
         # transfer future at some point.
@@ -372,9 +429,7 @@ class TestBoundedExecutor(unittest.TestCase):
             self.fail('Task %s should not have been blocked' % task)
 
     def add_done_callback_to_future(self, future, fn, *args, **kwargs):
-        def callback_for_future(f):
-            fn(*args, **kwargs)
-
+        callback_for_future = FunctionContainer(fn, *args, **kwargs)
         future.add_done_callback(callback_for_future)
 
     def test_submit_single_task(self):
@@ -383,7 +438,7 @@ class TestBoundedExecutor(unittest.TestCase):
         future = self.executor.submit(task)
 
         # Ensure what we get back is a Future
-        self.assertIsInstance(future, Future)
+        self.assertIsInstance(future, ExecutorFuture)
         # Ensure the callable got executed.
         self.assertEqual(future.result(), 'foo')
 
@@ -448,3 +503,26 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown returns immediately even if the task is
         # not done, which it should not be because it it slow.
         self.assertFalse(future.done())
+
+
+class TestExecutorFuture(unittest.TestCase):
+    def test_result(self):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+        self.assertEqual(wrapped_future.result(), (('foo',), {'biz': 'baz'}))
+
+    def test_done(self):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+        self.assertTrue(wrapped_future.done())
+
+    def test_add_done_callback(self):
+        done_callbacks = []
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(return_call_args, 'foo', biz='baz')
+            wrapped_future = ExecutorFuture(future)
+            wrapped_future.add_done_callback(
+                FunctionContainer(done_callbacks.append, 'called'))
+        self.assertEqual(done_callbacks, ['called'])

@@ -275,9 +275,7 @@ class OSUtils(object):
 
 
 class DeferredOpenFile(object):
-    OPEN_METHOD = open
-
-    def __init__(self, filename, start_byte=0):
+    def __init__(self, filename, start_byte=0, mode='rb', open_function=open):
         """A class that defers the opening of a file till needed
 
         This is useful for deffering opening of a file till it is needed
@@ -291,19 +289,35 @@ class DeferredOpenFile(object):
 
         :type start_byte: int
         :param start_byte: The byte to seek to when the file is opened.
+
+        :type mode: str
+        :param mode: The mode to use to open the file
+
+        :type open_function: function
+        :param open_function: The function to use to open the file
         """
         self._filename = filename
         self._fileobj = None
         self._start_byte = start_byte
+        self._mode = mode
+        self._open_function = open_function
 
     def _open_if_needed(self):
         if self._fileobj is None:
-            self._fileobj = self.OPEN_METHOD(self._filename, 'rb')
+            self._fileobj = self._open_function(self._filename, self._mode)
             self._fileobj.seek(self._start_byte)
+
+    @property
+    def name(self):
+        return self._filename
 
     def read(self, amount=None):
         self._open_if_needed()
         return self._fileobj.read(amount)
+
+    def write(self, data):
+        self._open_if_needed()
+        self._fileobj.write(data)
 
     def seek(self, where):
         self._open_if_needed()

@@ -17,6 +17,7 @@ import logging
 import threading
 
 from s3transfer.compat import MAXINT
+from s3transfer.exceptions import CancelledError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
@@ -119,7 +120,7 @@ class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
-        self._status = 'queued'
+        self._status = 'not-started'
         self._result = None
         self._exception = None
         self._associated_futures = set()
@@ -130,6 +131,10 @@ class TransferCoordinator(object):
         self._associated_futures_lock = threading.Lock()
         self._done_callbacks_lock = threading.Lock()
         self._failure_cleanups_lock = threading.Lock()
+
+    def __repr__(self):
+        return '%s(transfer_id=%s)' % (
+            self.__class__.__name__, self.transfer_id)
 
     @property
     def exception(self):
@@ -158,7 +163,9 @@ class TransferCoordinator(object):
         """The status of the TransferFuture
 
         The currently supported states are:
-            * queued - Has yet to start
+            * not-started - Has yet to start. If in this state, a transfer
+              can be canceled immediately and nothing will happen.
+            * queued - SubmissionTask is about to submit tasks
             * running - Is inprogress. In-progress as of now means that
               the SubmissionTask that runs the transfer is being executed. So
               there is no guarantee any transfer requests had been made to
@@ -167,8 +174,7 @@ class TransferCoordinator(object):
             * failed - An exception other than CancelledError was thrown
             * success - No exceptions were thrown and is done.
         """
-        with self._lock:
-            return self._status
+        return self._status
 
     def set_result(self, result):
         """Set a result for the TransferFuture
@@ -190,8 +196,8 @@ class TransferCoordinator(object):
 
         Implies the TransferFuture failed.
         """
-        if not self.done():
-            with self._lock:
+        with self._lock:
+            if not self.done():
                 self._exception = exception
                 self._status = 'failed'
 
@@ -210,23 +216,42 @@ class TransferCoordinator(object):
 
         # Once done waiting, raise an exception if present or return the
         # final result.
-        with self._lock:
-            if self._exception:
-                raise self._exception
-            return self._result
+        if self._exception:
+            raise self._exception
+        return self._result
 
-    def cancel(self):
-        """Cancels the TransferFuture"""
-        if not self.done():
-            with self._lock:
-                logger.debug('TransferCoordinator cancel() called')
-                self._exception = futures.CancelledError
+    def cancel(self, msg='', exc_type=CancelledError):
+        """Cancels the TransferFuture
+
+        :param msg: The message to attach to the cancellation
+        :param exc_type: The type of exception to set for the cancellation
+        """
+        with self._lock:
+            if not self.done():
+                should_announce_done = False
+                logger.debug('%s cancel(%s) called', self, msg)
+                self._exception = exc_type(msg)
+                if self._status == 'not-started':
+                    should_announce_done = True
                 self._status = 'cancelled'
+                if should_announce_done:
+                    self.announce_done()
+
+    def set_status_to_queued(self):
+        """Sets the TransferFutrue's status to running"""
+        self._transition_to_non_done_state('queued')
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""
+        self._transition_to_non_done_state('running')
+
+    def _transition_to_non_done_state(self, desired_state):
         with self._lock:
-            self._status = 'running'
+            if self.done():
+                raise RuntimeError(
+                    'Unable to transition from done state %s to non-done '
+                    'state %s.' % (self.status, desired_state))
+            self._status = desired_state
 
     def submit(self, executor, task, tag=None):
         """Submits a task to a provided executor
@@ -251,7 +276,8 @@ class TransferCoordinator(object):
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.
         self.add_associated_future(future)
-        future.add_done_callback(self.remove_associated_future)
+        future.add_done_callback(
+            FunctionContainer(self.remove_associated_future, future))
         return future
 
     def done(self):
@@ -385,23 +411,49 @@ class BoundedExecutor(object):
         release_callback = FunctionContainer(
             semaphore.release, task.transfer_id, acquire_token)
         # Submit the task to the underlying executor.
-        future = self._executor.submit(task)
+        future = ExecutorFuture(self._executor.submit(task))
         # Add the Semaphore.release() callback to the future such that
         # it is invoked once the future completes.
-        self._add_done_callback_to_future(future, release_callback)
+        future.add_done_callback(release_callback)
         return future
 
     def shutdown(self, wait=True):
         self._executor.shutdown(wait)
 
-    def _add_done_callback_to_future(self, future, callback):
+
+class ExecutorFuture(object):
+    def __init__(self, future):
+        """A future returned from the executor
+
+        Currently, it is just a wrapper around a concurrent.futures.Future.
+        However, this can eventually grow to implement the needed functionality
+        of concurrent.futures.Future if we move off of the library and not
+        affect the rest of the codebase.
+
+        :type future: concurrent.futures.Future
+        :param future: The underlying future
+        """
+        self._future = future
+
+    def result(self):
+        return self._future.result()
+
+    def add_done_callback(self, fn):
+        """Adds a callback to be completed once future is done
+
+        :parm fn: A callable that takes no arguments. Note that is different
+            than concurrent.futures.Future.add_done_callback that requires
+            a single argument for the future.
+        """
         # The done callback for concurrent.futures.Future will always pass a
         # the future in as the only argument. So we need to create the
         # proper signature wrapper that will invoke the callback provided.
         def done_callback(future_passed_to_callback):
-            return callback()
-        # Add the wrapped done callback to the future.
-        future.add_done_callback(done_callback)
+            return fn()
+        self._future.add_done_callback(done_callback)
+
+    def done(self):
+        return self._future.done()
 
 
 TaskTag = namedtuple('TaskTag', ['name'])

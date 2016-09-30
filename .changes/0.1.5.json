@@ -1,0 +1,12 @@
+[
+  {
+    "category": "Cntrl-C", 
+    "description": "Fix issue of hangs when Cntrl-C happens for many queued transfers", 
+    "type": "bugfix"
+  }, 
+  {
+    "category": "cancel", 
+    "description": "Expose messages for cancels", 
+    "type": "feature"
+  }
+]

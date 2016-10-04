@@ -346,6 +346,19 @@ class TestNonRangedDownload(BaseDownloadTest):
         for allowed_upload_arg in self._manager.ALLOWED_DOWNLOAD_ARGS:
             self.assertIn(allowed_upload_arg, op_model.input_shape.members)
 
+    def test_download_empty_object(self):
+        self.content = b''
+        self.stream = six.BytesIO(self.content)
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+        future = self.manager.download(
+            self.bucket, self.key, self.filename, self.extra_args)
+        future.result()
+
+        # Ensure that the empty file exists
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(b'', f.read())
+
 
 class TestRangedDownload(BaseDownloadTest):
     # TODO: If you want to add tests outside of this test class and still

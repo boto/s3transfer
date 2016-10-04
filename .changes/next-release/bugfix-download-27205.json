@@ -1,0 +1,5 @@
+{
+  "category": "download", 
+  "type": "bugfix", 
+  "description": "Fix issue where S3 Object was not downloaded to disk when empty"
+}

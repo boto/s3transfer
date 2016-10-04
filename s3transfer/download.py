@@ -508,8 +508,7 @@ class GetObjectTask(Task):
                     response['Body'], callbacks)
 
                 current_index = start_index
-                chunks = iter(
-                    lambda: streaming_body.read(io_chunksize), b'')
+                chunks = DownloadChunkIterator(streaming_body, io_chunksize)
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation
                     # or error somewhere else, stop trying to submit more
@@ -612,6 +611,36 @@ class CompleteDownloadNOOPTask(Task):
 
     def _main(self):
         pass
+
+
+class DownloadChunkIterator(object):
+    def __init__(self, body, chunksize):
+        """Iterator to chunk out a downloaded S3 stream
+
+        :param body: A readable file-like object
+        :param chunksize: The amount to read each time
+        """
+        self._body = body
+        self._chunksize = chunksize
+        self._num_reads = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        chunk = self._body.read(self._chunksize)
+        self._num_reads += 1
+        if chunk:
+            return chunk
+        elif self._num_reads == 1:
+            # Even though the response may have not had any
+            # content, we still want to account for an empty object's
+            # existance so return the empty chunk for that initial
+            # read.
+            return chunk
+        raise StopIteration()
+
+    next = __next__
 
 
 class DeferQueue(object):

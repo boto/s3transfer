@@ -36,6 +36,7 @@ from s3transfer.download import IOWriteTask
 from s3transfer.download import IOStreamingWriteTask
 from s3transfer.download import IORenameFileTask
 from s3transfer.download import CompleteDownloadNOOPTask
+from s3transfer.download import DownloadChunkIterator
 from s3transfer.download import DeferQueue
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.futures import BoundedExecutor
@@ -787,6 +788,31 @@ class TestIORenameFileTask(BaseIOTaskTest):
             task()
         self.assertTrue(os.path.exists(self.final_filename))
         self.assertFalse(os.path.exists(self.temp_filename))
+
+
+class TestDownloadChunkIterator(unittest.TestCase):
+    def test_iter(self):
+        content = b'my content'
+        body = six.BytesIO(content)
+        ref_chunks = []
+        for chunk in DownloadChunkIterator(body, len(content), {}):
+            ref_chunks.append(chunk)
+        self.assertEqual(ref_chunks, [b'my content'])
+
+    def test_iter_chunksize(self):
+        content = b'1234'
+        body = six.BytesIO(content)
+        ref_chunks = []
+        for chunk in DownloadChunkIterator(body, 3, {}):
+            ref_chunks.append(chunk)
+        self.assertEqual(ref_chunks, [b'123', b'4'])
+
+    def test_empty_content(self):
+        body = six.BytesIO(b'')
+        ref_chunks = []
+        for chunk in DownloadChunkIterator(body, 3, {'ContentLength': 0}):
+            ref_chunks.append(chunk)
+        self.assertEqual(ref_chunks, [b''])
 
 
 class TestDeferQueue(unittest.TestCase):

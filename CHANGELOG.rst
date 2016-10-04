@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.6
+=====
+
+* bugfix:download: Fix issue where S3 Object was not downloaded to disk when empty
+
+
 0.1.5
 =====
 

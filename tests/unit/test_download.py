@@ -795,7 +795,7 @@ class TestDownloadChunkIterator(unittest.TestCase):
         content = b'my content'
         body = six.BytesIO(content)
         ref_chunks = []
-        for chunk in DownloadChunkIterator(body, len(content), {}):
+        for chunk in DownloadChunkIterator(body, len(content)):
             ref_chunks.append(chunk)
         self.assertEqual(ref_chunks, [b'my content'])
 
@@ -803,14 +803,14 @@ class TestDownloadChunkIterator(unittest.TestCase):
         content = b'1234'
         body = six.BytesIO(content)
         ref_chunks = []
-        for chunk in DownloadChunkIterator(body, 3, {}):
+        for chunk in DownloadChunkIterator(body, 3):
             ref_chunks.append(chunk)
         self.assertEqual(ref_chunks, [b'123', b'4'])
 
     def test_empty_content(self):
         body = six.BytesIO(b'')
         ref_chunks = []
-        for chunk in DownloadChunkIterator(body, 3, {'ContentLength': 0}):
+        for chunk in DownloadChunkIterator(body, 3):
             ref_chunks.append(chunk)
         self.assertEqual(ref_chunks, [b''])
 

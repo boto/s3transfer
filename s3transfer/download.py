@@ -508,8 +508,7 @@ class GetObjectTask(Task):
                     response['Body'], callbacks)
 
                 current_index = start_index
-                chunks = DownloadChunkIterator(
-                    streaming_body, io_chunksize, response)
+                chunks = DownloadChunkIterator(streaming_body, io_chunksize)
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation
                     # or error somewhere else, stop trying to submit more
@@ -615,16 +614,14 @@ class CompleteDownloadNOOPTask(Task):
 
 
 class DownloadChunkIterator(object):
-    def __init__(self, body, chunksize, response):
+    def __init__(self, body, chunksize):
         """Iterator to chunk out a downloaded S3 stream
 
         :param body: A readable file-like object
         :param chunksize: The amount to read each time
-        :param response: A S3 GetObject response
         """
         self._body = body
         self._chunksize = chunksize
-        self._response = response
         self._num_reads = 0
 
     def __iter__(self):
@@ -635,9 +632,9 @@ class DownloadChunkIterator(object):
         self._num_reads += 1
         if chunk:
             return chunk
-        elif self._num_reads == 1 and not self._response.get('ContentLength'):
+        elif self._num_reads == 1:
             # Even though the response may have not had any
-            # content, we still want to account for the object's
+            # content, we still want to account for an empty object's
             # existance so return the empty chunk for that initial
             # read.
             return chunk

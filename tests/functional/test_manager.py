@@ -10,6 +10,8 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+from botocore.awsrequest import create_request_object
+
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
@@ -19,6 +21,19 @@ from s3transfer.manager import TransferConfig
 
 class ArbitraryException(Exception):
     pass
+
+
+class CallbackEnablingBody(object):
+    """A mocked body with callback enabling/disabling"""
+    def __init__(self):
+        self.enable_callback_call_count = 0
+        self.disable_callback_call_count = 0
+
+    def enable_callback(self):
+        self.enable_callback_call_count += 1
+
+    def disable_callback(self):
+        self.disable_callback_call_count += 1
 
 
 class TestTransferManager(StubbedClientTest):
@@ -85,3 +100,28 @@ class TestTransferManager(StubbedClientTest):
                     CancelledError, 'KeyboardInterrupt()'):
                 for future in futures:
                     future.result()
+
+    def test_enable_disable_callbacks_only_ever_registered_once(self):
+        body = CallbackEnablingBody()
+        request = create_request_object({
+            'method': 'PUT',
+            'url': 'https://s3.amazonaws.com',
+            'body': body,
+            'headers': {},
+            'context': {}
+        })
+        # Create two TransferManager's using the same client
+        TransferManager(self.client)
+        TransferManager(self.client)
+        self.client.meta.events.emit(
+            'request-created.s3', request=request, operation_name='PutObject')
+        # The client should have only have the enable/disable callback
+        # handlers registered once depite being used for two different
+        # TransferManagers.
+        self.assertEqual(
+            body.enable_callback_call_count, 1,
+            'The enable_callback() should have only ever been registered once')
+        self.assertEqual(
+            body.disable_callback_call_count, 1,
+            'The disable_callback() should have only ever been registered '
+            'once')

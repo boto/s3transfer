@@ -33,15 +33,6 @@ MIN_UPLOAD_CHUNKSIZE = 5 * (1024 ** 2)
 logger = logging.getLogger(__name__)
 
 
-def unique_id(name):
-    """
-    Generate a unique ID that includes the given name,
-    a timestamp and a random number.
-    """
-    return '{0}-{1}-{2}'.format(name, int(time.time()),
-                                random.randint(0, 10000))
-
-
 def random_file_extension(num_digits=8):
     return ''.join(random.choice(string.hexdigits) for _ in range(num_digits))
 

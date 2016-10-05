@@ -1,0 +1,5 @@
+{
+  "category": "TransferManager", 
+  "type": "bugfix", 
+  "description": "Fix memory leak when using same client to create multiple TransferManagers"
+}

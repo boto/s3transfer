@@ -14,7 +14,6 @@ import copy
 import logging
 import threading
 
-from s3transfer.utils import unique_id
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
@@ -471,12 +470,12 @@ class TransferManager(object):
     def _register_handlers(self):
         # Register handlers to enable/disable callbacks on uploads.
         event_name = 'request-created.s3'
-        enable_id = unique_id('s3upload-callback-enable')
-        disable_id = unique_id('s3upload-callback-disable')
         self._client.meta.events.register_first(
-            event_name, disable_upload_callbacks, unique_id=disable_id)
+            event_name, disable_upload_callbacks,
+            unique_id='s3upload-callback-disable')
         self._client.meta.events.register_last(
-            event_name, enable_upload_callbacks, unique_id=enable_id)
+            event_name, enable_upload_callbacks,
+            unique_id='s3upload-callback-enable')
 
     def __enter__(self):
         return self

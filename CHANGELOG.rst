@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.7
+=====
+
+* bugfix:TransferManager: Fix memory leak when using same client to create multiple TransferManagers
+
+
 0.1.6
 =====
 

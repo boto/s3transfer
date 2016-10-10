@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "description": "Support downloading to FIFOs.",
+  "category": "download"
+}

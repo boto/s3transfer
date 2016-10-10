@@ -24,6 +24,7 @@ from tests import RecordingSubscriber
 from tests import RecordingOSUtils
 from tests import NonSeekableWriter
 from tests import BaseGeneralInterfaceTest
+from tests import skip_if_windows
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
@@ -314,6 +315,24 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # the temporary file was moved to its final location.
         self.assertEqual(len(osutil.open_records), 1)
         self.assertEqual(len(osutil.rename_records), 1)
+
+    @skip_if_windows('Windows does not support UNIX special files')
+    def test_download_for_fifo_file(self):
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+
+        # Create the fifo file
+        os.mkfifo(self.filename)
+
+        future = self.manager.download(
+            self.bucket, self.key, self.filename, self.extra_args)
+
+        # The call to open a fifo will block until there is both a reader
+        # and a writer, so we need to open it for reading after we've
+        # started the transfer.
+        with open(self.filename, 'rb') as fifo:
+            future.result()
+            self.assertEqual(fifo.read(), self.content)
 
 
 class TestNonRangedDownload(BaseDownloadTest):

@@ -223,7 +223,8 @@ class TestNonMultipartUpload(BaseUploadTest):
 
         # The upload should have used the os utility. We check this by making
         # sure that the recorded opens are as expected.
-        self.assertEqual(osutil.open_records, [(self.filename, 'rb')])
+        expected_opens = [(self.filename, 'rb')]
+        self.assertEqual(osutil.open_records, expected_opens)
 
     def test_allowed_upload_params_are_valid(self):
         op_model = self.client.meta.service_model.operation_model('PutObject')

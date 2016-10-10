@@ -14,6 +14,7 @@ import copy
 import os
 import shutil
 import tempfile
+import mock
 
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
@@ -35,6 +36,7 @@ from s3transfer.download import ImmediatelyWriteIOGetObjectTask
 from s3transfer.download import IOWriteTask
 from s3transfer.download import IOStreamingWriteTask
 from s3transfer.download import IORenameFileTask
+from s3transfer.download import IOCloseTask
 from s3transfer.download import CompleteDownloadNOOPTask
 from s3transfer.download import DownloadChunkIterator
 from s3transfer.download import DeferQueue
@@ -62,7 +64,7 @@ class WriteCollector(object):
         self._pos += len(data)
 
 
-class AlwaysInicatesSpecialFileOSUtils(OSUtils):
+class AlwaysIndicatesSpecialFileOSUtils(OSUtils):
     """OSUtil that always returns True for is_special_file"""
     def is_special_file(self, filename):
         return True
@@ -175,7 +177,7 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
 class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super(TestDownloadSpecialFilenameOutputManager, self).setUp()
-        self.osutil = AlwaysInicatesSpecialFileOSUtils()
+        self.osutil = AlwaysIndicatesSpecialFileOSUtils()
         self.download_output_manager = DownloadSpecialFilenameOutputManager(
             self.osutil, self.transfer_coordinator,
             io_executor=self.io_executor)
@@ -183,30 +185,34 @@ class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
     def test_is_compatible_for_special_file(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                self.filename, AlwaysInicatesSpecialFileOSUtils())
-        )
+                self.filename, AlwaysIndicatesSpecialFileOSUtils()))
 
     def test_is_not_compatible_for_non_special_file(self):
         self.assertFalse(
             self.download_output_manager.is_compatible(
-                self.filename, OSUtils())
-        )
+                self.filename, OSUtils()))
 
     def test_get_fileobj_for_io_writes(self):
         with self.download_output_manager.get_fileobj_for_io_writes(
                 self.future) as f:
             # Ensure it is a file like object returned
             self.assertTrue(hasattr(f, 'read'))
-            self.assertTrue(hasattr(f, 'seek'))
             # Make sure the name of the file returned is the same as the
             # final filename as we should not be writing to a temporary file.
             self.assertEqual(f.name, self.filename)
 
     def test_get_final_io_task(self):
         self.assertIsInstance(
-            self.download_output_manager.get_final_io_task(),
-            CompleteDownloadNOOPTask
-        )
+            self.download_output_manager.get_final_io_task(), IOCloseTask)
+
+    def test_can_queue_file_io_task(self):
+        fileobj = WriteCollector()
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='foo', offset=0)
+        self.download_output_manager.queue_file_io_task(
+            fileobj=fileobj, data='bar', offset=3)
+        self.io_executor.shutdown()
+        self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
 
 class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
@@ -788,6 +794,14 @@ class TestIORenameFileTask(BaseIOTaskTest):
             task()
         self.assertTrue(os.path.exists(self.final_filename))
         self.assertFalse(os.path.exists(self.temp_filename))
+
+
+class TestIOCloseTask(BaseIOTaskTest):
+    def test_main(self):
+        with open(self.temp_filename, 'w') as f:
+            task = self.get_task(IOCloseTask, main_kwargs={'fileobj': f})
+            task()
+            self.assertTrue(f.closed)
 
 
 class TestDownloadChunkIterator(unittest.TestCase):

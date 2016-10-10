@@ -150,6 +150,14 @@ class DownloadOutputManager(object):
         raise NotImplementedError(
             'must implement get_final_io_task()')
 
+    def _get_fileobj_from_filename(self, filename):
+        f = DeferredOpenFile(
+            filename, mode='wb', open_function=self._osutil.open)
+        # Make sure the file gets closed and we remove the temporary file
+        # if anything goes wrong during the process.
+        self._transfer_coordinator.add_failure_cleanup(f.close)
+        return f
+
 
 class DownloadFilenameOutputManager(DownloadOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor):
@@ -185,37 +193,10 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
         )
 
     def _get_temp_fileobj(self):
-        f = self._get_fileobj(self._temp_filename)
+        f = self._get_fileobj_from_filename(self._temp_filename)
         self._transfer_coordinator.add_failure_cleanup(
             self._osutil.remove_file, self._temp_filename)
         return f
-
-    def _get_fileobj(self, filename):
-        f = DeferredOpenFile(
-            filename, mode='wb', open_function=self._osutil.open)
-        # Make sure the file gets closed and we remove the temporary file
-        # if anything goes wrong during the process.
-        self._transfer_coordinator.add_failure_cleanup(f.close)
-        return f
-
-
-class DownloadSpecialFilenameOutputManager(DownloadFilenameOutputManager):
-    """Handles special files that cannot use a temporary file for io writes"""
-    @classmethod
-    def is_compatible(cls, download_target, osutil):
-        return super(DownloadSpecialFilenameOutputManager, cls).is_compatible(
-                download_target, osutil) and \
-                osutil.is_special_file(download_target)
-
-    def get_fileobj_for_io_writes(self, transfer_future):
-        fileobj = transfer_future.meta.call_args.fileobj
-        return self._get_fileobj(fileobj)
-
-    def get_final_io_task(self):
-        # This task will serve the purpose of signaling when all of the io
-        # writes have finished so done callbacks can be called.
-        return CompleteDownloadNOOPTask(
-            transfer_coordinator=self._transfer_coordinator)
 
 
 class DownloadSeekableOutputManager(DownloadOutputManager):
@@ -277,6 +258,31 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
                 'data': data,
             }
         )
+
+
+class DownloadSpecialFilenameOutputManager(DownloadNonSeekableOutputManager):
+    def __init__(self, osutil, transfer_coordinator, io_executor,
+                 defer_queue=None):
+        super(DownloadSpecialFilenameOutputManager, self).__init__(
+            osutil, transfer_coordinator, io_executor, defer_queue)
+        self._fileobj = None
+
+    @classmethod
+    def is_compatible(cls, download_target, osutil):
+        return isinstance(download_target, six.string_types) and \
+               osutil.is_special_file(download_target)
+
+    def get_fileobj_for_io_writes(self, transfer_future):
+        filename = transfer_future.meta.call_args.fileobj
+        self._fileobj = self._get_fileobj_from_filename(filename)
+        return self._fileobj
+
+    def get_final_io_task(self):
+        # Make sure the file gets closed once the transfer is done.
+        return IOCloseTask(
+            transfer_coordinator=self._transfer_coordinator,
+            is_final=True,
+            main_kwargs={'fileobj': self._fileobj})
 
 
 class DownloadSubmissionTask(SubmissionTask):
@@ -590,6 +596,15 @@ class IORenameFileTask(Task):
     def _main(self, fileobj, final_filename, osutil):
         fileobj.close()
         osutil.rename_file(fileobj.name, final_filename)
+
+
+class IOCloseTask(Task):
+    """A task to close out a file once the download is complete.
+
+    :param fileobj: The fileobj to close.
+    """
+    def _main(self, fileobj):
+        fileobj.close()
 
 
 class CompleteDownloadNOOPTask(Task):

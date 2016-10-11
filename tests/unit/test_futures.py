@@ -10,7 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import sys
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from tests import unittest
@@ -24,6 +26,8 @@ from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import ExecutorFuture
+from s3transfer.futures import NonThreadedExecutor
+from s3transfer.futures import NonThreadedExecutorFuture
 from s3transfer.tasks import Task
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
@@ -32,6 +36,17 @@ from s3transfer.utils import NoResourcesAvailable
 
 def return_call_args(*args, **kwargs):
     return args, kwargs
+
+
+def raise_exception(exception):
+    raise exception
+
+
+def get_exc_info(exception):
+    try:
+        raise_exception(exception)
+    except:
+        return sys.exc_info()
 
 
 class RecordingTransferCoordinator(TransferCoordinator):
@@ -552,3 +567,85 @@ class TestExecutorFuture(unittest.TestCase):
             wrapped_future.add_done_callback(
                 FunctionContainer(done_callbacks.append, 'called'))
         self.assertEqual(done_callbacks, ['called'])
+
+
+class TestNonThreadedExecutor(unittest.TestCase):
+    def test_submit(self):
+        executor = NonThreadedExecutor()
+        future = executor.submit(return_call_args, 1, 2, foo='bar')
+        self.assertIsInstance(future, NonThreadedExecutorFuture)
+        self.assertEqual(future.result(), ((1, 2), {'foo': 'bar'}))
+
+    def test_submit_with_exception(self):
+        executor = NonThreadedExecutor()
+        future = executor.submit(raise_exception, RuntimeError())
+        self.assertIsInstance(future, NonThreadedExecutorFuture)
+        with self.assertRaises(RuntimeError):
+            future.result()
+
+    def test_submit_with_exception_and_captures_info(self):
+        exception = ValueError('message')
+        tb = get_exc_info(exception)[2]
+        future = NonThreadedExecutor().submit(raise_exception, exception)
+        try:
+            future.result()
+            # An exception should have been raised
+            self.fail('Future should have raised a ValueError')
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
+
+class TestNonThreadedExecutorFuture(unittest.TestCase):
+    def setUp(self):
+        self.future = NonThreadedExecutorFuture()
+
+    def test_done_starts_false(self):
+        self.assertFalse(self.future.done())
+
+    def test_done_after_setting_result(self):
+        self.future.set_result('result')
+        self.assertTrue(self.future.done())
+
+    def test_done_after_setting_exception(self):
+        self.future.set_exception_info(Exception(), None)
+        self.assertTrue(self.future.done())
+
+    def test_result(self):
+        self.future.set_result('result')
+        self.assertEqual(self.future.result(), 'result')
+
+    def test_exception_result(self):
+        exception = ValueError('message')
+        self.future.set_exception_info(exception, None)
+        with self.assertRaisesRegexp(ValueError, 'message'):
+            self.future.result()
+
+    def test_exception_result_doesnt_modify_last_frame(self):
+        exception = ValueError('message')
+        tb = get_exc_info(exception)[2]
+        self.future.set_exception_info(exception, tb)
+        try:
+            self.future.result()
+            # An exception should have been raised
+            self.fail()
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
+    def test_done_callback(self):
+        done_futures = []
+        self.future.add_done_callback(done_futures.append)
+        self.assertEqual(done_futures, [])
+        self.future.set_result('result')
+        self.assertEqual(done_futures, [self.future])
+
+    def test_done_callback_after_done(self):
+        self.future.set_result('result')
+        done_futures = []
+        self.future.add_done_callback(done_futures.append)
+        self.assertEqual(done_futures, [self.future])

@@ -15,6 +15,7 @@ from botocore.awsrequest import create_request_object
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
+from s3transfer.futures import BaseExecutor
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
 
@@ -125,3 +126,12 @@ class TestTransferManager(StubbedClientTest):
             body.disable_callback_call_count, 1,
             'The disable_callback() should have only ever been registered '
             'once')
+
+    def test_use_custom_executor_implementation(self):
+        transfer_manager = TransferManager(
+            self.client, executor_cls=BaseExecutor)
+        # The BaseExecutor class has no methods implemented so it should
+        # immediately raise a NotImplementedError once something is
+        # submitted to it
+        with self.assertRaises(NotImplementedError):
+            transfer_manager.delete('bucket', 'key')

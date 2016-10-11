@@ -369,7 +369,8 @@ class TransferCoordinator(object):
 class BoundedExecutor(object):
     EXECUTOR_CLS = futures.ThreadPoolExecutor
 
-    def __init__(self, max_size, max_num_threads, tag_semaphores=None):
+    def __init__(self, max_size, max_num_threads, tag_semaphores=None,
+                 underlying_executor_cls=None):
         """An executor implentation that has a maximum queued up tasks
 
         The executor will block if the number of tasks that have been
@@ -387,9 +388,17 @@ class BoundedExecutor(object):
         :params tag_semaphores: A dictionary where the key is the name of the
             tag and the value is the semaphore to use when limiting the
             number of tasks the executor is processing at a time.
+
+        :type underlying_executor_cls: BaseExecutor
+        :param underlying_executor_cls: The underlying executor class that
+            get bounded by this executor. If None is provided, the
+            concurrent.futures.ThreadPoolExecutor class is used.
         """
         self._max_num_threads = max_num_threads
-        self._executor = self.EXECUTOR_CLS(max_workers=self._max_num_threads)
+        if not underlying_executor_cls:
+            underlying_executor_cls = self.EXECUTOR_CLS
+        self._executor = underlying_executor_cls(
+            max_workers=self._max_num_threads)
         self._semaphore = TaskSemaphore(max_size)
         self._tag_semaphores = tag_semaphores
 
@@ -469,11 +478,20 @@ class ExecutorFuture(object):
         return self._future.done()
 
 
-class NonThreadedExecutor(object):
-    """A drop-in replacement non-threaded version of ThreadPoolExecutor"""
+class BaseExecutor(object):
+    """Base Executor class implementation needed to work with s3transfer"""
     def __init__(self, max_workers=None):
         pass
 
+    def submit(self, fn, *args, **kwargs):
+        raise NotImplementedError('submit()')
+
+    def shutdown(self, wait=True):
+        raise NotImplementedError('shutdown()')
+
+
+class NonThreadedExecutor(BaseExecutor):
+    """A drop-in replacement non-threaded version of ThreadPoolExecutor"""
     def submit(self, fn, *args, **kwargs):
         future = NonThreadedExecutorFuture()
         try:

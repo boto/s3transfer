@@ -26,6 +26,7 @@ from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import ExecutorFuture
+from s3transfer.futures import BaseExecutor
 from s3transfer.futures import NonThreadedExecutor
 from s3transfer.futures import NonThreadedExecutorFuture
 from s3transfer.tasks import Task
@@ -544,6 +545,14 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown returns immediately even if the task is
         # not done, which it should not be because it it slow.
         self.assertFalse(future.done())
+
+    def test_replace_underlying_executor(self):
+        executor = BoundedExecutor(10, 1, {}, BaseExecutor)
+        # The BaseExecutor class has no methods implemented so it should
+        # immediately raise a NotImplementedError once something is
+        # submitted to it
+        with self.assertRaises(NotImplementedError):
+            executor.submit(self.get_task(ReturnFooTask))
 
 
 class TestExecutorFuture(unittest.TestCase):

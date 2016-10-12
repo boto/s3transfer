@@ -12,9 +12,13 @@ REPO_ROOT = _dname(_dname(_dname(os.path.abspath(__file__))))
 os.chdir(os.path.join(REPO_ROOT, 'tests'))
 
 
-def run(command):
-    return check_call(command, shell=True)
+def run(command, env=None):
+    return check_call(command, shell=True, env=env)
 
 
 run('nosetests --with-coverage --cover-erase --cover-package s3transfer '
     '--with-xunit --cover-xml -v unit/ functional/')
+
+# Run the serial implementation of s3transfer
+os.environ['USE_SERIAL_IMPLEMENTATION'] = 'True'
+run('nosetests -v functional/', env=os.environ)

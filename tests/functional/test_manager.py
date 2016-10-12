@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 from botocore.awsrequest import create_request_object
 
+from tests import skip_if_using_serial_implementation
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
@@ -38,6 +39,12 @@ class CallbackEnablingBody(object):
 
 
 class TestTransferManager(StubbedClientTest):
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once all transfers are submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning all transfers will complete before the '
+        'exception being thrown.'
+    )
     def test_error_in_context_manager_cancels_incomplete_transfers(self):
         # The purpose of this test is to make sure if an error is raised
         # in the body of the context manager, incomplete transfers will
@@ -70,6 +77,12 @@ class TestTransferManager(StubbedClientTest):
                 for future in futures:
                     future.result()
 
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once all transfers are submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning all transfers will complete before the '
+        'exception being thrown.'
+    )
     def test_cntrl_c_in_context_manager_cancels_incomplete_transfers(self):
         # The purpose of this test is to make sure if an error is raised
         # in the body of the context manager, incomplete transfers will

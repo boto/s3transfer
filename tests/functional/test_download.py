@@ -25,6 +25,7 @@ from tests import RecordingOSUtils
 from tests import NonSeekableWriter
 from tests import BaseGeneralInterfaceTest
 from tests import skip_if_windows
+from tests import skip_if_using_serial_implementation
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
@@ -317,6 +318,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.assertEqual(len(osutil.rename_records), 1)
 
     @skip_if_windows('Windows does not support UNIX special files')
+    @skip_if_using_serial_implementation(
+        'A seperate thread is needed to read from the fifo')
     def test_download_for_fifo_file(self):
         self.add_head_object_response()
         self.add_successful_get_object_responses()

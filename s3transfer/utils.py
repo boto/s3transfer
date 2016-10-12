@@ -19,9 +19,11 @@ import stat
 import string
 import logging
 import threading
+import io
 from collections import defaultdict
 
 from s3transfer.compat import rename_file
+from s3transfer.compat import seekable
 
 
 MAX_PARTS = 10000
@@ -256,7 +258,7 @@ class OSUtils(object):
         # Block special device
         if stat.S_ISBLK(mode):
             return True
-        # FIFO.
+        # Named pipe / FIFO
         if stat.S_ISFIFO(mode):
             return True
         # Socket.
@@ -269,7 +271,7 @@ class DeferredOpenFile(object):
     def __init__(self, filename, start_byte=0, mode='rb', open_function=open):
         """A class that defers the opening of a file till needed
 
-        This is useful for deffering opening of a file till it is needed
+        This is useful for deferring opening of a file till it is needed
         in a separate thread, as there is a limit of how many open files
         there can be in a single thread for most operating systems. The
         file gets opened in the following methods: ``read()``, ``seek()``,
@@ -296,7 +298,8 @@ class DeferredOpenFile(object):
     def _open_if_needed(self):
         if self._fileobj is None:
             self._fileobj = self._open_function(self._filename, self._mode)
-            self._fileobj.seek(self._start_byte)
+            if self._start_byte != 0:
+                self._fileobj.seek(self._start_byte)
 
     @property
     def name(self):

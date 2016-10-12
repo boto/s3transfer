@@ -16,9 +16,11 @@ import tempfile
 import threading
 import random
 import time
+import io
 
 from tests import unittest
 from tests import RecordingSubscriber
+from tests import NonSeekableWriter
 from s3transfer.compat import six
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
@@ -269,30 +271,33 @@ class TestOSUtils(BaseUtilsTest):
         self.assertFalse(OSUtils().is_special_file(non_existant_filename))
 
 
-class TestDefferedOpenFile(BaseUtilsTest):
+class TestDeferredOpenFile(BaseUtilsTest):
     def setUp(self):
-        super(TestDefferedOpenFile, self).setUp()
+        super(TestDeferredOpenFile, self).setUp()
         self.filename = os.path.join(self.tempdir, 'foo')
         self.contents = b'my contents'
         with open(self.filename, 'wb') as f:
             f.write(self.contents)
         self.deferred_open_file = DeferredOpenFile(
-            self.filename, open_function=self.counting_open_function)
-        self.open_called_count = 0
+            self.filename, open_function=self.recording_open_function)
+        self.open_call_args = []
 
     def tearDown(self):
         self.deferred_open_file.close()
-        super(TestDefferedOpenFile, self).tearDown()
+        super(TestDeferredOpenFile, self).tearDown()
 
-    def counting_open_function(self, filename, mode):
-        self.open_called_count += 1
+    def recording_open_function(self, filename, mode):
+        self.open_call_args.append((filename, mode))
         return open(filename, mode)
+
+    def open_nonseekable(self, filename, mode):
+        self.open_call_args.append((filename, mode))
+        return NonSeekableWriter(six.BytesIO(self.content))
 
     def test_instantiation_does_not_open_file(self):
         DeferredOpenFile(
-            self.filename, open_function=self.counting_open_function)
-        self.open_called_count = 0
-        self.assertEqual(self.open_called_count, 0)
+            self.filename, open_function=self.recording_open_function)
+        self.assertEqual(len(self.open_call_args), 0)
 
     def test_name(self):
         self.assertEqual(self.deferred_open_file.name, self.filename)
@@ -302,12 +307,12 @@ class TestDefferedOpenFile(BaseUtilsTest):
         self.assertEqual(content, self.contents[0:2])
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[2:4])
-        self.assertEqual(self.open_called_count, 1)
+        self.assertEqual(len(self.open_call_args), 1)
 
     def test_write(self):
         self.deferred_open_file = DeferredOpenFile(
             self.filename, mode='wb',
-            open_function=self.counting_open_function)
+            open_function=self.recording_open_function)
 
         write_content = b'foo'
         self.deferred_open_file.write(write_content)
@@ -317,27 +322,57 @@ class TestDefferedOpenFile(BaseUtilsTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(f.read(), write_content*2)
         # Open should have only been called once.
-        self.assertEqual(self.open_called_count, 1)
+        self.assertEqual(len(self.open_call_args), 1)
 
     def test_seek(self):
         self.deferred_open_file.seek(2)
         content = self.deferred_open_file.read(2)
         self.assertEqual(content, self.contents[2:4])
-        self.assertEqual(self.open_called_count, 1)
+        self.assertEqual(len(self.open_call_args), 1)
+
+    def test_open_does_not_seek_with_zero_start_byte(self):
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, mode='wb', start_byte=0,
+            open_function=self.open_nonseekable)
+
+        try:
+            # If this seeks, an UnsupportedOperation error will be raised.
+            self.deferred_open_file.write(b'data')
+        except io.UnsupportedOperation:
+            self.fail('DeferredOpenFile seeked upon opening')
+
+    def test_open_seeks_with_nonzero_start_byte(self):
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, mode='wb', start_byte=5,
+            open_function=self.open_nonseekable)
+
+        # Since a non-seekable file is being opened, calling Seek will raise
+        # an UnsupportedOperation error.
+        with self.assertRaises(io.UnsupportedOperation):
+            self.deferred_open_file.write(b'data')
 
     def test_tell(self):
         self.deferred_open_file.tell()
         # tell() should not have opened the file if it has not been seeked
         # or read because we know the start bytes upfront.
-        self.assertEqual(self.open_called_count, 0)
+        self.assertEqual(len(self.open_call_args), 0)
 
         self.deferred_open_file.seek(2)
         self.assertEqual(self.deferred_open_file.tell(), 2)
-        self.assertEqual(self.open_called_count, 1)
+        self.assertEqual(len(self.open_call_args), 1)
+
+    def test_open_args(self):
+        self.deferred_open_file = DeferredOpenFile(
+            self.filename, mode='ab+',
+            open_function=self.recording_open_function)
+        # Force an open
+        self.deferred_open_file.write(b'data')
+        self.assertEqual(len(self.open_call_args), 1)
+        self.assertEqual(self.open_call_args[0], (self.filename, 'ab+'))
 
     def test_context_handler(self):
         with self.deferred_open_file:
-            self.assertEqual(self.open_called_count, 1)
+            self.assertEqual(len(self.open_call_args), 1)
 
 
 class TestReadFileChunk(BaseUtilsTest):

@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.8
+=====
+
+* feature:download: Support downloading to FIFOs.
+
+
 0.1.7
 =====
 

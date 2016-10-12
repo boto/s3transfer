@@ -1,0 +1,7 @@
+[
+  {
+    "category": "download", 
+    "description": "Support downloading to FIFOs.", 
+    "type": "feature"
+  }
+]

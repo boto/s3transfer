@@ -18,6 +18,7 @@ import socket
 
 from botocore.compat import six
 
+queue = six.moves.queue
 
 if sys.platform.startswith('win'):
     def rename_file(current_filename, new_filename):
@@ -46,12 +47,16 @@ if six.PY3:
     # ConnectionError
     SOCKET_ERROR = ConnectionError
     MAXINT = None
+    TimeoutError = TimeoutError
 else:
     def accepts_kwargs(func):
         return inspect.getargspec(func)[2]
 
     SOCKET_ERROR = socket.error
     MAXINT = sys.maxint
+
+    class TimeoutError(Exception):
+        pass
 
 
 def seekable(fileobj):

@@ -11,16 +11,22 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-from concurrent.futures import ThreadPoolExecutor
+import sys
+import traceback
 
 from tests import unittest
 from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
+from s3transfer.compat import queue
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
+from s3transfer.futures import ExecutorWorker
+from s3transfer.futures import ThreadPoolExecutor
+from s3transfer.futures import ExecutorWorkerTask
+from s3transfer.futures import ExecutorWorkerShutdownTask
 from s3transfer.futures import BoundedExecutor
 from s3transfer.futures import ExecutorFuture
 from s3transfer.tasks import Task
@@ -29,8 +35,23 @@ from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import NoResourcesAvailable
 
 
+def return_foo():
+    return 'foo'
+
+
 def return_call_args(*args, **kwargs):
     return args, kwargs
+
+
+def raise_exception(exception):
+    raise exception
+
+
+def get_exc_info(exception, ):
+    try:
+        raise_exception(exception)
+    except type(exception):
+        return sys.exc_info()
 
 
 class RecordingTransferCoordinator(TransferCoordinator):
@@ -505,24 +526,142 @@ class TestBoundedExecutor(unittest.TestCase):
         self.assertFalse(future.done())
 
 
+class TestThreadPoolExecutor(unittest.TestCase):
+    def test_submit(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_foo)
+
+        self.assertIsInstance(future, ExecutorFuture)
+        self.assertEqual(future.result(), 'foo')
+
+    def test_submit_with_positional_args(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, 1, 2)
+
+        self.assertEqual(future.result(), ((1, 2), {}))
+
+    def test_submit_with_kwarg_args(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, foo='bar', biz='baz')
+
+        self.assertEqual(future.result(), ((), {'foo': 'bar', 'biz': 'baz'}))
+
+    def test_submit_with_both_positional_and_kwargs(self):
+        with ThreadPoolExecutor(1) as e:
+            future = e.submit(return_call_args, 1, foo='bar')
+
+        self.assertEqual(future.result(), ((1, ), {'foo': 'bar'}))
+
+    def test_submit_no_wait(self):
+        thread_sleep_time = 0.25
+        executor = ThreadPoolExecutor(1)
+        start_time = time.time()
+        executor.submit(time.sleep, thread_sleep_time)
+        executor.shutdown(False)
+        end_time = time.time()
+        # Since the executor should not wait for the thread to finish
+        # it should pretty much return immediately from shutdown and be less
+        # than however long period of time the thread slept for.
+        self.assertTrue(end_time - start_time, thread_sleep_time)
+
+
+class TestExecutorWorker(unittest.TestCase):
+    def setUp(self):
+        self.task_queue = queue.Queue()
+
+    def test_sets_result(self):
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = ExecutorFuture()
+        self.task_queue.put(ExecutorWorkerTask(future, return_foo))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+        self.assertEqual(future.result(), 'foo')
+
+    def test_sets_exception(self):
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = ExecutorFuture()
+        exception_task = FunctionContainer(raise_exception, RuntimeError())
+        self.task_queue.put(ExecutorWorkerTask(future, exception_task))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+        with self.assertRaises(RuntimeError):
+            future.result()
+
+    def test_sets_exception_and_captures_info(self):
+        exception = ValueError('message')
+        tb = get_exc_info(exception)[2]
+        exception_task = FunctionContainer(raise_exception, exception)
+
+        worker = ExecutorWorker(self.task_queue)
+        worker.start()
+        future = ExecutorFuture()
+        self.task_queue.put(ExecutorWorkerTask(future, exception_task))
+        self.task_queue.put(ExecutorWorkerShutdownTask())
+        worker.join()
+
+        try:
+            future.result()
+            # An exception should have been raised
+            self.fail('Future should have raised a ValueError')
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
+
 class TestExecutorFuture(unittest.TestCase):
+    def setUp(self):
+        self.future = ExecutorFuture()
+
+    def test_done_starts_false(self):
+        self.assertFalse(self.future.done())
+
+    def test_done_after_setting_result(self):
+        self.future.set_result('result')
+        self.assertTrue(self.future.done())
+
+    def test_done_after_setting_exception(self):
+        self.future.set_exception_info(Exception(), None)
+        self.assertTrue(self.future.done())
+
     def test_result(self):
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-        self.assertEqual(wrapped_future.result(), (('foo',), {'biz': 'baz'}))
+        self.future.set_result('result')
+        self.assertEqual(self.future.result(), 'result')
 
-    def test_done(self):
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-        self.assertTrue(wrapped_future.done())
+    def test_exception_result(self):
+        exception = ValueError('message')
+        self.future.set_exception_info(exception, None)
+        with self.assertRaisesRegexp(ValueError, 'message'):
+            self.future.result()
 
-    def test_add_done_callback(self):
+    def test_exception_result_doesnt_modify_last_frame(self):
+        exception = ValueError('message')
+        tb = get_exc_info(exception)[2]
+        self.future.set_exception_info(exception, tb)
+        try:
+            self.future.result()
+            # An exception should have been raised
+            self.fail()
+        except ValueError:
+            actual_tb = sys.exc_info()[2]
+            last_frame = traceback.extract_tb(actual_tb)[-1]
+            last_expected_frame = traceback.extract_tb(tb)[-1]
+            self.assertEqual(last_frame, last_expected_frame)
+
+    def test_done_callback(self):
         done_callbacks = []
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(return_call_args, 'foo', biz='baz')
-            wrapped_future = ExecutorFuture(future)
-            wrapped_future.add_done_callback(
-                FunctionContainer(done_callbacks.append, 'called'))
+        self.future.add_done_callback(
+            FunctionContainer(done_callbacks.append, 'called'))
+        self.assertEqual(done_callbacks, [])
+        self.future.set_result('result')
+        self.assertEqual(done_callbacks, ['called'])
+
+    def test_done_callback_after_done(self):
+        self.future.set_result('result')
+        done_callbacks = []
+        self.future.add_done_callback(
+            FunctionContainer(done_callbacks.append, 'called'))
         self.assertEqual(done_callbacks, ['called'])

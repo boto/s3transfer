@@ -97,6 +97,16 @@ class TestTransferFuture(unittest.TestCase):
         self.assertTrue(self.future.done())
         self.assertEqual(self.coordinator.status, 'cancelled')
 
+    def test_set_exception(self):
+        # Set the result such that there is no exception
+        self.coordinator.set_result('result')
+        self.coordinator.announce_done()
+        self.assertEqual(self.future.result(), 'result')
+
+        self.future.set_exception(ValueError())
+        with self.assertRaises(ValueError):
+            self.future.result()
+
 
 class TestTransferMeta(unittest.TestCase):
     def setUp(self):
@@ -178,12 +188,12 @@ class TestTransferCoordinator(unittest.TestCase):
         with self.assertRaises(exception_result):
             self.transfer_coordinator.result()
 
-    def test_exception_cannot_override_done_state(self):
+    def test_exception_can_override_done_state(self):
         self.transfer_coordinator.set_result('foo')
         self.transfer_coordinator.set_exception(RuntimeError)
         # It status should be success even after the exception is set because
         # succes is a done state.
-        self.assertEqual(self.transfer_coordinator.status, 'success')
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
 
     def test_cancel(self):
         self.assertEqual(self.transfer_coordinator.status, 'not-started')

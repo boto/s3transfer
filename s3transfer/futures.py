@@ -77,6 +77,9 @@ class TransferFuture(object):
         """Cancels the request associated with the TransferFuture"""
         self._coordinator.cancel()
 
+    def set_exception(self, exception):
+        self._coordinator.set_exception(exception)
+
 
 class TransferMeta(object):
     """Holds metadata about the TransferFuture"""
@@ -197,9 +200,8 @@ class TransferCoordinator(object):
         Implies the TransferFuture failed.
         """
         with self._lock:
-            if not self.done():
-                self._exception = exception
-                self._status = 'failed'
+            self._exception = exception
+            self._status = 'failed'
 
     def result(self):
         """Waits until TransferFuture is done and returns the result

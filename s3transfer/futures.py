@@ -83,7 +83,7 @@ class TransferFuture(object):
             raise TransferNotDoneError(
                 'set_exception can only be called once the transfer is '
                 'complete.')
-        self._coordinator.set_exception(exception)
+        self._coordinator.set_exception(exception, override=True)
 
 
 class TransferMeta(object):
@@ -199,13 +199,16 @@ class TransferCoordinator(object):
             self._result = result
             self._status = 'success'
 
-    def set_exception(self, exception):
+    def set_exception(self, exception, override=False):
         """Set an exception for the TransferFuture
 
         Implies the TransferFuture failed.
+
+        :param exception: The exception that cause the transfer to fail.
+        :param override: If True, override any existing state.
         """
         with self._lock:
-            if self._exception is None:
+            if not self.done() or override:
                 self._exception = exception
                 self._status = 'failed'
 

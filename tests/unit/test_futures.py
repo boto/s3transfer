@@ -199,19 +199,17 @@ class TestTransferCoordinator(unittest.TestCase):
         with self.assertRaises(exception_result):
             self.transfer_coordinator.result()
 
-    def test_exception_can_override_done_state(self):
+    def test_exception_cannot_override_done_state(self):
         self.transfer_coordinator.set_result('foo')
         self.transfer_coordinator.set_exception(RuntimeError)
         # It status should be success even after the exception is set because
         # success is a done state.
-        self.assertEqual(self.transfer_coordinator.status, 'failed')
+        self.assertEqual(self.transfer_coordinator.status, 'success')
 
-    def test_exception_cannot_be_overwriten(self):
-        self.transfer_coordinator.set_exception(RuntimeError)
-        self.transfer_coordinator.announce_done()
-        self.transfer_coordinator.set_exception(ValueError)
-        with self.assertRaises(RuntimeError):
-            self.transfer_coordinator.result()
+    def test_exception_can_override_done_state_with_override_flag(self):
+        self.transfer_coordinator.set_result('foo')
+        self.transfer_coordinator.set_exception(RuntimeError, override=True)
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
 
     def test_cancel(self):
         self.assertEqual(self.transfer_coordinator.status, 'not-started')

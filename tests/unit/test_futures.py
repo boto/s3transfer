@@ -18,6 +18,7 @@ from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
+from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferCoordinator
@@ -107,6 +108,16 @@ class TestTransferFuture(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.future.result()
 
+    def test_set_exception_only_after_done(self):
+        with self.assertRaises(TransferNotDoneError):
+            self.future.set_exception(ValueError())
+
+        self.coordinator.set_result('result')
+        self.coordinator.announce_done()
+        self.future.set_exception(ValueError())
+        with self.assertRaises(ValueError):
+            self.future.result()
+        
 
 class TestTransferMeta(unittest.TestCase):
     def setUp(self):
@@ -192,8 +203,15 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.set_result('foo')
         self.transfer_coordinator.set_exception(RuntimeError)
         # It status should be success even after the exception is set because
-        # succes is a done state.
+        # success is a done state.
         self.assertEqual(self.transfer_coordinator.status, 'failed')
+
+    def test_exception_cannot_be_overwriten(self):
+        self.transfer_coordinator.set_exception(RuntimeError)
+        self.transfer_coordinator.announce_done()
+        self.transfer_coordinator.set_exception(ValueError)
+        with self.assertRaises(RuntimeError):
+            self.transfer_coordinator.result()
 
     def test_cancel(self):
         self.assertEqual(self.transfer_coordinator.status, 'not-started')

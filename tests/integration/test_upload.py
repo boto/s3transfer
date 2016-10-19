@@ -15,6 +15,7 @@ import time
 from concurrent.futures import CancelledError
 
 from botocore.compat import six
+from tests import skip_if_using_serial_implementation
 from tests import RecordingSubscriber, NonSeekableReader
 from tests.integration import BaseTransferManagerIntegTest
 from s3transfer.manager import TransferConfig
@@ -49,6 +50,12 @@ class TestUpload(BaseTransferManagerIntegTest):
         future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
 
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once the transfer is submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning the transfer will complete before the '
+        'KeyboardInterrupt being thrown.'
+    )
     def test_large_upload_exits_quicky_on_exception(self):
         transfer_manager = self.create_transfer_manager(self.config)
 
@@ -90,6 +97,13 @@ class TestUpload(BaseTransferManagerIntegTest):
             # make sure the object does not exist.
             self.assertFalse(self.object_exists('20mb.txt'))
 
+
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once the transfers are submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning the transfers will complete before the '
+        'KeyboardInterrupt being thrown.'
+    )
     def test_many_files_exits_quicky_on_exception(self):
         # Set the max request queue size and number of submission threads
         # to something small to simulate having a large queue

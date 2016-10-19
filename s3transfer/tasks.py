@@ -253,7 +253,7 @@ class SubmissionTask(Task):
             # Call the submit method to start submitting tasks to execute the
             # transfer.
             self._submit(transfer_future=transfer_future, **kwargs)
-        except Exception as e:
+        except BaseException as e:
             # If there was an exception rasied during the submission of task
             # there is a chance that the final task that signals if a transfer
             # is done and too run the cleanup may never have been submitted in

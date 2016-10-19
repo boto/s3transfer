@@ -497,7 +497,7 @@ class NonThreadedExecutor(BaseExecutor):
         try:
             result = fn(*args, **kwargs)
             future.set_result(result)
-        except BaseException:
+        except Exception:
             e, tb = sys.exc_info()[1:]
             logger.debug(
                 'Setting exception for %s to %s with traceback %s',

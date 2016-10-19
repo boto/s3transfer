@@ -17,7 +17,7 @@ import logging
 import threading
 
 from s3transfer.compat import MAXINT
-from s3transfer.exceptions import CancelledError
+from s3transfer.exceptions import CancelledError, TransferNotDoneError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
@@ -76,6 +76,14 @@ class TransferFuture(object):
     def cancel(self):
         """Cancels the request associated with the TransferFuture"""
         self._coordinator.cancel()
+
+    def set_exception(self, exception):
+        """Sets the exception on the future."""
+        if not self.done():
+            raise TransferNotDoneError(
+                'set_exception can only be called once the transfer is '
+                'complete.')
+        self._coordinator.set_exception(exception, override=True)
 
 
 class TransferMeta(object):
@@ -191,13 +199,16 @@ class TransferCoordinator(object):
             self._result = result
             self._status = 'success'
 
-    def set_exception(self, exception):
+    def set_exception(self, exception, override=False):
         """Set an exception for the TransferFuture
 
         Implies the TransferFuture failed.
+
+        :param exception: The exception that cause the transfer to fail.
+        :param override: If True, override any existing state.
         """
         with self._lock:
-            if not self.done():
+            if not self.done() or override:
                 self._exception = exception
                 self._status = 'failed'
 

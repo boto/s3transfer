@@ -27,6 +27,10 @@ class InvalidSubscriberMethodError(Exception):
     pass
 
 
+class TransferNotDoneError(Exception):
+    pass
+
+
 class FatalError(CancelledError):
     """A CancelledError raised from an error in the TransferManager"""
     pass

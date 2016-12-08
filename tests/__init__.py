@@ -48,7 +48,7 @@ def setup_package():
 
 
 def is_serial_implementation():
-    return os.environ.get('USE_SERIAL_IMPLEMENTATION', False)
+    return os.environ.get('USE_SERIAL_EXECUTOR', False)
 
 
 def assert_files_equal(first, second):

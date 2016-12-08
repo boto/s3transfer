@@ -20,5 +20,5 @@ run('nosetests --with-xunit --cover-erase --with-coverage '
     '--cover-package s3transfer --cover-xml -v integration')
 
 # Run the serial implementation of s3transfer
-os.environ['USE_SERIAL_IMPLEMENTATION'] = 'True'
+os.environ['USE_SERIAL_EXECUTOR'] = 'True'
 run('nosetests -v integration', env=os.environ)

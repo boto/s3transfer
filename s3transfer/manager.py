@@ -226,7 +226,7 @@ class TransferManager(object):
                 IN_MEMORY_DOWNLOAD_TAG: SlidingWindowSemaphore(
                     self._config.max_in_memory_download_chunks)
             },
-            underlying_executor_cls=executor_cls
+            executor_cls=executor_cls
         )
 
         # The executor responsible for submitting the necessary tasks to
@@ -234,7 +234,7 @@ class TransferManager(object):
         self._submission_executor = BoundedExecutor(
             max_size=self._config.max_submission_queue_size,
             max_num_threads=self._config.max_submission_concurrency,
-            underlying_executor_cls=executor_cls
+            executor_cls=executor_cls
 
         )
 
@@ -243,7 +243,7 @@ class TransferManager(object):
         self._io_executor = BoundedExecutor(
             max_size=self._config.max_io_queue_size,
             max_num_threads=1,
-            underlying_executor_cls=executor_cls
+            executor_cls=executor_cls
         )
         self._register_handlers()
 

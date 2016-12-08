@@ -370,7 +370,7 @@ class BoundedExecutor(object):
     EXECUTOR_CLS = futures.ThreadPoolExecutor
 
     def __init__(self, max_size, max_num_threads, tag_semaphores=None,
-                 underlying_executor_cls=None):
+                 executor_cls=None):
         """An executor implentation that has a maximum queued up tasks
 
         The executor will block if the number of tasks that have been
@@ -389,16 +389,15 @@ class BoundedExecutor(object):
             tag and the value is the semaphore to use when limiting the
             number of tasks the executor is processing at a time.
 
-        :type underlying_executor_cls: BaseExecutor
-        :param underlying_executor_cls: The underlying executor class that
+        :type executor_cls: BaseExecutor
+        :param underlying_executor_cls: The executor class that
             get bounded by this executor. If None is provided, the
             concurrent.futures.ThreadPoolExecutor class is used.
         """
         self._max_num_threads = max_num_threads
-        if not underlying_executor_cls:
-            underlying_executor_cls = self.EXECUTOR_CLS
-        self._executor = underlying_executor_cls(
-            max_workers=self._max_num_threads)
+        if not executor_cls:
+            executor_cls = self.EXECUTOR_CLS
+        self._executor = executor_cls(max_workers=self._max_num_threads)
         self._semaphore = TaskSemaphore(max_size)
         self._tag_semaphores = tag_semaphores
 

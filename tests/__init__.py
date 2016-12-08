@@ -42,9 +42,16 @@ from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
 
 
+ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
+
+
 def setup_package():
     if is_serial_implementation():
         BoundedExecutor.EXECUTOR_CLS = NonThreadedExecutor
+
+
+def teardown_package():
+    BoundedExecutor.EXECUTOR_CLS = ORIGINAL_EXECUTOR_CLS
 
 
 def is_serial_implementation():

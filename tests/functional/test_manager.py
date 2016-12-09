@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from botocore.awsrequest import create_request_object
+import mock
 
 from tests import skip_if_using_serial_implementation
 from tests import StubbedClientTest
@@ -141,10 +142,8 @@ class TestTransferManager(StubbedClientTest):
             'once')
 
     def test_use_custom_executor_implementation(self):
+        mocked_executor_cls = mock.Mock(BaseExecutor)
         transfer_manager = TransferManager(
-            self.client, executor_cls=BaseExecutor)
-        # The BaseExecutor class has no methods implemented so it should
-        # immediately raise a NotImplementedError once something is
-        # submitted to it
-        with self.assertRaises(NotImplementedError):
-            transfer_manager.delete('bucket', 'key')
+            self.client, executor_cls=mocked_executor_cls)
+        transfer_manager.delete('bucket', 'key')
+        self.assertTrue(mocked_executor_cls.return_value.submit.called)

@@ -13,6 +13,8 @@
 import sys
 import time
 import traceback
+
+import mock
 from concurrent.futures import ThreadPoolExecutor
 
 from tests import unittest
@@ -547,12 +549,10 @@ class TestBoundedExecutor(unittest.TestCase):
         self.assertFalse(future.done())
 
     def test_replace_underlying_executor(self):
-        executor = BoundedExecutor(10, 1, {}, BaseExecutor)
-        # The BaseExecutor class has no methods implemented so it should
-        # immediately raise a NotImplementedError once something is
-        # submitted to it
-        with self.assertRaises(NotImplementedError):
-            executor.submit(self.get_task(ReturnFooTask))
+        mocked_executor_cls = mock.Mock(BaseExecutor)
+        executor = BoundedExecutor(10, 1, {}, mocked_executor_cls)
+        executor.submit(self.get_task(ReturnFooTask))
+        self.assertTrue(mocked_executor_cls.return_value.submit.called)
 
 
 class TestExecutorFuture(unittest.TestCase):

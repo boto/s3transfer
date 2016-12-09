@@ -258,6 +258,12 @@ class SubmissionTask(Task):
             # there is a chance that the final task that signals if a transfer
             # is done and too run the cleanup may never have been submitted in
             # the first place so we need to account accordingly.
+            #
+            # Note that BaseException is caught, instead of Exception, because
+            # for some implmentations of executors, specifically the serial
+            # implementation, the SubmissionTask is directly exposed to
+            # KeyboardInterupts and so need to cleanup and signal done
+            # for those as well.
 
             # Set the exception, that caused the process to fail.
             self._log_and_set_exception(e)

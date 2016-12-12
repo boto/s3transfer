@@ -262,7 +262,7 @@ class SubmissionTask(Task):
             # Note that BaseException is caught, instead of Exception, because
             # for some implmentations of executors, specifically the serial
             # implementation, the SubmissionTask is directly exposed to
-            # KeyboardInterupts and so need to cleanup and signal done
+            # KeyboardInterupts and so needs to cleanup and signal done
             # for those as well.
 
             # Set the exception, that caused the process to fail.

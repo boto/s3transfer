@@ -395,7 +395,7 @@ class BoundedExecutor(object):
             concurrent.futures.ThreadPoolExecutor class is used.
         """
         self._max_num_threads = max_num_threads
-        if not executor_cls:
+        if executor_cls is None:
             executor_cls = self.EXECUTOR_CLS
         self._executor = executor_cls(max_workers=self._max_num_threads)
         self._semaphore = TaskSemaphore(max_size)

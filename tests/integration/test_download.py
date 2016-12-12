@@ -18,6 +18,7 @@ from concurrent.futures import CancelledError
 
 from tests import assert_files_equal
 from tests import skip_if_windows
+from tests import skip_if_using_serial_implementation
 from tests import RecordingSubscriber
 from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
@@ -58,6 +59,12 @@ class TestDownload(BaseTransferManagerIntegTest):
         future.result()
         assert_files_equal(filename, download_path)
 
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once the transfer is submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning the transfer will complete before the '
+        'KeyboardInterrupt being thrown.'
+    )
     def test_large_download_exits_quicky_on_exception(self):
         transfer_manager = self.create_transfer_manager(self.config)
 
@@ -99,6 +106,12 @@ class TestDownload(BaseTransferManagerIntegTest):
         possible_matches = glob.glob('%s*' % download_path)
         self.assertEqual(possible_matches, [])
 
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once the transfer is submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning the transfer will complete before the '
+        'KeyboardInterrupt being thrown.'
+    )
     def test_many_files_exits_quicky_on_exception(self):
         # Set the max request queue size and number of submission threads
         # to something small to simulate having a large queue

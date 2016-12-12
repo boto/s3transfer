@@ -34,11 +34,28 @@ from s3transfer.futures import TransferCoordinator
 from s3transfer.futures import TransferMeta
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import BoundedExecutor
+from s3transfer.futures import NonThreadedExecutor
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from s3transfer.utils import CallArgs
 from s3transfer.utils import TaskSemaphore
 from s3transfer.utils import SlidingWindowSemaphore
+
+
+ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
+
+
+def setup_package():
+    if is_serial_implementation():
+        BoundedExecutor.EXECUTOR_CLS = NonThreadedExecutor
+
+
+def teardown_package():
+    BoundedExecutor.EXECUTOR_CLS = ORIGINAL_EXECUTOR_CLS
+
+
+def is_serial_implementation():
+    return os.environ.get('USE_SERIAL_EXECUTOR', False)
 
 
 def assert_files_equal(first, second):
@@ -79,6 +96,14 @@ def skip_if_windows(reason):
     def decorator(func):
         return unittest.skipIf(
             platform.system() not in ['Darwin', 'Linux'], reason)(func)
+    return decorator
+
+
+def skip_if_using_serial_implementation(reason):
+    """Decorator to skip tests when running as the serial implementation"""
+    def decorator(func):
+        return unittest.skipIf(
+            is_serial_implementation(), reason)(func)
     return decorator
 
 

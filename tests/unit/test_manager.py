@@ -53,7 +53,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
         # Ensure that is tracked.
         self.assertEqual(
             self.coordinator_controller.tracked_transfer_coordinators,
-            set([transfer_coordinator]))
+            {transfer_coordinator})
 
     def test_remove_transfer_coordinator(self):
         transfer_coordinator = TransferCoordinator()

@@ -19,10 +19,7 @@ import shutil
 import string
 import tempfile
 
-try:
-    import unittest2 as unittest
-except ImportError:
-    import unittest
+import unittest
 import botocore.session
 from botocore.stub import Stubber
 from botocore.compat import six

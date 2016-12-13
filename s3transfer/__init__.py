@@ -146,13 +146,8 @@ __author__ = 'Amazon Web Services'
 __version__ = '0.1.9'
 
 
-class NullHandler(logging.Handler):
-    def emit(self, record):
-        pass
-
-
 logger = logging.getLogger(__name__)
-logger.addHandler(NullHandler())
+logger.addHandler(logging.NullHandler())
 
 queue = six.moves.queue
 

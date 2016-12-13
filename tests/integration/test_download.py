@@ -90,7 +90,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple second after
         # sleeping to exit.
-        max_allowed_exit_time = sleep_time + 1
+        max_allowed_exit_time = sleep_time + 4
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
             "Failed to exit under %s. Instead exited in %s." % (

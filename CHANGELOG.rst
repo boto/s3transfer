@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.9
+=====
+
+* feature:``TransferFuture``: Add support for setting exceptions on transfer future
+
+
 0.1.8
 =====
 

@@ -11,10 +11,13 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from botocore.awsrequest import create_request_object
+import mock
 
+from tests import skip_if_using_serial_implementation
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import FatalError
+from s3transfer.futures import BaseExecutor
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
 
@@ -37,6 +40,12 @@ class CallbackEnablingBody(object):
 
 
 class TestTransferManager(StubbedClientTest):
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once all transfers are submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning all transfers will complete before the '
+        'exception being thrown.'
+    )
     def test_error_in_context_manager_cancels_incomplete_transfers(self):
         # The purpose of this test is to make sure if an error is raised
         # in the body of the context manager, incomplete transfers will
@@ -69,6 +78,12 @@ class TestTransferManager(StubbedClientTest):
                 for future in futures:
                     future.result()
 
+    @skip_if_using_serial_implementation(
+        'Exception is thrown once all transfers are submitted. '
+        'However for the serial implementation, transfers are performed '
+        'in main thread meaning all transfers will complete before the '
+        'exception being thrown.'
+    )
     def test_cntrl_c_in_context_manager_cancels_incomplete_transfers(self):
         # The purpose of this test is to make sure if an error is raised
         # in the body of the context manager, incomplete transfers will
@@ -125,3 +140,10 @@ class TestTransferManager(StubbedClientTest):
             body.disable_callback_call_count, 1,
             'The disable_callback() should have only ever been registered '
             'once')
+
+    def test_use_custom_executor_implementation(self):
+        mocked_executor_cls = mock.Mock(BaseExecutor)
+        transfer_manager = TransferManager(
+            self.client, executor_cls=mocked_executor_cls)
+        transfer_manager.delete('bucket', 'key')
+        self.assertTrue(mocked_executor_cls.return_value.submit.called)

@@ -69,14 +69,14 @@ class NOOPSubmissionTask(SubmissionTask):
 
 class ExceptionSubmissionTask(SubmissionTask):
     def _submit(self, transfer_future, executor=None, tasks_to_submit=None,
-                additional_callbacks=None):
+                additional_callbacks=None, exception=TaskFailureException):
         if executor and tasks_to_submit:
             for task_to_submit in tasks_to_submit:
                 self._transfer_coordinator.submit(executor, task_to_submit)
         if additional_callbacks:
             for callback in additional_callbacks:
                 callback()
-        raise TaskFailureException()
+        raise exception()
 
 
 class StatusRecordingTransferCoordinator(TransferCoordinator):
@@ -162,6 +162,16 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # Make sure the future propogates the exception encountered in the
         # submission task.
         with self.assertRaises(TaskFailureException):
+            self.transfer_future.result()
+
+    def test_catches_and_sets_keyboard_interrupt_exception_from_submit(self):
+        self.main_kwargs['exception'] = KeyboardInterrupt
+        submission_task = self.get_task(
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+        submission_task()
+
+        self.assertEqual(self.transfer_coordinator.status, 'failed')
+        with self.assertRaises(KeyboardInterrupt):
             self.transfer_future.result()
 
     def test_calls_done_callbacks_on_exception(self):

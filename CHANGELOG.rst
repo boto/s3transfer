@@ -2,6 +2,18 @@
 CHANGELOG
 =========
 
+0.1.10
+======
+
+* feature:``TransferManager``: Expose ability to use own executor class for ``TransferManager``
+
+
+0.1.9
+=====
+
+* feature:``TransferFuture``: Add support for setting exceptions on transfer future
+
+
 0.1.8
 =====
 

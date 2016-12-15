@@ -1,5 +1,0 @@
-{
-  "category": "``TransferManager``", 
-  "type": "feature", 
-  "description": "Expose ability to use own executor class for ``TransferManager``"
-}

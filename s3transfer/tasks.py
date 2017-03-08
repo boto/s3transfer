@@ -254,7 +254,7 @@ class SubmissionTask(Task):
             # transfer.
             self._submit(transfer_future=transfer_future, **kwargs)
         except BaseException as e:
-            # If there was an exception rasied during the submission of task
+            # If there was an exception raised during the submission of task
             # there is a chance that the final task that signals if a transfer
             # is done and too run the cleanup may never have been submitted in
             # the first place so we need to account accordingly.

@@ -74,3 +74,15 @@ class TestReadable(unittest.TestCase):
 
     def test_non_file_like_obj(self):
         self.assertFalse(readable(object()))
+
+    def test_file_modes(self):
+        readable_modes = ['r', 'rb', 'r+', 'rb+', 'w+', 'wb+', 'a+', 'ab+']
+        non_readable_modes = ['w', 'wb', 'a', 'ab']
+
+        for mode in readable_modes:
+            with tempfile.TemporaryFile(mode=mode) as f:
+                self.assertTrue(readable(f))
+
+        for mode in non_readable_modes:
+            with tempfile.TemporaryFile(mode=mode) as f:
+                self.assertFalse(readable(f))

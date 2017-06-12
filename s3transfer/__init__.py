@@ -276,8 +276,8 @@ class ReadFileChunk(object):
     def disable_callback(self):
         self._callback_enabled = False
 
-    def seek(self, where):
-        self._fileobj.seek(self._start_byte + where)
+    def seek(self, where, whence=0):
+        self._fileobj.seek(self._start_byte + where, whence)
         if self._callback is not None and self._callback_enabled:
             # To also rewind the callback() for an accurate progress report
             self._callback(where - self._amount_read)

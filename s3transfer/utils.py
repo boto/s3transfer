@@ -313,9 +313,9 @@ class DeferredOpenFile(object):
         self._open_if_needed()
         self._fileobj.write(data)
 
-    def seek(self, where):
+    def seek(self, where, whence=0):
         self._open_if_needed()
-        self._fileobj.seek(where)
+        self._fileobj.seek(where, whence)
 
     def tell(self):
         if self._fileobj is None:
@@ -439,8 +439,8 @@ class ReadFileChunk(object):
     def disable_callback(self):
         self._callbacks_enabled = False
 
-    def seek(self, where):
-        self._fileobj.seek(self._start_byte + where)
+    def seek(self, where, whence=0):
+        self._fileobj.seek(self._start_byte + where, whence)
         if self._callbacks is not None and self._callbacks_enabled:
             # To also rewind the callback() for an accurate progress report
             invoke_progress_callbacks(

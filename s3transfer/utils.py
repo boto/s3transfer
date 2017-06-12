@@ -363,9 +363,9 @@ class DeferredOpenFile(object):
         self._open_if_needed()
         self._fileobj.write(data)
 
-    def seek(self, where):
+    def seek(self, where, whence=0):
         self._open_if_needed()
-        self._fileobj.seek(where)
+        self._fileobj.seek(where, whence)
 
     def tell(self):
         if self._fileobj is None:
@@ -499,13 +499,27 @@ class ReadFileChunk(object):
     def disable_callback(self):
         self._callbacks_enabled = False
 
-    def seek(self, where):
-        self._fileobj.seek(self._start_byte + where)
+    def seek(self, where, whence=0):
+        if whence not in (0, 1, 2):
+            # Mimic io's error for invalid whence values
+            raise ValueError(
+                "invalid whence (%s, should be 0, 1 or 2)" % whence)
+
+        # Recalculate where based on chunk attributes so seek from file
+        # start (whence=0) is always used
+        where += self._start_byte
+        if whence == 1:
+            where += self._amount_read
+        elif whence == 2:
+            where += self._size
+
+        self._fileobj.seek(where)
         if self._callbacks is not None and self._callbacks_enabled:
             # To also rewind the callback() for an accurate progress report
+            amount = where - self._start_byte - self._amount_read
             invoke_progress_callbacks(
-                self._callbacks, bytes_transferred=where - self._amount_read)
-        self._amount_read = where
+                self._callbacks, bytes_transferred=amount)
+        self._amount_read = where - self._start_byte
 
     def close(self):
         if self._close_callbacks is not None and self._callbacks_enabled:

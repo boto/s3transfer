@@ -26,11 +26,13 @@ class ArbitraryException(Exception):
     pass
 
 
-class CallbackEnablingBody(object):
+class CallbackEnablingBody(bytes):
     """A mocked body with callback enabling/disabling"""
     def __init__(self):
         self.enable_callback_call_count = 0
         self.disable_callback_call_count = 0
+
+        super(CallbackEnablingBody, self).__init__()
 
     def enable_callback(self):
         self.enable_callback_call_count += 1

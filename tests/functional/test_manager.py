@@ -147,3 +147,8 @@ class TestTransferManager(StubbedClientTest):
             self.client, executor_cls=mocked_executor_cls)
         transfer_manager.delete('bucket', 'key')
         self.assertTrue(mocked_executor_cls.return_value.submit.called)
+
+    def test_unicode_exception_in_context_manager(self):
+        with self.assertRaises(ArbitraryException):
+            with TransferManager(self.client):
+                raise ArbitraryException(u'\u2713')

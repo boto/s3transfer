@@ -10,6 +10,7 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+from io import RawIOBase
 from botocore.awsrequest import create_request_object
 import mock
 
@@ -26,9 +27,10 @@ class ArbitraryException(Exception):
     pass
 
 
-class CallbackEnablingBody(object):
+class CallbackEnablingBody(RawIOBase):
     """A mocked body with callback enabling/disabling"""
     def __init__(self):
+        super(CallbackEnablingBody, self).__init__()
         self.enable_callback_call_count = 0
         self.disable_callback_call_count = 0
 
@@ -37,6 +39,15 @@ class CallbackEnablingBody(object):
 
     def disable_callback(self):
         self.disable_callback_call_count += 1
+
+    def seek(self, where):
+        pass
+
+    def tell(self):
+        return 0
+
+    def read(self, amount=0):
+        return b''
 
 
 class TestTransferManager(StubbedClientTest):

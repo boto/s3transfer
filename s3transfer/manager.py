@@ -14,6 +14,8 @@ import copy
 import logging
 import threading
 
+from botocore.compat import six
+
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import disable_upload_callbacks
 from s3transfer.utils import enable_upload_callbacks
@@ -496,7 +498,7 @@ class TransferManager(object):
         # all of the inprogress futures in the shutdown.
         if exc_type:
             cancel = True
-            cancel_msg = str(exc_value)
+            cancel_msg = six.text_type(exc_value)
             if not cancel_msg:
                 cancel_msg = repr(exc_value)
             # If it was a KeyboardInterrupt, the cancellation was initiated

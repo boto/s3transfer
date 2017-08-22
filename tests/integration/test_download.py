@@ -69,16 +69,16 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
-        self.upload_file(filename, '20mb.txt')
+            'foo.txt', filesize=60 * 1024 * 1024)
+        self.upload_file(filename, '60mb.txt')
 
-        download_path = os.path.join(self.files.rootdir, '20mb.txt')
+        download_path = os.path.join(self.files.rootdir, '60mb.txt')
         sleep_time = 0.5
         try:
             with transfer_manager:
                 start_time = time.time()
                 future = transfer_manager.download(
-                    self.bucket_name, '20mb.txt', download_path)
+                    self.bucket_name, '60mb.txt', download_path)
                 # Sleep for a little to get the transfer process going
                 time.sleep(sleep_time)
                 # Raise an exception which should cause the preceeding

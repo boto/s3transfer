@@ -1,5 +1,0 @@
-{
-  "category": "TransferManager", 
-  "type": "bugfix", 
-  "description": "Properly handle unicode exceptions in the context manager. Fixes `#85 <https://github.com/boto/boto3/issues/85>`__"
-}

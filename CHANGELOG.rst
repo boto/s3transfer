@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.11
+======
+
+* bugfix:TransferManager: Properly handle unicode exceptions in the context manager. Fixes `#85 <https://github.com/boto/boto3/issues/85>`__
+
+
 0.1.10
 ======
 

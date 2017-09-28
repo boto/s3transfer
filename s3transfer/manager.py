@@ -155,13 +155,12 @@ class TransferManager(object):
         'RequestPayer',
     ]
 
-    ALLOWED_UPLOAD_ARGS = [
+    BASE_ALLOWED_UPLOAD_ARGS = [
         'ACL',
         'CacheControl',
         'ContentDisposition',
         'ContentEncoding',
         'ContentLanguage',
-        'ContentMD5',
         'ContentType',
         'Expires',
         'GrantFullControl',
@@ -178,8 +177,11 @@ class TransferManager(object):
         'SSEKMSKeyId',
         'WebsiteRedirectLocation'
     ]
+    ALLOWED_UPLOAD_ARGS = BASE_ALLOWED_UPLOAD_ARGS + [
+        'ContentMD5',
+    ]
 
-    ALLOWED_COPY_ARGS = ALLOWED_UPLOAD_ARGS + [
+    ALLOWED_COPY_ARGS = BASE_ALLOWED_UPLOAD_ARGS + [
         'CopySourceIfMatch',
         'CopySourceIfModifiedSince',
         'CopySourceIfNoneMatch',

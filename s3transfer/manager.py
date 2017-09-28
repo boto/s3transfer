@@ -161,6 +161,7 @@ class TransferManager(object):
         'ContentDisposition',
         'ContentEncoding',
         'ContentLanguage',
+        'ContentMD5',
         'ContentType',
         'Expires',
         'GrantFullControl',

@@ -175,6 +175,7 @@ class TransferManager(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'Tagging',
         'WebsiteRedirectLocation'
     ]
 
@@ -186,7 +187,8 @@ class TransferManager(object):
         'CopySourceSSECustomerAlgorithm',
         'CopySourceSSECustomerKey',
         'CopySourceSSECustomerKeyMD5',
-        'MetadataDirective'
+        'MetadataDirective',
+        'TaggingDirective'
     ]
 
     ALLOWED_DELETE_ARGS = [

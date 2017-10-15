@@ -391,7 +391,7 @@ class MultipartUploader(object):
             raise S3UploadFailedError(
                 "Failed to upload %s to %s: %s" % (
                     filename, '/'.join([bucket, key]), e))
-        self._client.complete_multipart_upload(
+        return self._client.complete_multipart_upload(
             Bucket=bucket, Key=key, UploadId=upload_id,
             MultipartUpload={'Parts': parts})
 
@@ -639,9 +639,9 @@ class S3Transfer(object):
                              unique_id='s3upload-callback-enable')
         if self._osutil.get_file_size(filename) >= \
                 self._config.multipart_threshold:
-            self._multipart_upload(filename, bucket, key, callback, extra_args)
+            return self._multipart_upload(filename, bucket, key, callback, extra_args)
         else:
-            self._put_object(filename, bucket, key, callback, extra_args)
+            return self._put_object(filename, bucket, key, callback, extra_args)
 
     def _put_object(self, filename, bucket, key, callback, extra_args):
         # We're using open_file_chunk_reader so we can take advantage of the
@@ -650,7 +650,7 @@ class S3Transfer(object):
         with open_chunk_reader(filename, 0,
                                self._osutil.get_file_size(filename),
                                callback=callback) as body:
-            self._client.put_object(Bucket=bucket, Key=key, Body=body,
+            return self._client.put_object(Bucket=bucket, Key=key, Body=body,
                                     **extra_args)
 
     def download_file(self, bucket, key, filename, extra_args=None,
@@ -736,4 +736,4 @@ class S3Transfer(object):
 
     def _multipart_upload(self, filename, bucket, key, callback, extra_args):
         uploader = MultipartUploader(self._client, self._config, self._osutil)
-        uploader.upload_file(filename, bucket, key, callback, extra_args)
+        return uploader.upload_file(filename, bucket, key, callback, extra_args)

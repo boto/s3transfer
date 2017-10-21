@@ -111,7 +111,8 @@ class TestS3Transfers(unittest.TestCase):
     def setUpClass(cls):
         cls.region = 'us-west-2'
         cls.session = botocore.session.get_session()
-        cls.client = cls.session.create_client('s3', cls.region)
+        cls.client = cls.session.create_client('s3', cls.region,
+                endpoint_url=os.environ.get('INTEGRATION_TEST_HOSTNAME', "http://s3.amazonaws.com"))
         cls.bucket_name = random_bucket_name()
         cls.client.create_bucket(
             Bucket=cls.bucket_name,
@@ -153,11 +154,12 @@ class TestS3Transfers(unittest.TestCase):
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=1024 * 1024)
-        transfer.upload_file(filename, self.bucket_name,
+        return_value = transfer.upload_file(filename, self.bucket_name,
                              'foo.txt')
         self.addCleanup(self.delete_object, 'foo.txt')
 
         self.assertTrue(self.object_exists('foo.txt'))
+        assert "ETag" in return_value
 
     def test_upload_above_threshold(self):
         config = s3transfer.TransferConfig(
@@ -165,10 +167,11 @@ class TestS3Transfers(unittest.TestCase):
         transfer = self.create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             '20mb.txt', filesize=20 * 1024 * 1024)
-        transfer.upload_file(filename, self.bucket_name,
+        return_value = transfer.upload_file(filename, self.bucket_name,
                              '20mb.txt')
         self.addCleanup(self.delete_object, '20mb.txt')
         self.assertTrue(self.object_exists('20mb.txt'))
+        assert "ETag" in return_value
 
     def test_upload_file_above_threshold_with_acl(self):
         config = s3transfer.TransferConfig(

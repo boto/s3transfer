@@ -27,18 +27,18 @@ class ArbitraryException(Exception):
     pass
 
 
-class CallbackEnablingBody(RawIOBase):
-    """A mocked body with callback enabling/disabling"""
+class SignalTransferringBody(RawIOBase):
+    """A mocked body with the ability to signal when transfers occur"""
     def __init__(self):
-        super(CallbackEnablingBody, self).__init__()
-        self.enable_callback_call_count = 0
-        self.disable_callback_call_count = 0
+        super(SignalTransferringBody, self).__init__()
+        self.signal_transferring_call_count = 0
+        self.signal_not_transferring_call_count = 0
 
-    def enable_callback(self):
-        self.enable_callback_call_count += 1
+    def signal_transferring(self):
+        self.signal_transferring_call_count += 1
 
-    def disable_callback(self):
-        self.disable_callback_call_count += 1
+    def signal_not_transferring(self):
+        self.signal_not_transferring_call_count += 1
 
     def seek(self, where):
         pass
@@ -128,7 +128,7 @@ class TestTransferManager(StubbedClientTest):
                     future.result()
 
     def test_enable_disable_callbacks_only_ever_registered_once(self):
-        body = CallbackEnablingBody()
+        body = SignalTransferringBody()
         request = create_request_object({
             'method': 'PUT',
             'url': 'https://s3.amazonaws.com',
@@ -145,10 +145,10 @@ class TestTransferManager(StubbedClientTest):
         # handlers registered once depite being used for two different
         # TransferManagers.
         self.assertEqual(
-            body.enable_callback_call_count, 1,
+            body.signal_transferring_call_count, 1,
             'The enable_callback() should have only ever been registered once')
         self.assertEqual(
-            body.disable_callback_call_count, 1,
+            body.signal_not_transferring_call_count, 1,
             'The disable_callback() should have only ever been registered '
             'once')
 

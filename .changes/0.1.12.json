@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``max_bandwidth``", 
+    "description": "Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads", 
+    "type": "enhancement"
+  }
+]

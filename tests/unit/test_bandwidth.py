@@ -456,3 +456,10 @@ class TestBandwidthRateTracker(unittest.TestCase):
         self.assertEqual(projected_rate, 0.96)
         self.rate_tracker.record_consumption_rate(1, 3)
         self.assertEqual(self.rate_tracker.current_rate, projected_rate)
+
+    def test_get_projected_rate_for_same_timestamp(self):
+        self.rate_tracker.record_consumption_rate(1, 1)
+        self.assertEqual(
+            self.rate_tracker.get_projected_rate(1, 1),
+            float('inf')
+        )

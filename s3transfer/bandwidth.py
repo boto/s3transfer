@@ -401,7 +401,14 @@ class BandwidthRateTracker(object):
         self._last_time = time_at_consumption
 
     def _calculate_rate(self, amt, time_at_consumption):
-        return amt / (time_at_consumption - self._last_time)
+        time_delta = time_at_consumption - self._last_time
+        if time_delta <= 0:
+            # While it is really unlikley to see this in an actual transfer,
+            # we do not want to be returning back a negative rate or try to
+            # divide the amount by zero. So instead return back an infinite
+            # rate as the time delta is infinitesimally small.
+            return float('inf')
+        return amt / (time_delta)
 
     def _calculate_exponential_moving_average_rate(self, amt,
                                                    time_at_consumption):

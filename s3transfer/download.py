@@ -317,7 +317,7 @@ class DownloadSubmissionTask(SubmissionTask):
                 fileobj, type(fileobj)))
 
     def _submit(self, client, config, osutil, request_executor, io_executor,
-                transfer_future):
+                transfer_future, bandwidth_limiter=None):
         """
         :param client: The client associated with the transfer manager
 
@@ -339,6 +339,10 @@ class DownloadSubmissionTask(SubmissionTask):
         :type transfer_future: s3transfer.futures.TransferFuture
         :param transfer_future: The transfer future associated with the
             transfer request that tasks are being submitted for
+
+        :type bandwidth_limiter: s3transfer.bandwidth.BandwidthLimiter
+        :param bandwidth_limiter: The bandwidth limiter to use when
+            downloading streams
         """
         if transfer_future.meta.size is None:
             # If a size was not provided figure out the size for the
@@ -360,15 +364,16 @@ class DownloadSubmissionTask(SubmissionTask):
         if transfer_future.meta.size < config.multipart_threshold:
             self._submit_download_request(
                 client, config, osutil, request_executor, io_executor,
-                download_output_manager, transfer_future)
+                download_output_manager, transfer_future, bandwidth_limiter)
         else:
             self._submit_ranged_download_request(
                 client, config, osutil, request_executor, io_executor,
-                download_output_manager, transfer_future)
+                download_output_manager, transfer_future, bandwidth_limiter)
 
     def _submit_download_request(self, client, config, osutil,
                                  request_executor, io_executor,
-                                 download_output_manager, transfer_future):
+                                 download_output_manager, transfer_future,
+                                 bandwidth_limiter):
         call_args = transfer_future.meta.call_args
 
         # Get a handle to the file that will be used for writing downloaded
@@ -400,6 +405,7 @@ class DownloadSubmissionTask(SubmissionTask):
                     'max_attempts': config.num_download_attempts,
                     'download_output_manager': download_output_manager,
                     'io_chunksize': config.io_chunksize,
+                    'bandwidth_limiter': bandwidth_limiter
                 },
                 done_callbacks=[final_task]
             ),
@@ -409,7 +415,8 @@ class DownloadSubmissionTask(SubmissionTask):
     def _submit_ranged_download_request(self, client, config, osutil,
                                         request_executor, io_executor,
                                         download_output_manager,
-                                        transfer_future):
+                                        transfer_future,
+                                        bandwidth_limiter):
         call_args = transfer_future.meta.call_args
 
         # Get the needed progress callbacks for the task
@@ -461,6 +468,7 @@ class DownloadSubmissionTask(SubmissionTask):
                         'start_index': i * part_size,
                         'download_output_manager': download_output_manager,
                         'io_chunksize': config.io_chunksize,
+                        'bandwidth_limiter': bandwidth_limiter
                     },
                     done_callbacks=[finalize_download_invoker.decrement]
                 ),
@@ -488,7 +496,7 @@ class DownloadSubmissionTask(SubmissionTask):
 class GetObjectTask(Task):
     def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
               max_attempts, download_output_manager, io_chunksize,
-              start_index=0):
+              start_index=0, bandwidth_limiter=None):
         """Downloads an object and places content into io queue
 
         :param client: The client to use when calling GetObject
@@ -504,6 +512,8 @@ class GetObjectTask(Task):
             download stream and queue in the io queue.
         :param start_index: The location in the file to start writing the
             content of the key to.
+        :param bandwidth_limiter: The bandwidth limiter to use when throttling
+            the downloading of data in streams.
         """
         last_exception = None
         for i in range(max_attempts):
@@ -512,6 +522,10 @@ class GetObjectTask(Task):
                     Bucket=bucket, Key=key, **extra_args)
                 streaming_body = StreamReaderProgress(
                     response['Body'], callbacks)
+                if bandwidth_limiter:
+                    streaming_body = \
+                        bandwidth_limiter.get_bandwith_limited_stream(
+                            streaming_body, self._transfer_coordinator)
 
                 current_index = start_index
                 chunks = DownloadChunkIterator(streaming_body, io_chunksize)

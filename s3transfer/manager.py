@@ -17,8 +17,8 @@ import threading
 from botocore.compat import six
 
 from s3transfer.utils import get_callbacks
-from s3transfer.utils import disable_upload_callbacks
-from s3transfer.utils import enable_upload_callbacks
+from s3transfer.utils import signal_transferring
+from s3transfer.utils import signal_not_transferring
 from s3transfer.utils import CallArgs
 from s3transfer.utils import OSUtils
 from s3transfer.utils import TaskSemaphore
@@ -35,6 +35,8 @@ from s3transfer.download import DownloadSubmissionTask
 from s3transfer.upload import UploadSubmissionTask
 from s3transfer.copies import CopySubmissionTask
 from s3transfer.delete import DeleteSubmissionTask
+from s3transfer.bandwidth import LeakyBucket
+from s3transfer.bandwidth import BandwidthLimiter
 
 KB = 1024
 MB = KB * KB
@@ -53,7 +55,8 @@ class TransferConfig(object):
                  io_chunksize=256 * KB,
                  num_download_attempts=5,
                  max_in_memory_upload_chunks=10,
-                 max_in_memory_download_chunks=10):
+                 max_in_memory_download_chunks=10,
+                 max_bandwidth=None):
         """Configurations for the transfer mangager
 
         :param multipart_threshold: The threshold for which multipart
@@ -124,6 +127,9 @@ class TransferConfig(object):
 
                 max_in_memory_download_chunks * multipart_chunksize
 
+        :param max_bandwidth: The maximum bandwidth that will be consumed
+            in uploading and downloading file content. The value is in terms of
+            bytes per second.
         """
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
@@ -136,11 +142,12 @@ class TransferConfig(object):
         self.num_download_attempts = num_download_attempts
         self.max_in_memory_upload_chunks = max_in_memory_upload_chunks
         self.max_in_memory_download_chunks = max_in_memory_download_chunks
+        self.max_bandwidth = max_bandwidth
         self._validate_attrs_are_nonzero()
 
     def _validate_attrs_are_nonzero(self):
         for attr, attr_val, in self.__dict__.items():
-            if attr_val <= 0:
+            if attr_val is not None and attr_val <= 0:
                 raise ValueError(
                     'Provided parameter %s of value %s must be greater than '
                     '0.' % (attr, attr_val))
@@ -247,6 +254,16 @@ class TransferManager(object):
             max_num_threads=1,
             executor_cls=executor_cls
         )
+
+        # The component responsible for limiting bandwidth usage if it
+        # is configured.
+        self._bandwidth_limiter = None
+        if self._config.max_bandwidth is not None:
+            logger.debug(
+                'Setting max_bandwidth to %s', self._config.max_bandwidth)
+            leaky_bucket = LeakyBucket(self._config.max_bandwidth)
+            self._bandwidth_limiter = BandwidthLimiter(leaky_bucket)
+
         self._register_handlers()
 
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
@@ -284,7 +301,11 @@ class TransferManager(object):
             fileobj=fileobj, bucket=bucket, key=key, extra_args=extra_args,
             subscribers=subscribers
         )
-        return self._submit_transfer(call_args, UploadSubmissionTask)
+        extra_main_kwargs = {}
+        if self._bandwidth_limiter:
+            extra_main_kwargs['bandwidth_limiter'] = self._bandwidth_limiter
+        return self._submit_transfer(
+            call_args, UploadSubmissionTask, extra_main_kwargs)
 
     def download(self, bucket, key, fileobj, extra_args=None,
                  subscribers=None):
@@ -320,8 +341,11 @@ class TransferManager(object):
             bucket=bucket, key=key, fileobj=fileobj, extra_args=extra_args,
             subscribers=subscribers
         )
-        return self._submit_transfer(call_args, DownloadSubmissionTask,
-                                     {'io_executor': self._io_executor})
+        extra_main_kwargs = {'io_executor': self._io_executor}
+        if self._bandwidth_limiter:
+            extra_main_kwargs['bandwidth_limiter'] = self._bandwidth_limiter
+        return self._submit_transfer(
+            call_args, DownloadSubmissionTask, extra_main_kwargs)
 
     def copy(self, copy_source, bucket, key, extra_args=None,
              subscribers=None, source_client=None):
@@ -481,11 +505,11 @@ class TransferManager(object):
         # Register handlers to enable/disable callbacks on uploads.
         event_name = 'request-created.s3'
         self._client.meta.events.register_first(
-            event_name, disable_upload_callbacks,
-            unique_id='s3upload-callback-disable')
+            event_name, signal_not_transferring,
+            unique_id='s3upload-not-transferring')
         self._client.meta.events.register_last(
-            event_name, enable_upload_callbacks,
-            unique_id='s3upload-callback-enable')
+            event_name, signal_transferring,
+            unique_id='s3upload-transferring')
 
     def __enter__(self):
         return self

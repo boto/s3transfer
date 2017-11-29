@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
+import time
 import tempfile
 import shutil
 
@@ -90,7 +91,16 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
                 'request-created.s3.%s' % model.name,
                 request=request, operation_name=model.name
             )
-            self.sent_bodies.append(params['Body'].read())
+            self.sent_bodies.append(self._stream_body(params['Body']))
+
+    def _stream_body(self, body):
+        read_amt = 8 * 1024
+        data = body.read(read_amt)
+        collected_body = data
+        while data:
+            data = body.read(read_amt)
+            collected_body += data
+        return collected_body
 
     @property
     def manager(self):
@@ -230,6 +240,31 @@ class TestNonMultipartUpload(BaseUploadTest):
         op_model = self.client.meta.service_model.operation_model('PutObject')
         for allowed_upload_arg in self._manager.ALLOWED_UPLOAD_ARGS:
             self.assertIn(allowed_upload_arg, op_model.input_shape.members)
+
+    def test_upload_with_bandwidth_limiter(self):
+        self.content = b'a' * 1024 * 1024
+        with open(self.filename, 'wb') as f:
+            f.write(self.content)
+        self.config = TransferConfig(
+            max_request_concurrency=1, max_bandwidth=len(self.content)/2)
+        self._manager = TransferManager(self.client, self.config)
+
+        self.add_put_object_response_with_default_expected_params()
+        start = time.time()
+        future = self.manager.upload(self.filename, self.bucket, self.key)
+        future.result()
+        # This is just a smoke test to make sure that the limiter is
+        # being used and not necessary its exactness. So we set the maximum
+        # bandwidth to len(content)/2 per sec and make sure that it is
+        # noticeably slower. Ideally it will take more than two seconds, but
+        # given tracking at the beginning of transfers are not entirely
+        # accurate setting at the initial start of a transfer, we give us
+        # some flexibility by setting the expected time to half of the
+        # theoretical time to take.
+        self.assertGreaterEqual(time.time() - start, 1)
+
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
 
 
 class TestMultipartUpload(BaseUploadTest):

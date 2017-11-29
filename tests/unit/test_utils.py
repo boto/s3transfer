@@ -18,6 +18,8 @@ import random
 import time
 import io
 
+import mock
+
 from tests import unittest
 from tests import RecordingSubscriber
 from tests import NonSeekableWriter
@@ -510,6 +512,55 @@ class TestReadFileChunk(BaseUtilsTest):
                                close_callbacks=[self.close_callback]) as chunk:
                 chunk.read(1)
             self.assertEqual(self.num_close_callback_calls, 1)
+
+    def test_signal_transferring(self):
+        chunk = ReadFileChunk.from_filename(
+            self.filename, start_byte=0, chunk_size=3,
+            callbacks=[self.callback])
+        chunk.signal_not_transferring()
+        chunk.read(1)
+        self.assertEqual(self.amounts_seen, [])
+        chunk.signal_transferring()
+        chunk.read(1)
+        self.assertEqual(self.amounts_seen, [1])
+
+    def test_signal_transferring_to_underlying_fileobj(self):
+        underlying_stream = mock.Mock()
+        underlying_stream.tell.return_value = 0
+        chunk = ReadFileChunk(underlying_stream, 3, 3)
+        chunk.signal_transferring()
+        self.assertTrue(underlying_stream.signal_transferring.called)
+
+    def test_no_call_signal_transferring_to_underlying_fileobj(self):
+        underlying_stream = mock.Mock(io.RawIOBase)
+        underlying_stream.tell.return_value = 0
+        chunk = ReadFileChunk(underlying_stream, 3, 3)
+        try:
+            chunk.signal_transferring()
+        except AttributeError:
+            self.fail(
+                'The stream should not have tried to call signal_transferring '
+                'to the underlying stream.'
+            )
+
+    def test_signal_not_transferring_to_underlying_fileobj(self):
+        underlying_stream = mock.Mock()
+        underlying_stream.tell.return_value = 0
+        chunk = ReadFileChunk(underlying_stream, 3, 3)
+        chunk.signal_not_transferring()
+        self.assertTrue(underlying_stream.signal_not_transferring.called)
+
+    def test_no_call_signal_not_transferring_to_underlying_fileobj(self):
+        underlying_stream = mock.Mock(io.RawIOBase)
+        underlying_stream.tell.return_value = 0
+        chunk = ReadFileChunk(underlying_stream, 3, 3)
+        try:
+            chunk.signal_not_transferring()
+        except AttributeError:
+            self.fail(
+                'The stream should not have tried to call '
+                'signal_not_transferring to the underlying stream.'
+            )
 
 
 class TestStreamReaderProgress(BaseUtilsTest):

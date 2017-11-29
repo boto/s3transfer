@@ -115,9 +115,10 @@ class UploadInputManager(object):
     that may be accepted. All implementations must subclass and override
     public methods from this class.
     """
-    def __init__(self, osutil, transfer_coordinator):
+    def __init__(self, osutil, transfer_coordinator, bandwidth_limiter=None):
         self._osutil = osutil
         self._transfer_coordinator = transfer_coordinator
+        self._bandwidth_limiter = bandwidth_limiter
 
     @classmethod
     def is_compatible(cls, upload_source):
@@ -200,8 +201,12 @@ class UploadInputManager(object):
         """
         raise NotImplementedError('must implement yield_upload_part_bodies()')
 
-    def _wrap_with_interrupt_reader(self, fileobj):
-        return InterruptReader(fileobj, self._transfer_coordinator)
+    def _wrap_fileobj(self, fileobj):
+        fileobj = InterruptReader(fileobj, self._transfer_coordinator)
+        if self._bandwidth_limiter:
+            fileobj = self._bandwidth_limiter.get_bandwith_limited_stream(
+                fileobj, self._transfer_coordinator, enabled=False)
+        return fileobj
 
     def _get_progress_callbacks(self, transfer_future):
         callbacks = get_callbacks(transfer_future, 'progress')
@@ -241,7 +246,7 @@ class UploadFilenameInputManager(UploadInputManager):
         # Wrap fileobj with interrupt reader that will quickly cancel
         # uploads if needed instead of having to wait for the socket
         # to completely read all of the data.
-        fileobj = self._wrap_with_interrupt_reader(fileobj)
+        fileobj = self._wrap_fileobj(fileobj)
 
         callbacks = self._get_progress_callbacks(transfer_future)
         close_callbacks = self._get_close_callbacks(callbacks)
@@ -268,7 +273,7 @@ class UploadFilenameInputManager(UploadInputManager):
             # Wrap fileobj with interrupt reader that will quickly cancel
             # uploads if needed instead of having to wait for the socket
             # to completely read all of the data.
-            fileobj = self._wrap_with_interrupt_reader(fileobj)
+            fileobj = self._wrap_fileobj(fileobj)
 
             # Wrap the file-like object into a ReadFileChunk to get progress.
             read_file_chunk = self._osutil.open_file_chunk_reader_from_fileobj(
@@ -346,9 +351,9 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
 
 class UploadNonSeekableInputManager(UploadInputManager):
     """Upload utility for a file-like object that cannot seek."""
-    def __init__(self, osutil, transfer_coordinator):
+    def __init__(self, osutil, transfer_coordinator, bandwidth_limiter=None):
         super(UploadNonSeekableInputManager, self).__init__(
-            osutil, transfer_coordinator)
+            osutil, transfer_coordinator, bandwidth_limiter)
         self._initial_data = b''
 
     @classmethod
@@ -470,7 +475,7 @@ class UploadNonSeekableInputManager(UploadInputManager):
 
         :return: Fully wrapped data.
         """
-        fileobj = self._wrap_with_interrupt_reader(six.BytesIO(data))
+        fileobj = self._wrap_fileobj(six.BytesIO(data))
         return self._osutil.open_file_chunk_reader_from_fileobj(
             fileobj=fileobj, chunk_size=len(data), full_file_size=len(data),
             callbacks=callbacks, close_callbacks=close_callbacks)
@@ -511,7 +516,7 @@ class UploadSubmissionTask(SubmissionTask):
                 fileobj, type(fileobj)))
 
     def _submit(self, client, config, osutil, request_executor,
-                transfer_future):
+                transfer_future, bandwidth_limiter=None):
         """
         :param client: The client associated with the transfer manager
 
@@ -531,7 +536,8 @@ class UploadSubmissionTask(SubmissionTask):
             transfer request that tasks are being submitted for
         """
         upload_input_manager = self._get_upload_input_manager_cls(
-            transfer_future)(osutil, self._transfer_coordinator)
+            transfer_future)(
+                osutil, self._transfer_coordinator, bandwidth_limiter)
 
         # Determine the size if it was not provided
         if transfer_future.meta.size is None:

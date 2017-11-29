@@ -13,6 +13,7 @@
 import copy
 import os
 import tempfile
+import time
 import shutil
 import glob
 
@@ -380,6 +381,34 @@ class TestNonRangedDownload(BaseDownloadTest):
         # Ensure that the empty file exists
         with open(self.filename, 'rb') as f:
             self.assertEqual(b'', f.read())
+
+    def test_uses_bandwidth_limiter(self):
+        self.content = b'a' * 1024 * 1024
+        self.stream = six.BytesIO(self.content)
+        self.config = TransferConfig(
+            max_request_concurrency=1, max_bandwidth=len(self.content)/2)
+        self._manager = TransferManager(self.client, self.config)
+
+        self.add_head_object_response()
+        self.add_successful_get_object_responses()
+
+        start = time.time()
+        future = self.manager.download(
+            self.bucket, self.key, self.filename, self.extra_args)
+        future.result()
+        # This is just a smoke test to make sure that the limiter is
+        # being used and not necessary its exactness. So we set the maximum
+        # bandwidth to len(content)/2 per sec and make sure that it is
+        # noticeably slower. Ideally it will take more than two seconds, but
+        # given tracking at the beginning of transfers are not entirely
+        # accurate setting at the initial start of a transfer, we give us
+        # some flexibility by setting the expected time to half of the
+        # theoretical time to take.
+        self.assertGreaterEqual(time.time() - start, 1)
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
 
 
 class TestRangedDownload(BaseDownloadTest):

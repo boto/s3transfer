@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.12
+======
+
+* enhancement:``max_bandwidth``: Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads
+
+
 0.1.11
 ======
 

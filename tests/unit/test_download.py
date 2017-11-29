@@ -26,6 +26,7 @@ from tests import NonSeekableWriter
 from s3transfer.compat import six
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
+from s3transfer.bandwidth import BandwidthLimiter
 from s3transfer.download import DownloadFilenameOutputManager
 from s3transfer.download import DownloadSpecialFilenameOutputManager
 from s3transfer.download import DownloadSeekableOutputManager
@@ -610,6 +611,22 @@ class TestGetObjectTask(BaseTaskTest):
 
         self.stubber.assert_no_pending_responses()
         self.assert_io_writes([(5, self.content)])
+
+    def test_uses_bandwidth_limiter(self):
+        bandwidth_limiter = mock.Mock(BandwidthLimiter)
+
+        self.stubber.add_response(
+            'get_object', service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key}
+        )
+        task = self.get_download_task(bandwidth_limiter=bandwidth_limiter)
+        task()
+
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            bandwidth_limiter.get_bandwith_limited_stream.call_args_list,
+            [mock.call(mock.ANY, self.transfer_coordinator)]
+        )
 
     def test_retries_succeeds(self):
         self.stubber.add_response(

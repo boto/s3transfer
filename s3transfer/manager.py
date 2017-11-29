@@ -261,8 +261,8 @@ class TransferManager(object):
         if self._config.max_bandwidth is not None:
             logger.debug(
                 'Setting max_bandwidth to %s', self._config.max_bandwidth)
-            token_bucket = LeakyBucket(self._config.max_bandwidth)
-            self._bandwidth_limiter = BandwidthLimiter(token_bucket)
+            leaky_bucket = LeakyBucket(self._config.max_bandwidth)
+            self._bandwidth_limiter = BandwidthLimiter(leaky_bucket)
 
         self._register_handlers()
 

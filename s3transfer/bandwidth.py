@@ -61,16 +61,16 @@ class TimeUtils(object):
 
 
 class BandwidthLimiter(object):
-    def __init__(self, token_bucket, time_utils=None):
+    def __init__(self, leaky_bucket, time_utils=None):
         """Limits bandwidth for shared S3 transfers
 
         :type leaky_bucket: LeakyBucket
-        :param token_bucket: The leaky bucket to use limit bandwidth
+        :param leaky_bucket: The leaky bucket to use limit bandwidth
 
         :type time_utils: TimeUtils
         :param time_utils: Time utility to use for interacting with time.
         """
-        self._token_bucket = token_bucket
+        self._leaky_bucket = leaky_bucket
         self._time_utils = time_utils
         if time_utils is None:
             self._time_utils = TimeUtils()
@@ -90,7 +90,7 @@ class BandwidthLimiter(object):
         :param enabled: Whether bandwidth limiting should be enabled to start
         """
         stream = BandwidthLimitedStream(
-            fileobj, self._token_bucket, transfer_coordinator,
+            fileobj, self._leaky_bucket, transfer_coordinator,
             self._time_utils)
         if not enabled:
             stream.disable_bandwidth_limiting()
@@ -105,8 +105,8 @@ class BandwidthLimitedStream(object):
         :type fileobj: file-like object
         :param fileobj: The file like object to wrap
 
-        :type token_bucket: LeakyBucket
-        :param token_bucket: The leaky bucket to use to throttle reads on
+        :type leaky_bucket: LeakyBucket
+        :param leaky_bucket: The leaky bucket to use to throttle reads on
             the stream
 
         :type transfer_coordinator: s3transfer.futures.TransferCoordinator

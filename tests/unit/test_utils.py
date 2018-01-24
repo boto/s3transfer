@@ -493,6 +493,12 @@ class TestReadFileChunk(BaseUtilsTest):
         self.assertEqual(chunk.tell(), 3)
         chunk.seek(0)
         self.assertEqual(chunk.tell(), 0)
+        chunk.seek(1, whence=1)
+        self.assertEqual(chunk.tell(), 1)
+        chunk.seek(-1, whence=1)
+        self.assertEqual(chunk.tell(), 0)
+        chunk.seek(-1, whence=2)
+        self.assertEqual(chunk.tell(), 2)
 
     def test_file_chunk_supports_context_manager(self):
         filename = os.path.join(self.tempdir, 'foo')

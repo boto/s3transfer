@@ -126,22 +126,22 @@ def invoke_progress_callbacks(callbacks, bytes_transferred):
             callback(bytes_transferred=bytes_transferred)
 
 
-def get_filtered_extra_args(extra_args, whitelisted_args):
-    """Gets a filtered dictionary of arguments
+def get_filtered_dict(original_dict, whitelisted_keys):
+    """Gets a dictionary filtered by whitelisted keys
 
-    :param extra_args: The original dictionary of arguments to source keys
+    :param original_dict: The original dictionary of arguments to source keys
         and values.
-    :param whitelisted_args: A list of arguments to include in the filtered
-        dictionary of arguments.
+    :param whitelisted_key: A list of keys to include in the filtered
+        dictionary.
 
     :returns: A dictionary containing key/values from the original dictionary
         whose key was included in the whitelist
     """
-    filtered_extra_args = {}
-    for key, value in extra_args.items():
-        if key in whitelisted_args:
-            filtered_extra_args[key] = value
-    return filtered_extra_args
+    filtered_dict = {}
+    for key, value in original_dict.items():
+        if key in whitelisted_keys:
+            filtered_dict[key] = value
+    return filtered_dict
 
 
 class CallArgs(object):

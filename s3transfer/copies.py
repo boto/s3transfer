@@ -19,7 +19,7 @@ from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import calculate_range_parameter
-from s3transfer.utils import get_filtered_extra_args
+from s3transfer.utils import get_filtered_dict
 from s3transfer.utils import ChunksizeAdjuster
 
 
@@ -252,11 +252,10 @@ class CopySubmissionTask(SubmissionTask):
     def _extra_upload_part_args(self, extra_args):
         # Only the args in COPY_PART_ARGS actually need to be passed
         # onto the upload_part_copy calls.
-        return get_filtered_extra_args(extra_args, self.UPLOAD_PART_COPY_ARGS)
+        return get_filtered_dict(extra_args, self.UPLOAD_PART_COPY_ARGS)
 
     def _extra_complete_multipart_args(self, extra_args):
-        return get_filtered_extra_args(
-            extra_args, self.COMPLETE_MULTIPART_ARGS)
+        return get_filtered_dict(extra_args, self.COMPLETE_MULTIPART_ARGS)
 
     def _get_transfer_size(self, part_size, part_index, num_parts,
                            total_transfer_size):

@@ -21,7 +21,7 @@ from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
-from s3transfer.utils import get_filtered_extra_args
+from s3transfer.utils import get_filtered_dict
 from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
 
 
@@ -665,11 +665,10 @@ class UploadSubmissionTask(SubmissionTask):
     def _extra_upload_part_args(self, extra_args):
         # Only the args in UPLOAD_PART_ARGS actually need to be passed
         # onto the upload_part calls.
-        return get_filtered_extra_args(extra_args, self.UPLOAD_PART_ARGS)
+        return get_filtered_dict(extra_args, self.UPLOAD_PART_ARGS)
 
     def _extra_complete_multipart_args(self, extra_args):
-        return get_filtered_extra_args(
-            extra_args, self.COMPLETE_MULTIPART_ARGS)
+        return get_filtered_dict(extra_args, self.COMPLETE_MULTIPART_ARGS)
 
     def _get_upload_task_tag(self, upload_input_manager, operation_name):
         tag = None

@@ -30,7 +30,7 @@ from s3transfer.utils import get_callbacks
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import invoke_progress_callbacks
 from s3transfer.utils import calculate_range_parameter
-from s3transfer.utils import get_filtered_extra_args
+from s3transfer.utils import get_filtered_dict
 from s3transfer.utils import CallArgs
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import CountCallbackInvoker
@@ -77,15 +77,15 @@ class TestGetCallbacks(unittest.TestCase):
         self.assertEqual(len(callbacks), 0)
 
 
-class TestGetFilteredExtraArgs(unittest.TestCase):
-    def test_get_filtered_extra_args(self):
-        extra_args = {
+class TestGetFilteredDict(unittest.TestCase):
+    def test_get_filtered_dict(self):
+        original = {
             'Include': 'IncludeValue',
             'NotInlude': 'NotIncludeValue'
         }
         whitelist = ['Include']
         self.assertEqual(
-            get_filtered_extra_args(extra_args, whitelist),
+            get_filtered_dict(original, whitelist),
             {'Include': 'IncludeValue'}
         )
 

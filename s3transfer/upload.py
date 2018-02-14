@@ -21,6 +21,7 @@ from s3transfer.tasks import SubmissionTask
 from s3transfer.tasks import CreateMultipartUploadTask
 from s3transfer.tasks import CompleteMultipartUploadTask
 from s3transfer.utils import get_callbacks
+from s3transfer.utils import get_filtered_dict
 from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
 
 
@@ -491,6 +492,10 @@ class UploadSubmissionTask(SubmissionTask):
         'RequestPayer',
     ]
 
+    COMPLETE_MULTIPART_ARGS = [
+        'RequestPayer'
+    ]
+
     def _get_upload_input_manager_cls(self, transfer_future):
         """Retieves a class for managing input for an upload based on file type
 
@@ -636,6 +641,8 @@ class UploadSubmissionTask(SubmissionTask):
                 )
             )
 
+        complete_multipart_extra_args = self._extra_complete_multipart_args(
+            call_args.extra_args)
         # Submit the request to complete the multipart upload.
         self._transfer_coordinator.submit(
             request_executor,
@@ -644,7 +651,8 @@ class UploadSubmissionTask(SubmissionTask):
                 main_kwargs={
                     'client': client,
                     'bucket': call_args.bucket,
-                    'key': call_args.key
+                    'key': call_args.key,
+                    'extra_args': complete_multipart_extra_args,
                 },
                 pending_main_kwargs={
                     'upload_id': create_multipart_future,
@@ -657,11 +665,10 @@ class UploadSubmissionTask(SubmissionTask):
     def _extra_upload_part_args(self, extra_args):
         # Only the args in UPLOAD_PART_ARGS actually need to be passed
         # onto the upload_part calls.
-        upload_parts_args = {}
-        for key, value in extra_args.items():
-            if key in self.UPLOAD_PART_ARGS:
-                upload_parts_args[key] = value
-        return upload_parts_args
+        return get_filtered_dict(extra_args, self.UPLOAD_PART_ARGS)
+
+    def _extra_complete_multipart_args(self, extra_args):
+        return get_filtered_dict(extra_args, self.COMPLETE_MULTIPART_ARGS)
 
     def _get_upload_task_tag(self, upload_input_manager, operation_name):
         tag = None

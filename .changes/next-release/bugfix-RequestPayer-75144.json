@@ -1,0 +1,5 @@
+{
+  "category": "``RequestPayer``", 
+  "type": "bugfix", 
+  "description": "Plumb ``RequestPayer` argument to the ``CompleteMultipartUpload` operation (`#103 <https://github.com/boto/s3transfer/issues/103>`__)."
+}

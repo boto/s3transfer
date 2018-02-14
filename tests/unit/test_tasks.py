@@ -721,7 +721,8 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
                 'bucket': self.bucket,
                 'key': self.key,
                 'upload_id': upload_id,
-                'parts': parts
+                'parts': parts,
+                'extra_args': {}
             }
         )
         self.stubber.add_response(
@@ -733,6 +734,35 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
                 'MultipartUpload': {
                     'Parts': parts
                 }
+            }
+        )
+        task()
+        self.stubber.assert_no_pending_responses()
+
+    def test_includes_extra_args(self):
+        upload_id = 'my-id'
+        parts = [{'ETag': 'etag', 'PartNumber': 0}]
+        task = self.get_task(
+            CompleteMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'upload_id': upload_id,
+                'parts': parts,
+                'extra_args': {'RequestPayer': 'requester'}
+            }
+        )
+        self.stubber.add_response(
+            method='complete_multipart_upload',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket, 'Key': self.key,
+                'UploadId': upload_id,
+                'MultipartUpload': {
+                    'Parts': parts
+                },
+                'RequestPayer': 'requester'
             }
         )
         task()

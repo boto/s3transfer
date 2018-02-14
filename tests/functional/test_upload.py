@@ -336,7 +336,8 @@ class TestMultipartUpload(BaseUploadTest):
             upload_part_response['expected_params'] = expected_params
             self.stubber.add_response(**upload_part_response)
 
-    def add_complete_multipart_response_with_default_expected_params(self):
+    def add_complete_multipart_response_with_default_expected_params(
+            self, extra_expected_params=None):
         expected_params = {
             'Bucket': self.bucket,
             'Key': self.key, 'UploadId': self.multipart_id,
@@ -348,6 +349,8 @@ class TestMultipartUpload(BaseUploadTest):
                 ]
             }
         }
+        if extra_expected_params:
+            expected_params.update(extra_expected_params)
         response = self.create_stubbed_responses()[-1]
         response['expected_params'] = expected_params
         self.stubber.add_response(**response)
@@ -360,7 +363,8 @@ class TestMultipartUpload(BaseUploadTest):
             extra_expected_params={'RequestPayer': 'requester'})
         self.add_upload_part_responses_with_default_expected_params(
             extra_expected_params={'RequestPayer': 'requester'})
-        self.add_complete_multipart_response_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params(
+            extra_expected_params={'RequestPayer': 'requester'})
 
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args)

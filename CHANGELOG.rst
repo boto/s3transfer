@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.1.13
+======
+
+* bugfix:``RequestPayer``: Plumb ``RequestPayer` argument to the ``CompleteMultipartUpload` operation (`#103 <https://github.com/boto/s3transfer/issues/103>`__).
+
+
 0.1.12
 ======
 

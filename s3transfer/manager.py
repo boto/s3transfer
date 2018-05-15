@@ -546,7 +546,7 @@ class TransferManager(object):
         :param cancel_msg: The message to specify if canceling all in-progress
             transfers.
         """
-        self._shutdown(cancel, cancel, cancel_msg)
+        self._shutdown(cancel, cancel_msg)
 
     def _shutdown(self, cancel, cancel_msg, exc_type=CancelledError):
         if cancel:

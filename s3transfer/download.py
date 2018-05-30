@@ -575,7 +575,7 @@ class IOWriteTask(Task):
     def _main(self, fileobj, data, offset):
         """Pulls off an io queue to write contents to a file
 
-        :param f: The file handle to write content to
+        :param fileobj: The file handle to write content to
         :param data: The data to write
         :param offset: The offset to write the data to.
         """
@@ -602,7 +602,7 @@ class IOStreamingWriteTask(Task):
 class IORenameFileTask(Task):
     """A task to rename a temporary file to its final filename
 
-    :param f: The file handle that content was written to.
+    :param fileobj: The file handle that content was written to.
     :param final_filename: The final name of the file to rename to
         upon completion of writing the contents.
     :param osutil: OS utility

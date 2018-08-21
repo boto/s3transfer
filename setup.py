@@ -36,6 +36,7 @@ setup(
     url='https://github.com/boto/s3transfer',
     packages=find_packages(exclude=['tests*']),
     include_package_data=True,
+    python_requires='>=2.6, !=3.0.*, !=3.1.*, !=3.2.*',
     install_requires=requires,
     extras_require={
         ':python_version=="2.6" or python_version=="2.7"': [

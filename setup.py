@@ -42,7 +42,7 @@ setup(
             'futures>=2.2.0,<4.0.0']
     },
     license="Apache License 2.0",
-    classifiers=(
+    classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'Natural Language :: English',
@@ -56,5 +56,5 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
-    ),
+    ]
 )

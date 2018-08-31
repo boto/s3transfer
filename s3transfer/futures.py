@@ -49,7 +49,7 @@ class TransferFuture(object):
 
     @property
     def meta(self):
-        """The metadata associated tio the TransferFuture"""
+        """The metadata associated to the TransferFuture"""
         return self._meta
 
     def done(self):

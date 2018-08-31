@@ -317,8 +317,10 @@ class TransferManager(object):
         :type key: str
         :param key: The name of the key to download from
 
-        :type fileobj: str
-        :param fileobj: The name of a file to download to.
+        :type fileobj: str or seekable file-like object
+        :param fileobj: The name of a file to download or a seekable file-like
+            object to download. It is recommended to use a filename because
+            file-like objects may result in higher memory usage.
 
         :type extra_args: dict
         :param extra_args: Extra arguments that may be passed to the

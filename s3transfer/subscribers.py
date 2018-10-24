@@ -61,6 +61,9 @@ class BaseSubscriber(object):
         """
         pass
 
+    def on_response(self, future, response, **kwargs):
+        pass
+
     def on_progress(self, future, bytes_transferred, **kwargs):
         """Callback to be invoked when progress is made on transfer
 

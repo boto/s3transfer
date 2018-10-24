@@ -530,7 +530,8 @@ class TestGetObjectTask(BaseTaskTest):
         self.bucket = 'mybucket'
         self.key = 'mykey'
         self.extra_args = {}
-        self.callbacks = []
+        self.response_callbacks = []
+        self.progress_callbacks = []
         self.max_attempts = 5
         self.io_executor = BoundedExecutor(1000, 1)
         self.content = b'my content'
@@ -546,7 +547,8 @@ class TestGetObjectTask(BaseTaskTest):
         default_kwargs = {
             'client': self.client, 'bucket': self.bucket, 'key': self.key,
             'fileobj': self.fileobj, 'extra_args': self.extra_args,
-            'callbacks': self.callbacks,
+            'response_callbacks': self.response_callbacks,
+            'progress_callbacks': self.progress_callbacks,
             'max_attempts': self.max_attempts,
             'download_output_manager': self.download_output_manager,
             'io_chunksize': self.io_chunksize,

@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import threading
 import random
+import re
 import time
 import io
 
@@ -29,6 +30,7 @@ from s3transfer.futures import TransferMeta
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import invoke_progress_callbacks
+from s3transfer.utils import calculate_num_parts
 from s3transfer.utils import calculate_range_parameter
 from s3transfer.utils import get_filtered_dict
 from s3transfer.utils import CallArgs
@@ -183,6 +185,14 @@ class TestInvokeProgressCallbacks(unittest.TestCase):
         self.assertEqual(len(recording_subscriber.on_progress_calls), 0)
 
 
+class TestCalculateNumParts(unittest.TestCase):
+    def test_calculate_num_parts_divisible(self):
+        self.assertEqual(calculate_num_parts(size=4, part_size=2), 2)
+
+    def test_calculate_num_parts_not_divisible(self):
+        self.assertEqual(calculate_num_parts(size=3, part_size=2), 2)
+
+
 class TestCalculateRangeParameter(unittest.TestCase):
     def setUp(self):
         self.part_size = 5
@@ -285,6 +295,21 @@ class TestOSUtils(BaseUtilsTest):
         non_existant_filename = os.path.join(self.tempdir, 'no-exist')
         self.assertFalse(os.path.exists(non_existant_filename))
         self.assertFalse(OSUtils().is_special_file(non_existant_filename))
+
+    def test_get_temp_filename(self):
+        filename = 'myfile'
+        self.assertIsNotNone(
+            re.match(
+                '%s\.[0-9A-Fa-f]{8}$' % filename,
+                OSUtils().get_temp_filename(filename)
+            )
+        )
+
+    def test_truncate(self):
+        truncate_size = 1
+        OSUtils().truncate(self.filename, truncate_size)
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(len(f.read()), truncate_size)
 
 
 class TestDeferredOpenFile(BaseUtilsTest):

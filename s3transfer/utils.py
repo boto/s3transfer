@@ -61,6 +61,10 @@ def signal_transferring(request, operation_name, **kwargs):
         request.body.signal_transferring()
 
 
+def calculate_num_parts(size, part_size):
+    return int(math.ceil(size / float(part_size)))
+
+
 def calculate_range_parameter(part_size, part_index, num_parts,
                               total_size=None):
     """Calculate the range parameter for multipart downloads/copies
@@ -293,6 +297,13 @@ class OSUtils(object):
         if stat.S_ISSOCK(mode):
             return True
         return False
+
+    def get_temp_filename(self, filename):
+        return filename + os.extsep + random_file_extension()
+
+    def truncate(self, filename, size):
+        with self.open(filename, 'wb') as f:
+            f.truncate(size)
 
 
 class DeferredOpenFile(object):

@@ -20,10 +20,22 @@ import botocore.session
 from s3transfer.constants import MB
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import S3_RETRYABLE_DOWNLOAD_ERRORS
+from s3transfer.utils import calculate_num_parts
+from s3transfer.utils import calculate_range_parameter
 
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_SIGNAL = 'SHUTDOWN'
+DownloadFileJob = collections.namedtuple(
+    'DownloadFileJob', [
+        'transfer_id',    # The unique id for the transfer
+        'bucket',         # The bucket to download the object from
+        'key',            # The key to download the object from
+        'filename',       # The user-requested download location
+        'extra_args',     # Extra arguments to provide to client calls
+        'expected_size',  # The user-provided expected size of the download
+    ]
+)
 GetObjectJob = collections.namedtuple(
     'GetObjectJob', [
         'transfer_id',    # The unique id for the transfer
@@ -35,6 +47,26 @@ GetObjectJob = collections.namedtuple(
         'filename',       # The user-requested download location
     ]
 )
+
+
+class ProcessTransferConfig(object):
+    def __init__(self,
+                 multipart_threshold=8 * MB,
+                 multipart_chunksize=8 * MB,
+                 max_request_processes=10):
+        """Configuration for the ProcessPoolDownloader
+
+        :param multipart_threshold: The threshold for which ranged downloads
+            occur.
+
+        :param multipart_chunksize: The chunk size of each ranged download
+
+        :param max_request_processes: The maximum number of processes that
+            will be making S3 API transfer-related requests at a time.
+        """
+        self.multipart_threshold = multipart_threshold
+        self.multipart_chunksize = multipart_chunksize
+        self.max_request_processes = max_request_processes
 
 
 class ClientFactory(object):
@@ -106,6 +138,110 @@ class TransferMonitor(object):
         with self._job_count_lock:
             self._transfer_job_count[transfer_id] -= 1
             return self._transfer_job_count[transfer_id]
+
+
+class Submitter(multiprocessing.Process):
+    def __init__(self, transfer_config, client_factory,
+                 transfer_monitor, osutil, submitter_queue,
+                 worker_queue):
+        """Submit jobs to fulfill a download file request
+
+        :param transfer_config: Configuration for transfers
+        :param client_factory: ClientFactory for creating S3 clients
+        :param transfer_monitor: Monitor for notifying and retrieving state
+            of transfer
+        :param osutil: OSUtils object to use for os-related behavior when
+            performing the transfer.
+        :param submitter_queue: Queue to retrieve download file jobs
+        :param worker_queue: Queue to submit GetObjectJobs for workers
+            to perform
+        """
+        super(Submitter, self).__init__()
+        self._transfer_config = transfer_config
+        self._client_factory = client_factory
+        self._transfer_monitor = transfer_monitor
+        self._osutil = osutil
+        self._submitter_queue = submitter_queue
+        self._worker_queue = worker_queue
+        self._client = None
+
+    def run(self):
+        # Client are not pickleable so their instantiation cannot happen
+        # in the __init__ for processes that are created under the
+        # spawn method.
+        self._client = self._client_factory.create_client()
+        while True:
+            download_file_job = self._submitter_queue.get()
+            if download_file_job == SHUTDOWN_SIGNAL:
+                return
+            try:
+                self._submit_get_object_jobs(download_file_job)
+            except Exception as e:
+                self._transfer_monitor.notify_exception(
+                    download_file_job.transfer_id, e)
+
+    def _submit_get_object_jobs(self, download_file_job):
+        size = self._get_size(download_file_job)
+        temp_filename = self._allocate_temp_file(download_file_job, size)
+        if size < self._transfer_config.multipart_threshold:
+            self._submit_single_get_object_job(
+                download_file_job, temp_filename)
+        else:
+            self._submit_ranged_get_object_jobs(
+                download_file_job, temp_filename, size)
+
+    def _get_size(self, download_file_job):
+        expected_size = download_file_job.expected_size
+        if expected_size is None:
+            expected_size = self._client.head_object(
+                Bucket=download_file_job.bucket, Key=download_file_job.key,
+                **download_file_job.extra_args)['ContentLength']
+        return expected_size
+
+    def _allocate_temp_file(self, download_file_job, size):
+        temp_filename = self._osutil.get_temp_filename(
+            download_file_job.filename
+        )
+        self._osutil.truncate(temp_filename, size)
+        return temp_filename
+
+    def _submit_single_get_object_job(self, download_file_job, temp_filename):
+        self._transfer_monitor.notify_expected_jobs_to_complete(
+            download_file_job.transfer_id, 1)
+        self._submit_get_object_job(
+            transfer_id=download_file_job.transfer_id,
+            bucket=download_file_job.bucket,
+            key=download_file_job.key,
+            temp_filename=temp_filename,
+            offset=0,
+            extra_args=download_file_job.extra_args,
+            filename=download_file_job.filename
+        )
+
+    def _submit_ranged_get_object_jobs(self, download_file_job, temp_filename,
+                                       size):
+        part_size = self._transfer_config.multipart_chunksize
+        num_parts = calculate_num_parts(size, part_size)
+        self._transfer_monitor.notify_expected_jobs_to_complete(
+            download_file_job.transfer_id, num_parts)
+        for i in range(num_parts):
+            offset = i * part_size
+            range_parameter = calculate_range_parameter(
+                part_size, i, num_parts)
+            get_object_kwargs = {'Range': range_parameter}
+            get_object_kwargs.update(download_file_job.extra_args)
+            self._submit_get_object_job(
+                transfer_id=download_file_job.transfer_id,
+                bucket=download_file_job.bucket,
+                key=download_file_job.key,
+                temp_filename=temp_filename,
+                offset=offset,
+                extra_args=get_object_kwargs,
+                filename=download_file_job.filename,
+            )
+
+    def _submit_get_object_job(self, **get_object_job_kwargs):
+        self._worker_queue.put(GetObjectJob(**get_object_job_kwargs))
 
 
 class GetObjectWorker(multiprocessing.Process):

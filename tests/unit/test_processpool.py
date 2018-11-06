@@ -11,6 +11,8 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
+import time
+import threading
 
 import mock
 from six.moves import queue
@@ -24,12 +26,17 @@ from tests import StreamWithError
 from tests import StubbedClientTest
 from s3transfer.compat import six
 from s3transfer.exceptions import RetriesExceededError
+from s3transfer.exceptions import CancelledError
 from s3transfer.utils import OSUtils
+from s3transfer.utils import CallArgs
 from s3transfer.processpool import SHUTDOWN_SIGNAL
 from s3transfer.processpool import DownloadFileRequest
 from s3transfer.processpool import GetObjectJob
 from s3transfer.processpool import ProcessTransferConfig
+from s3transfer.processpool import ProcessPoolTransferFuture
+from s3transfer.processpool import ProcessPoolTransferMeta
 from s3transfer.processpool import TransferMonitor
+from s3transfer.processpool import TransferState
 from s3transfer.processpool import ClientFactory
 from s3transfer.processpool import GetObjectSubmitter
 from s3transfer.processpool import GetObjectWorker
@@ -41,6 +48,69 @@ class RenameFailingOSUtils(OSUtils):
 
     def rename_file(self, current_filename, new_filename):
         raise self.exception
+
+
+class TestProcessPoolTransferFuture(unittest.TestCase):
+    def setUp(self):
+        self.transfer_id = 1
+        self.meta = ProcessPoolTransferMeta(
+            transfer_id=self.transfer_id, call_args=CallArgs())
+        self.monitor = TransferMonitor()
+        self.future = ProcessPoolTransferFuture(
+            monitor=self.monitor, meta=self.meta)
+
+    def test_meta(self):
+        self.assertEqual(self.future.meta, self.meta)
+
+    def test_done(self):
+        self.assertFalse(self.future.done())
+        self.monitor.notify_done(self.transfer_id)
+        self.assertTrue(self.future.done())
+
+    def test_result(self):
+        self.monitor.notify_done(self.transfer_id)
+        self.assertIsNone(self.future.result())
+
+    def test_result_with_exception(self):
+        self.monitor.notify_exception(self.transfer_id, RuntimeError())
+        self.monitor.notify_done(self.transfer_id)
+        with self.assertRaises(RuntimeError):
+            self.future.result()
+
+    def test_result_with_keyboard_interrupt(self):
+        mock_monitor = mock.Mock(TransferMonitor)
+        mock_monitor.poll_for_result.side_effect = KeyboardInterrupt()
+        future = ProcessPoolTransferFuture(
+            monitor=mock_monitor, meta=self.meta)
+        with self.assertRaises(KeyboardInterrupt):
+            future.result()
+        self.assertTrue(mock_monitor.notify_exception.called)
+        call_args = mock_monitor.notify_exception.call_args[0]
+        self.assertEqual(call_args[0], 1)
+        self.assertIsInstance(call_args[1], CancelledError)
+
+    def test_cancel(self):
+        self.future.cancel()
+        self.monitor.notify_done(self.transfer_id)
+        with self.assertRaises(CancelledError):
+            self.future.result()
+
+
+class TestProcessPoolTransferMeta(unittest.TestCase):
+    def test_transfer_id(self):
+        meta = ProcessPoolTransferMeta(1, CallArgs())
+        self.assertEqual(meta.transfer_id, 1)
+
+    def test_call_args(self):
+        call_args = CallArgs()
+        meta = ProcessPoolTransferMeta(1, call_args)
+        self.assertEqual(meta.call_args, call_args)
+
+    def test_user_context(self):
+        meta = ProcessPoolTransferMeta(1, CallArgs())
+        self.assertEqual(meta.user_context, {})
+        meta.user_context['mykey'] = 'myvalue'
+        self.assertEqual(meta.user_context, {'mykey': 'myvalue'})
 
 
 class TestClientFactory(unittest.TestCase):
@@ -55,32 +125,99 @@ class TestClientFactory(unittest.TestCase):
 
 
 class TestTransferMonitor(unittest.TestCase):
+    def setUp(self):
+        self.transfer_id = 1
+        self.monitor = TransferMonitor()
+
     def test_notify_get_exception(self):
-        transfer_id = 1
         exception = Exception()
-        monitor = TransferMonitor()
-        monitor.notify_exception(transfer_id, exception)
-        self.assertEqual(monitor.get_exception(transfer_id), exception)
+        self.monitor.notify_exception(self.transfer_id, exception)
+        self.assertEqual(
+            self.monitor.get_exception(self.transfer_id), exception)
 
     def test_get_no_exception(self):
-        monitor = TransferMonitor()
-        self.assertIsNone(monitor.get_exception(1))
+        self.assertIsNone(self.monitor.get_exception(1))
 
     def test_notify_jobs(self):
-        monitor = TransferMonitor()
-        transfer_id = 1
-        monitor.notify_expected_jobs_to_complete(transfer_id, 2)
-        self.assertEqual(monitor.notify_job_complete(transfer_id), 1)
-        self.assertEqual(monitor.notify_job_complete(transfer_id), 0)
+        self.monitor.notify_expected_jobs_to_complete(self.transfer_id, 2)
+        self.assertEqual(self.monitor.notify_job_complete(self.transfer_id), 1)
+        self.assertEqual(self.monitor.notify_job_complete(self.transfer_id), 0)
 
     def test_notify_jobs_for_multiple_transfers(self):
-        monitor = TransferMonitor()
-        transfer_id = 1
         other_transfer_id = 2
-        monitor.notify_expected_jobs_to_complete(transfer_id, 2)
-        monitor.notify_expected_jobs_to_complete(other_transfer_id, 2)
-        self.assertEqual(monitor.notify_job_complete(transfer_id), 1)
-        self.assertEqual(monitor.notify_job_complete(other_transfer_id), 1)
+        self.monitor.notify_expected_jobs_to_complete(self.transfer_id, 2)
+        self.monitor.notify_expected_jobs_to_complete(other_transfer_id, 2)
+        self.assertEqual(self.monitor.notify_job_complete(self.transfer_id), 1)
+        self.assertEqual(
+            self.monitor.notify_job_complete(other_transfer_id), 1)
+
+    def test_done(self):
+        self.assertFalse(self.monitor.is_done(self.transfer_id))
+        self.monitor.notify_done(self.transfer_id)
+        self.assertTrue(self.monitor.is_done(self.transfer_id))
+
+    def test_poll_for_result(self):
+        self.monitor.notify_done(self.transfer_id)
+        self.assertIsNone(self.monitor.poll_for_result(self.transfer_id))
+
+    def test_poll_for_result_raises_error(self):
+        self.monitor.notify_exception(self.transfer_id, RuntimeError())
+        self.monitor.notify_done(self.transfer_id)
+        with self.assertRaises(RuntimeError):
+            self.monitor.poll_for_result(self.transfer_id)
+
+    def test_poll_for_result_waits_till_done(self):
+        event_order = []
+
+        def sleep_then_notify_done():
+            time.sleep(0.05)
+            event_order.append('notify_done')
+            self.monitor.notify_done(self.transfer_id)
+
+        t = threading.Thread(target=sleep_then_notify_done)
+        t.start()
+
+        self.monitor.poll_for_result(self.transfer_id)
+        event_order.append('done_polling')
+        self.assertEqual(event_order, ['notify_done', 'done_polling'])
+
+
+class TestTransferState(unittest.TestCase):
+    def setUp(self):
+        self.state = TransferState()
+
+    def test_done(self):
+        self.assertFalse(self.state.done)
+        self.state.set_done()
+        self.assertTrue(self.state.done)
+
+    def test_waits_till_done_is_set(self):
+        event_order = []
+
+        def sleep_then_set_done():
+            time.sleep(0.05)
+            event_order.append('set_done')
+            self.state.set_done()
+
+        t = threading.Thread(target=sleep_then_set_done)
+        t.start()
+
+        self.state.wait_till_done()
+        event_order.append('done_waiting')
+        self.assertEqual(event_order, ['set_done', 'done_waiting'])
+
+    def test_exception(self):
+        exception = RuntimeError()
+        self.state.exception = exception
+        self.assertEqual(self.state.exception, exception)
+
+    def test_jobs_to_complete(self):
+        self.state.jobs_to_complete = 5
+        self.assertEqual(self.state.jobs_to_complete, 5)
+
+    def test_decrement_jobs_to_complete(self):
+        self.state.jobs_to_complete = 5
+        self.assertEqual(self.state.decrement_jobs_to_complete(), 4)
 
 
 class TestGetObjectSubmitter(StubbedClientTest):

@@ -116,10 +116,10 @@ class TestGetObjectWorker(StubbedClientTest):
             'transfer_id': self.transfer_id,
             'bucket': self.bucket,
             'key': self.key,
-            'filename': self.temp_filename,
+            'temp_filename': self.temp_filename,
             'extra_args': self.extra_args,
             'offset': self.offset,
-            'final_filename': self.final_filename
+            'filename': self.final_filename
         }
         kwargs.update(override_kwargs)
         self.queue.put(GetObjectJob(**kwargs))

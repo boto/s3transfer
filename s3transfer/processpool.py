@@ -26,13 +26,13 @@ logger = logging.getLogger(__name__)
 SHUTDOWN_SIGNAL = 'SHUTDOWN'
 GetObjectJob = collections.namedtuple(
     'GetObjectJob', [
-        'transfer_id',
-        'bucket',
-        'key',
-        'filename',
-        'extra_args',
-        'offset',
-        'final_filename',
+        'transfer_id',    # The unique id for the transfer
+        'bucket',         # The bucket to download the object from
+        'key',            # The key to download the object from
+        'temp_filename',  # The temporary file to write the content to
+        'extra_args',     # Extra arguments to provide to the GetObject call
+        'offset',         # The offset to write the content to
+        'filename',       # The user-requested download location
     ]
 )
 
@@ -60,7 +60,9 @@ class TransferMonitor(object):
         """Monitors transfers for cross-proccess communication
 
         Notifications can be sent to the monitor and information can be
-        retrieved from the monitor for a particular transfer. Even though
+        retrieved from the monitor for a particular transfer. This abstraction
+        is ran in a ``multiprocessing.managers.BaseManager`` in order to be
+        shared across processes.
         """
         self._transfer_exceptions = {}
         self._transfer_job_count = {}
@@ -73,7 +75,7 @@ class TransferMonitor(object):
         :param exception: The exception encountered for that transfer
         """
         # TODO: Not all exceptions are pickleable so if we are running
-        # this in a  multiprocessing.BaseManager we will want to
+        # this in a multiprocessing.BaseManager we will want to
         # make sure to update this signature to ensure pickleability of the
         # arguments or have the ProxyObject do the serialization.
         self._transfer_exceptions[transfer_id] = exception
@@ -107,6 +109,8 @@ class TransferMonitor(object):
 
 
 class GetObjectWorker(multiprocessing.Process):
+    # TODO: It may make sense to expose these class variables as configuration
+    # options if users want to tweak them.
     _MAX_ATTEMPTS = 5
     _IO_CHUNKSIZE = 2 * MB
 
@@ -145,29 +149,30 @@ class GetObjectWorker(multiprocessing.Process):
                 job.transfer_id)
             if not remaining:
                 self._finalize_download(
-                    job.transfer_id, job.filename, job.final_filename
+                    job.transfer_id, job.temp_filename, job.filename
                 )
 
     def _run_get_object_job(self, job):
         try:
             self._do_get_object(
-                bucket=job.bucket, key=job.key, filename=job.filename,
-                extra_args=job.extra_args, offset=job.offset
+                bucket=job.bucket, key=job.key,
+                temp_filename=job.temp_filename, extra_args=job.extra_args,
+                offset=job.offset
             )
         except Exception as e:
             self._transfer_monitor.notify_exception(job.transfer_id, e)
 
-    def _do_get_object(self, bucket, key, extra_args, filename, offset):
+    def _do_get_object(self, bucket, key, extra_args, temp_filename, offset):
         last_exception = None
         for i in range(self._MAX_ATTEMPTS):
             try:
                 response = self._client.get_object(
                     Bucket=bucket, Key=key, **extra_args)
-                self._write_to_file(filename, offset, response['Body'])
+                self._write_to_file(temp_filename, offset, response['Body'])
                 return
             except S3_RETRYABLE_DOWNLOAD_ERRORS as e:
                 logger.debug('Retrying exception caught (%s), '
-                             'retrying request, (attempt %s / %s)', e, i,
+                             'retrying request, (attempt %s / %s)', e, i+1,
                              self._MAX_ATTEMPTS, exc_info=True)
                 last_exception = e
         raise RetriesExceededError(last_exception)
@@ -179,15 +184,15 @@ class GetObjectWorker(multiprocessing.Process):
             for chunk in chunks:
                 f.write(chunk)
 
-    def _finalize_download(self, transfer_id, filename, final_filename):
+    def _finalize_download(self, transfer_id, temp_filename, filename):
         if self._transfer_monitor.get_exception(transfer_id):
-            self._osutil.remove_file(filename)
+            self._osutil.remove_file(temp_filename)
         else:
-            self._do_file_rename(transfer_id, filename, final_filename)
+            self._do_file_rename(transfer_id, temp_filename, filename)
 
-    def _do_file_rename(self, transfer_id, filename, final_filename):
+    def _do_file_rename(self, transfer_id, temp_filename, filename):
         try:
-            self._osutil.rename_file(filename, final_filename)
+            self._osutil.rename_file(temp_filename, filename)
         except Exception as e:
             self._transfer_monitor.notify_exception(transfer_id, e)
-            self._osutil.remove_file(filename)
+            self._osutil.remove_file(temp_filename)

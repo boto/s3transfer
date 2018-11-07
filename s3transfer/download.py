@@ -19,14 +19,11 @@ import heapq
 
 
 from botocore.compat import six
-from botocore.exceptions import IncompleteReadError
-from botocore.vendored.requests.packages.urllib3.exceptions import \
-    ReadTimeoutError
 
-from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import seekable
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
+from s3transfer.utils import S3_RETRYABLE_DOWNLOAD_ERRORS
 from s3transfer.utils import random_file_extension
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import invoke_progress_callbacks
@@ -40,10 +37,6 @@ from s3transfer.tasks import SubmissionTask
 
 
 logger = logging.getLogger(__name__)
-
-S3_RETRYABLE_ERRORS = (
-    socket.timeout, SOCKET_ERROR, ReadTimeoutError, IncompleteReadError
-)
 
 
 class DownloadOutputManager(object):
@@ -542,7 +535,7 @@ class GetObjectTask(Task):
                     else:
                         return
                 return
-            except S3_RETRYABLE_ERRORS as e:
+            except S3_RETRYABLE_DOWNLOAD_ERRORS as e:
                 logger.debug("Retrying exception caught (%s), "
                              "retrying request, (attempt %s / %s)", e, i,
                              max_attempts, exc_info=True)

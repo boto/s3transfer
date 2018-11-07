@@ -15,6 +15,7 @@ import time
 import functools
 import math
 import os
+import socket
 import stat
 import string
 import logging
@@ -22,6 +23,10 @@ import threading
 import io
 from collections import defaultdict
 
+from botocore.exceptions import IncompleteReadError
+from botocore.exceptions import ReadTimeoutError
+
+from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import rename_file
 from s3transfer.compat import seekable
 
@@ -33,6 +38,11 @@ MAX_PARTS = 10000
 MAX_SINGLE_UPLOAD_SIZE = 5 * (1024 ** 3)
 MIN_UPLOAD_CHUNKSIZE = 5 * (1024 ** 2)
 logger = logging.getLogger(__name__)
+
+
+S3_RETRYABLE_DOWNLOAD_ERRORS = (
+    socket.timeout, SOCKET_ERROR, ReadTimeoutError, IncompleteReadError
+)
 
 
 def random_file_extension(num_digits=8):

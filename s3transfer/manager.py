@@ -16,6 +16,7 @@ import threading
 
 from botocore.compat import six
 
+from s3transfer.constants import KB, MB
 from s3transfer.utils import get_callbacks
 from s3transfer.utils import signal_transferring
 from s3transfer.utils import signal_not_transferring
@@ -38,8 +39,7 @@ from s3transfer.delete import DeleteSubmissionTask
 from s3transfer.bandwidth import LeakyBucket
 from s3transfer.bandwidth import BandwidthLimiter
 
-KB = 1024
-MB = KB * KB
+
 logger = logging.getLogger(__name__)
 
 

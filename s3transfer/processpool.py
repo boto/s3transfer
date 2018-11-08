@@ -26,8 +26,8 @@ from s3transfer.utils import calculate_range_parameter
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_SIGNAL = 'SHUTDOWN'
-DownloadFileJob = collections.namedtuple(
-    'DownloadFileJob', [
+DownloadFileRequest = collections.namedtuple(
+    'DownloadFileRequest', [
         'transfer_id',    # The unique id for the transfer
         'bucket',         # The bucket to download the object from
         'key',            # The key to download the object from
@@ -59,7 +59,7 @@ class ProcessTransferConfig(object):
         :param multipart_threshold: The threshold for which ranged downloads
             occur.
 
-        :param multipart_chunksize: The chunk size of each ranged download
+        :param multipart_chunksize: The chunk size of each ranged download.
 
         :param max_request_processes: The maximum number of processes that
             will be making S3 API transfer-related requests at a time.
@@ -140,28 +140,29 @@ class TransferMonitor(object):
             return self._transfer_job_count[transfer_id]
 
 
-class Submitter(multiprocessing.Process):
+class DownloadFilePlanner(multiprocessing.Process):
     def __init__(self, transfer_config, client_factory,
-                 transfer_monitor, osutil, submitter_queue,
+                 transfer_monitor, osutil, download_request_queue,
                  worker_queue):
-        """Submit jobs to fulfill a download file request
+        """Plans GetObjectJobs to fulfill a download file request
 
-        :param transfer_config: Configuration for transfers
-        :param client_factory: ClientFactory for creating S3 clients
+        :param transfer_config: Configuration for transfers.
+        :param client_factory: ClientFactory for creating S3 clients.
         :param transfer_monitor: Monitor for notifying and retrieving state
-            of transfer
+            of transfer.
         :param osutil: OSUtils object to use for os-related behavior when
             performing the transfer.
-        :param submitter_queue: Queue to retrieve download file jobs
+        :param download_request_queue: Queue to retrieve download file
+            requests.
         :param worker_queue: Queue to submit GetObjectJobs for workers
-            to perform
+            to perform.
         """
-        super(Submitter, self).__init__()
+        super(DownloadFilePlanner, self).__init__()
         self._transfer_config = transfer_config
         self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor
         self._osutil = osutil
-        self._submitter_queue = submitter_queue
+        self._download_request_queue = download_request_queue
         self._worker_queue = worker_queue
         self._client = None
 
@@ -171,73 +172,75 @@ class Submitter(multiprocessing.Process):
         # spawn method.
         self._client = self._client_factory.create_client()
         while True:
-            download_file_job = self._submitter_queue.get()
-            if download_file_job == SHUTDOWN_SIGNAL:
+            download_file_request = self._download_request_queue.get()
+            if download_file_request == SHUTDOWN_SIGNAL:
                 return
             try:
-                self._submit_get_object_jobs(download_file_job)
+                self._submit_get_object_jobs(download_file_request)
             except Exception as e:
                 self._transfer_monitor.notify_exception(
-                    download_file_job.transfer_id, e)
+                    download_file_request.transfer_id, e)
 
-    def _submit_get_object_jobs(self, download_file_job):
-        size = self._get_size(download_file_job)
-        temp_filename = self._allocate_temp_file(download_file_job, size)
+    def _submit_get_object_jobs(self, download_file_request):
+        size = self._get_size(download_file_request)
+        temp_filename = self._allocate_temp_file(download_file_request, size)
         if size < self._transfer_config.multipart_threshold:
             self._submit_single_get_object_job(
-                download_file_job, temp_filename)
+                download_file_request, temp_filename)
         else:
             self._submit_ranged_get_object_jobs(
-                download_file_job, temp_filename, size)
+                download_file_request, temp_filename, size)
 
-    def _get_size(self, download_file_job):
-        expected_size = download_file_job.expected_size
+    def _get_size(self, download_file_request):
+        expected_size = download_file_request.expected_size
         if expected_size is None:
             expected_size = self._client.head_object(
-                Bucket=download_file_job.bucket, Key=download_file_job.key,
-                **download_file_job.extra_args)['ContentLength']
+                Bucket=download_file_request.bucket,
+                Key=download_file_request.key,
+                **download_file_request.extra_args)['ContentLength']
         return expected_size
 
-    def _allocate_temp_file(self, download_file_job, size):
+    def _allocate_temp_file(self, download_file_request, size):
         temp_filename = self._osutil.get_temp_filename(
-            download_file_job.filename
+            download_file_request.filename
         )
         self._osutil.truncate(temp_filename, size)
         return temp_filename
 
-    def _submit_single_get_object_job(self, download_file_job, temp_filename):
+    def _submit_single_get_object_job(self, download_file_request,
+                                      temp_filename):
         self._transfer_monitor.notify_expected_jobs_to_complete(
-            download_file_job.transfer_id, 1)
+            download_file_request.transfer_id, 1)
         self._submit_get_object_job(
-            transfer_id=download_file_job.transfer_id,
-            bucket=download_file_job.bucket,
-            key=download_file_job.key,
+            transfer_id=download_file_request.transfer_id,
+            bucket=download_file_request.bucket,
+            key=download_file_request.key,
             temp_filename=temp_filename,
             offset=0,
-            extra_args=download_file_job.extra_args,
-            filename=download_file_job.filename
+            extra_args=download_file_request.extra_args,
+            filename=download_file_request.filename
         )
 
-    def _submit_ranged_get_object_jobs(self, download_file_job, temp_filename,
-                                       size):
+    def _submit_ranged_get_object_jobs(self, download_file_request,
+                                       temp_filename, size):
         part_size = self._transfer_config.multipart_chunksize
         num_parts = calculate_num_parts(size, part_size)
         self._transfer_monitor.notify_expected_jobs_to_complete(
-            download_file_job.transfer_id, num_parts)
+            download_file_request.transfer_id, num_parts)
         for i in range(num_parts):
             offset = i * part_size
             range_parameter = calculate_range_parameter(
                 part_size, i, num_parts)
             get_object_kwargs = {'Range': range_parameter}
-            get_object_kwargs.update(download_file_job.extra_args)
+            get_object_kwargs.update(download_file_request.extra_args)
             self._submit_get_object_job(
-                transfer_id=download_file_job.transfer_id,
-                bucket=download_file_job.bucket,
-                key=download_file_job.key,
+                transfer_id=download_file_request.transfer_id,
+                bucket=download_file_request.bucket,
+                key=download_file_request.key,
                 temp_filename=temp_filename,
                 offset=offset,
                 extra_args=get_object_kwargs,
-                filename=download_file_job.filename,
+                filename=download_file_request.filename,
             )
 
     def _submit_get_object_job(self, **get_object_job_kwargs):

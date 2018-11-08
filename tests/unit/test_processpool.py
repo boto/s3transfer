@@ -26,12 +26,12 @@ from s3transfer.compat import six
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import OSUtils
 from s3transfer.processpool import SHUTDOWN_SIGNAL
-from s3transfer.processpool import DownloadFileJob
+from s3transfer.processpool import DownloadFileRequest
 from s3transfer.processpool import GetObjectJob
 from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import TransferMonitor
 from s3transfer.processpool import ClientFactory
-from s3transfer.processpool import Submitter
+from s3transfer.processpool import DownloadFilePlanner
 from s3transfer.processpool import GetObjectWorker
 
 
@@ -91,14 +91,14 @@ class TestSubmitter(StubbedClientTest):
         self.client_factory.create_client.return_value = self.client
         self.transfer_monitor = TransferMonitor()
         self.osutil = mock.Mock(OSUtils)
-        self.submitter_queue = queue.Queue()
+        self.download_request_queue = queue.Queue()
         self.worker_queue = queue.Queue()
-        self.submitter = Submitter(
+        self.planner = DownloadFilePlanner(
             transfer_config=self.transfer_config,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
             osutil=self.osutil,
-            submitter_queue=self.submitter_queue,
+            download_request_queue=self.download_request_queue,
             worker_queue=self.worker_queue,
         )
         self.transfer_id = 1
@@ -110,7 +110,7 @@ class TestSubmitter(StubbedClientTest):
         self.extra_args = {}
         self.expected_size = None
 
-    def add_download_file_job(self, **override_kwargs):
+    def add_download_file_request(self, **override_kwargs):
         kwargs = {
             'transfer_id': self.transfer_id,
             'bucket': self.bucket,
@@ -120,10 +120,10 @@ class TestSubmitter(StubbedClientTest):
             'expected_size': self.expected_size
         }
         kwargs.update(override_kwargs)
-        self.submitter_queue.put(DownloadFileJob(**kwargs))
+        self.download_request_queue.put(DownloadFileRequest(**kwargs))
 
     def add_shutdown(self):
-        self.submitter_queue.put(SHUTDOWN_SIGNAL)
+        self.download_request_queue.put(SHUTDOWN_SIGNAL)
 
     def assert_submitted_get_object_jobs(self, expected_jobs):
         actual_jobs = []
@@ -132,9 +132,9 @@ class TestSubmitter(StubbedClientTest):
         self.assertEqual(actual_jobs, expected_jobs)
 
     def test_run_for_non_ranged_download(self):
-        self.add_download_file_job(expected_size=1)
+        self.add_download_file_request(expected_size=1)
         self.add_shutdown()
-        self.submitter.run()
+        self.planner.run()
         self.osutil.truncate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
@@ -151,9 +151,9 @@ class TestSubmitter(StubbedClientTest):
     def test_run_for_ranged_download(self):
         self.transfer_config.multipart_chunksize = 2
         self.transfer_config.multipart_threshold = 4
-        self.add_download_file_job(expected_size=4)
+        self.add_download_file_request(expected_size=4)
         self.add_shutdown()
-        self.submitter.run()
+        self.planner.run()
         self.osutil.truncate.assert_called_with(self.temp_filename, 4)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
@@ -184,9 +184,9 @@ class TestSubmitter(StubbedClientTest):
                 'Key': self.key
             }
         )
-        self.add_download_file_job(expected_size=None)
+        self.add_download_file_request(expected_size=None)
         self.add_shutdown()
-        self.submitter.run()
+        self.planner.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.truncate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
@@ -210,12 +210,12 @@ class TestSubmitter(StubbedClientTest):
                 'VersionId': 'versionid'
             }
         )
-        self.add_download_file_job(
+        self.add_download_file_request(
             extra_args={'VersionId': 'versionid'},
             expected_size=None
         )
         self.add_shutdown()
-        self.submitter.run()
+        self.planner.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.truncate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
@@ -232,9 +232,9 @@ class TestSubmitter(StubbedClientTest):
 
     def test_run_with_exception(self):
         self.stubber.add_client_error('head_object', 'NoSuchKey', 404)
-        self.add_download_file_job(expected_size=None)
+        self.add_download_file_request(expected_size=None)
         self.add_shutdown()
-        self.submitter.run()
+        self.planner.run()
         self.stubber.assert_no_pending_responses()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(

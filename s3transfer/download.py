@@ -24,7 +24,7 @@ from botocore.vendored.requests.packages.urllib3.exceptions import \
     ReadTimeoutError
 
 from s3transfer.compat import SOCKET_ERROR
-from s3transfer.compat import seekable
+from s3transfer.compat import seekable, writes_are_seekable
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
 from s3transfer.utils import random_file_extension
@@ -202,7 +202,7 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
 class DownloadSeekableOutputManager(DownloadOutputManager):
     @classmethod
     def is_compatible(cls, download_target, osutil):
-        return seekable(download_target)
+        return writes_are_seekable(download_target)
 
     def get_fileobj_for_io_writes(self, transfer_future):
         # Return the fileobj provided to the future.

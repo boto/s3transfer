@@ -54,6 +54,20 @@ else:
     MAXINT = sys.maxint
 
 
+def writes_are_seekable(fileobj):
+    """Backwards compat function to determine if writes to a fileobj are seekable
+
+    :param fileobj: The file-like object to determine if writes are seekable
+
+    :returns: True, if in append mode. False, otherwise.
+    """
+    APPEND_ONLY_MODE = 'a'
+    is_seekable = seekable(fileobj)
+    if hasattr(fileobj, 'mode') and APPEND_ONLY_MODE in fileobj.mode:
+        is_seekable = False
+    return is_seekable
+
+
 def seekable(fileobj):
     """Backwards compat function to determine if a fileobj is seekable
 

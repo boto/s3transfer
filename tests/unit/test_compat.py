@@ -17,7 +17,7 @@ import shutil
 from botocore.compat import six
 
 from tests import unittest
-from s3transfer.compat import seekable, readable
+from s3transfer.compat import seekable, readable, writes_are_seekable
 
 
 class ErrorRaisingSeekWrapper(object):
@@ -48,6 +48,12 @@ class TestSeekable(unittest.TestCase):
     def test_seekable_fileobj(self):
         with open(self.filename, 'w') as f:
             self.assertTrue(seekable(f))
+
+    def test_non_seekable_append_fileobj(self):
+        with open(self.filename, 'a') as f:
+            self.assertFalse(writes_are_seekable(f))
+        with open(self.filename, 'a+') as f:
+            self.assertFalse(writes_are_seekable(f))
 
     def test_non_file_like_obj(self):
         # Fails becase there is no seekable(), seek(), nor tell()

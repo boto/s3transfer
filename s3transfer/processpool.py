@@ -26,6 +26,10 @@ from s3transfer.utils import calculate_range_parameter
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_SIGNAL = 'SHUTDOWN'
+
+# The DownloadFileRequest tuple is submitted from the ProcessPoolDownloader
+# to the DownloadFilePlanner in order for the planner to begin submitting
+# GetObjectJobs to the GetObjectWorkers.
 DownloadFileRequest = collections.namedtuple(
     'DownloadFileRequest', [
         'transfer_id',    # The unique id for the transfer
@@ -36,15 +40,21 @@ DownloadFileRequest = collections.namedtuple(
         'expected_size',  # The user-provided expected size of the download
     ]
 )
+
+# The GetObjectJob tuple is submitted from the DownloadFilePlanner
+# to the GetObjectWorkers to download the file or parts of the file.
 GetObjectJob = collections.namedtuple(
     'GetObjectJob', [
         'transfer_id',    # The unique id for the transfer
         'bucket',         # The bucket to download the object from
         'key',            # The key to download the object from
-        'temp_filename',  # The temporary file to write the content to
+        'temp_filename',  # The temporary file to write the content to via
+                          # completed GetObject calls.
         'extra_args',     # Extra arguments to provide to the GetObject call
-        'offset',         # The offset to write the content to
-        'filename',       # The user-requested download location
+        'offset',         # The offset to write the content for the temp file.
+        'filename',       # The user-requested download location. The worker
+                          # of final GetObjectJob will move the file located at
+                          # temp_filename to the location of filename.
     ]
 )
 

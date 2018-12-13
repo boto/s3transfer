@@ -135,7 +135,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.add_download_file_request(expected_size=1)
         self.add_shutdown()
         self.planner.run()
-        self.osutil.truncate.assert_called_with(self.temp_filename, 1)
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
                 transfer_id=self.transfer_id,
@@ -154,7 +154,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.add_download_file_request(expected_size=4)
         self.add_shutdown()
         self.planner.run()
-        self.osutil.truncate.assert_called_with(self.temp_filename, 4)
+        self.osutil.allocate.assert_called_with(self.temp_filename, 4)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
                 transfer_id=self.transfer_id,
@@ -188,7 +188,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.add_shutdown()
         self.planner.run()
         self.stubber.assert_no_pending_responses()
-        self.osutil.truncate.assert_called_with(self.temp_filename, 1)
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
                 transfer_id=self.transfer_id,
@@ -217,7 +217,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.add_shutdown()
         self.planner.run()
         self.stubber.assert_no_pending_responses()
-        self.osutil.truncate.assert_called_with(self.temp_filename, 1)
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
                 transfer_id=self.transfer_id,
@@ -240,25 +240,14 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.assertIsInstance(
             self.transfer_monitor.get_exception(self.transfer_id), ClientError)
 
-    def test_run_with_os_error_in_allocating_temp_file(self):
-        self.osutil.truncate.side_effect = OSError()
+    def test_run_with_error_in_allocating_temp_file(self):
+        self.osutil.allocate.side_effect = OSError()
         self.add_download_file_request(expected_size=1)
         self.add_shutdown()
         self.planner.run()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(
             self.transfer_monitor.get_exception(self.transfer_id), OSError)
-        self.osutil.remove_file.assert_called_with(self.temp_filename)
-
-    def test_run_with_io_error_in_allocating_temp_file(self):
-        self.osutil.truncate.side_effect = IOError()
-        self.add_download_file_request(expected_size=1)
-        self.add_shutdown()
-        self.planner.run()
-        self.assert_submitted_get_object_jobs([])
-        self.assertIsInstance(
-            self.transfer_monitor.get_exception(self.transfer_id), IOError)
-        self.osutil.remove_file.assert_called_with(self.temp_filename)
 
 
 class TestGetObjectWorker(StubbedClientTest):

@@ -204,11 +204,7 @@ class DownloadFilePlanner(multiprocessing.Process):
         temp_filename = self._osutil.get_temp_filename(
             download_file_request.filename
         )
-        try:
-            self._osutil.truncate(temp_filename, size)
-        except (OSError, IOError):
-            self._osutil.remove_file(temp_filename)
-            raise
+        self._osutil.allocate(temp_filename, size)
         return temp_filename
 
     def _submit_single_get_object_job(self, download_file_request,

@@ -29,6 +29,7 @@ from botocore.exceptions import ReadTimeoutError
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import rename_file
 from s3transfer.compat import seekable
+from s3transfer.compat import fallocate
 
 
 MAX_PARTS = 10000
@@ -301,9 +302,13 @@ class OSUtils(object):
     def get_temp_filename(self, filename):
         return filename + os.extsep + random_file_extension()
 
-    def truncate(self, filename, size):
-        with self.open(filename, 'wb') as f:
-            f.truncate(size)
+    def allocate(self, filename, size):
+        try:
+            with self.open(filename, 'wb') as f:
+                fallocate(f, size)
+        except (OSError, IOError):
+            self.remove_file(filename)
+            raise
 
 
 class DeferredOpenFile(object):

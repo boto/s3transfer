@@ -305,11 +305,25 @@ class TestOSUtils(BaseUtilsTest):
             )
         )
 
-    def test_truncate(self):
+    def test_allocate(self):
         truncate_size = 1
-        OSUtils().truncate(self.filename, truncate_size)
+        OSUtils().allocate(self.filename, truncate_size)
         with open(self.filename, 'rb') as f:
             self.assertEqual(len(f.read()), truncate_size)
+
+    @mock.patch('s3transfer.utils.fallocate')
+    def test_allocate_with_io_error(self, mock_fallocate):
+        mock_fallocate.side_effect = IOError()
+        with self.assertRaises(IOError):
+            OSUtils().allocate(self.filename, 1)
+        self.assertFalse(os.path.exists(self.filename))
+
+    @mock.patch('s3transfer.utils.fallocate')
+    def test_allocate_with_os_error(self, mock_fallocate):
+        mock_fallocate.side_effect = OSError()
+        with self.assertRaises(OSError):
+            OSUtils().allocate(self.filename, 1)
+        self.assertFalse(os.path.exists(self.filename))
 
 
 class TestDeferredOpenFile(BaseUtilsTest):

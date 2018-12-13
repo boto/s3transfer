@@ -31,7 +31,7 @@ from s3transfer.processpool import GetObjectJob
 from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import TransferMonitor
 from s3transfer.processpool import ClientFactory
-from s3transfer.processpool import DownloadFilePlanner
+from s3transfer.processpool import GetObjectSubmitter
 from s3transfer.processpool import GetObjectWorker
 
 
@@ -83,9 +83,9 @@ class TestTransferMonitor(unittest.TestCase):
         self.assertEqual(monitor.notify_job_complete(other_transfer_id), 1)
 
 
-class TestDownloadFilePlanner(StubbedClientTest):
+class TestGetObjectSubmitter(StubbedClientTest):
     def setUp(self):
-        super(TestDownloadFilePlanner, self).setUp()
+        super(TestGetObjectSubmitter, self).setUp()
         self.transfer_config = ProcessTransferConfig()
         self.client_factory = mock.Mock(ClientFactory)
         self.client_factory.create_client.return_value = self.client
@@ -93,7 +93,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.osutil = mock.Mock(OSUtils)
         self.download_request_queue = queue.Queue()
         self.worker_queue = queue.Queue()
-        self.planner = DownloadFilePlanner(
+        self.submitter = GetObjectSubmitter(
             transfer_config=self.transfer_config,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
@@ -134,7 +134,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
     def test_run_for_non_ranged_download(self):
         self.add_download_file_request(expected_size=1)
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
@@ -153,7 +153,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.transfer_config.multipart_threshold = 4
         self.add_download_file_request(expected_size=4)
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.osutil.allocate.assert_called_with(self.temp_filename, 4)
         self.assert_submitted_get_object_jobs([
             GetObjectJob(
@@ -186,7 +186,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         )
         self.add_download_file_request(expected_size=None)
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
@@ -215,7 +215,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
             expected_size=None
         )
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
         self.assert_submitted_get_object_jobs([
@@ -234,7 +234,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.stubber.add_client_error('head_object', 'NoSuchKey', 404)
         self.add_download_file_request(expected_size=None)
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.stubber.assert_no_pending_responses()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(
@@ -244,7 +244,7 @@ class TestDownloadFilePlanner(StubbedClientTest):
         self.osutil.allocate.side_effect = OSError()
         self.add_download_file_request(expected_size=1)
         self.add_shutdown()
-        self.planner.run()
+        self.submitter.run()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(
             self.transfer_monitor.get_exception(self.transfer_id), OSError)

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 SHUTDOWN_SIGNAL = 'SHUTDOWN'
 
 # The DownloadFileRequest tuple is submitted from the ProcessPoolDownloader
-# to the DownloadFilePlanner in order for the planner to begin submitting
+# to the GetObjectSubmitter in order for the submitter to begin submitting
 # GetObjectJobs to the GetObjectWorkers.
 DownloadFileRequest = collections.namedtuple(
     'DownloadFileRequest', [
@@ -41,7 +41,7 @@ DownloadFileRequest = collections.namedtuple(
     ]
 )
 
-# The GetObjectJob tuple is submitted from the DownloadFilePlanner
+# The GetObjectJob tuple is submitted from the GetObjectSubmitter
 # to the GetObjectWorkers to download the file or parts of the file.
 GetObjectJob = collections.namedtuple(
     'GetObjectJob', [
@@ -150,11 +150,11 @@ class TransferMonitor(object):
             return self._transfer_job_count[transfer_id]
 
 
-class DownloadFilePlanner(multiprocessing.Process):
+class GetObjectSubmitter(multiprocessing.Process):
     def __init__(self, transfer_config, client_factory,
                  transfer_monitor, osutil, download_request_queue,
                  worker_queue):
-        """Plans GetObjectJobs to fulfill a download file request
+        """Submit GetObjectJobs to fulfill a download file request
 
         :param transfer_config: Configuration for transfers.
         :param client_factory: ClientFactory for creating S3 clients.
@@ -167,7 +167,7 @@ class DownloadFilePlanner(multiprocessing.Process):
         :param worker_queue: Queue to submit GetObjectJobs for workers
             to perform.
         """
-        super(DownloadFilePlanner, self).__init__()
+        super(GetObjectSubmitter, self).__init__()
         self._transfer_config = transfer_config
         self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor

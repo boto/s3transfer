@@ -29,6 +29,7 @@ from botocore.exceptions import ReadTimeoutError
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import rename_file
 from s3transfer.compat import seekable
+from s3transfer.compat import fallocate
 
 
 MAX_PARTS = 10000
@@ -59,6 +60,10 @@ def signal_transferring(request, operation_name, **kwargs):
     if operation_name in ['PutObject', 'UploadPart'] and \
             hasattr(request.body, 'signal_transferring'):
         request.body.signal_transferring()
+
+
+def calculate_num_parts(size, part_size):
+    return int(math.ceil(size / float(part_size)))
 
 
 def calculate_range_parameter(part_size, part_index, num_parts,
@@ -293,6 +298,17 @@ class OSUtils(object):
         if stat.S_ISSOCK(mode):
             return True
         return False
+
+    def get_temp_filename(self, filename):
+        return filename + os.extsep + random_file_extension()
+
+    def allocate(self, filename, size):
+        try:
+            with self.open(filename, 'wb') as f:
+                fallocate(f, size)
+        except (OSError, IOError):
+            self.remove_file(filename)
+            raise
 
 
 class DeferredOpenFile(object):

@@ -11,9 +11,9 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
-from multiprocessing import Queue
 
 import mock
+from six.moves import queue
 from botocore.exceptions import ClientError
 from botocore.exceptions import ReadTimeoutError
 from botocore.client import BaseClient
@@ -26,9 +26,12 @@ from s3transfer.compat import six
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import OSUtils
 from s3transfer.processpool import SHUTDOWN_SIGNAL
+from s3transfer.processpool import DownloadFileRequest
 from s3transfer.processpool import GetObjectJob
+from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import TransferMonitor
 from s3transfer.processpool import ClientFactory
+from s3transfer.processpool import GetObjectSubmitter
 from s3transfer.processpool import GetObjectWorker
 
 
@@ -80,11 +83,178 @@ class TestTransferMonitor(unittest.TestCase):
         self.assertEqual(monitor.notify_job_complete(other_transfer_id), 1)
 
 
+class TestGetObjectSubmitter(StubbedClientTest):
+    def setUp(self):
+        super(TestGetObjectSubmitter, self).setUp()
+        self.transfer_config = ProcessTransferConfig()
+        self.client_factory = mock.Mock(ClientFactory)
+        self.client_factory.create_client.return_value = self.client
+        self.transfer_monitor = TransferMonitor()
+        self.osutil = mock.Mock(OSUtils)
+        self.download_request_queue = queue.Queue()
+        self.worker_queue = queue.Queue()
+        self.submitter = GetObjectSubmitter(
+            transfer_config=self.transfer_config,
+            client_factory=self.client_factory,
+            transfer_monitor=self.transfer_monitor,
+            osutil=self.osutil,
+            download_request_queue=self.download_request_queue,
+            worker_queue=self.worker_queue,
+        )
+        self.transfer_id = 1
+        self.bucket = 'bucket'
+        self.key = 'key'
+        self.filename = 'myfile'
+        self.temp_filename = 'myfile.temp'
+        self.osutil.get_temp_filename.return_value = self.temp_filename
+        self.extra_args = {}
+        self.expected_size = None
+
+    def add_download_file_request(self, **override_kwargs):
+        kwargs = {
+            'transfer_id': self.transfer_id,
+            'bucket': self.bucket,
+            'key': self.key,
+            'filename': self.filename,
+            'extra_args': self.extra_args,
+            'expected_size': self.expected_size
+        }
+        kwargs.update(override_kwargs)
+        self.download_request_queue.put(DownloadFileRequest(**kwargs))
+
+    def add_shutdown(self):
+        self.download_request_queue.put(SHUTDOWN_SIGNAL)
+
+    def assert_submitted_get_object_jobs(self, expected_jobs):
+        actual_jobs = []
+        while not self.worker_queue.empty():
+            actual_jobs.append(self.worker_queue.get())
+        self.assertEqual(actual_jobs, expected_jobs)
+
+    def test_run_for_non_ranged_download(self):
+        self.add_download_file_request(expected_size=1)
+        self.add_shutdown()
+        self.submitter.run()
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
+        self.assert_submitted_get_object_jobs([
+            GetObjectJob(
+                transfer_id=self.transfer_id,
+                bucket=self.bucket,
+                key=self.key,
+                temp_filename=self.temp_filename,
+                offset=0,
+                extra_args={},
+                filename=self.filename,
+            )
+        ])
+
+    def test_run_for_ranged_download(self):
+        self.transfer_config.multipart_chunksize = 2
+        self.transfer_config.multipart_threshold = 4
+        self.add_download_file_request(expected_size=4)
+        self.add_shutdown()
+        self.submitter.run()
+        self.osutil.allocate.assert_called_with(self.temp_filename, 4)
+        self.assert_submitted_get_object_jobs([
+            GetObjectJob(
+                transfer_id=self.transfer_id,
+                bucket=self.bucket,
+                key=self.key,
+                temp_filename=self.temp_filename,
+                offset=0,
+                extra_args={'Range': 'bytes=0-1'},
+                filename=self.filename,
+            ),
+            GetObjectJob(
+                transfer_id=self.transfer_id,
+                bucket=self.bucket,
+                key=self.key,
+                temp_filename=self.temp_filename,
+                offset=2,
+                extra_args={'Range': 'bytes=2-'},
+                filename=self.filename,
+            ),
+        ])
+
+    def test_run_when_expected_size_not_provided(self):
+        self.stubber.add_response(
+            'head_object', {'ContentLength': 1},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key
+            }
+        )
+        self.add_download_file_request(expected_size=None)
+        self.add_shutdown()
+        self.submitter.run()
+        self.stubber.assert_no_pending_responses()
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
+        self.assert_submitted_get_object_jobs([
+            GetObjectJob(
+                transfer_id=self.transfer_id,
+                bucket=self.bucket,
+                key=self.key,
+                temp_filename=self.temp_filename,
+                offset=0,
+                extra_args={},
+                filename=self.filename,
+            )
+        ])
+
+    def test_run_with_extra_args(self):
+        self.stubber.add_response(
+            'head_object', {'ContentLength': 1},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'VersionId': 'versionid'
+            }
+        )
+        self.add_download_file_request(
+            extra_args={'VersionId': 'versionid'},
+            expected_size=None
+        )
+        self.add_shutdown()
+        self.submitter.run()
+        self.stubber.assert_no_pending_responses()
+        self.osutil.allocate.assert_called_with(self.temp_filename, 1)
+        self.assert_submitted_get_object_jobs([
+            GetObjectJob(
+                transfer_id=self.transfer_id,
+                bucket=self.bucket,
+                key=self.key,
+                temp_filename=self.temp_filename,
+                offset=0,
+                extra_args={'VersionId': 'versionid'},
+                filename=self.filename,
+            )
+        ])
+
+    def test_run_with_exception(self):
+        self.stubber.add_client_error('head_object', 'NoSuchKey', 404)
+        self.add_download_file_request(expected_size=None)
+        self.add_shutdown()
+        self.submitter.run()
+        self.stubber.assert_no_pending_responses()
+        self.assert_submitted_get_object_jobs([])
+        self.assertIsInstance(
+            self.transfer_monitor.get_exception(self.transfer_id), ClientError)
+
+    def test_run_with_error_in_allocating_temp_file(self):
+        self.osutil.allocate.side_effect = OSError()
+        self.add_download_file_request(expected_size=1)
+        self.add_shutdown()
+        self.submitter.run()
+        self.assert_submitted_get_object_jobs([])
+        self.assertIsInstance(
+            self.transfer_monitor.get_exception(self.transfer_id), OSError)
+
+
 class TestGetObjectWorker(StubbedClientTest):
     def setUp(self):
         super(TestGetObjectWorker, self).setUp()
         self.files = FileCreator()
-        self.queue = Queue()
+        self.queue = queue.Queue()
         self.client_factory = mock.Mock(ClientFactory)
         self.client_factory.create_client.return_value = self.client
         self.transfer_monitor = TransferMonitor()

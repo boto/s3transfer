@@ -12,3 +12,11 @@
 # language governing permissions and limitations under the License.
 KB = 1024
 MB = KB * KB
+
+ALLOWED_DOWNLOAD_ARGS = [
+    'VersionId',
+    'SSECustomerAlgorithm',
+    'SSECustomerKey',
+    'SSECustomerKeyMD5',
+    'RequestPayer',
+]

@@ -1,4 +1,4 @@
-# Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You
 # may not use this file except in compliance with the License. A copy of
@@ -13,15 +13,18 @@
 import collections
 import logging
 import multiprocessing
+import multiprocessing.managers
 import threading
 
 import botocore.session
 
 from s3transfer.constants import MB
+from s3transfer.constants import ALLOWED_DOWNLOAD_ARGS
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.utils import S3_RETRYABLE_DOWNLOAD_ERRORS
 from s3transfer.utils import calculate_num_parts
 from s3transfer.utils import calculate_range_parameter
+from s3transfer.utils import OSUtils
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,156 @@ class ProcessTransferConfig(object):
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
         self.max_request_processes = max_request_processes
+
+
+class ProcessPoolDownloader(object):
+    def __init__(self, client_kwargs=None, config=None):
+        """Downloads S3 objects using process pools
+
+        :type client_kwargs: dict
+        :param client_kwargs: The keyword arguments to provide when
+            instantiating S3 clients. The arguments must match the keyword
+            arguments provided to the
+            `botocore.session.Session.create_client()` method.
+
+        :type config: ProcessTransferConfig
+        :param config: Configuration for the downloader
+        """
+        if client_kwargs is None:
+            client_kwargs = {}
+        self._client_factory = ClientFactory(client_kwargs)
+
+        self._transfer_config = config
+        if config is None:
+            self._transfer_config = ProcessTransferConfig()
+
+        self._download_request_queue = multiprocessing.Queue(1000)
+        self._worker_queue = multiprocessing.Queue(1000)
+        self._osutil = OSUtils()
+
+        self._id_counter = 0
+        self._started = False
+        self._start_lock = threading.Lock()
+
+        # These below are initialized in the start() method
+        self._manager = None
+        self._transfer_monitor = None
+        self._submitter = None
+        self._workers = []
+
+    def download_file(self, bucket, key, filename, extra_args=None,
+                      expected_size=None):
+        """Downloads the object's contents to a file
+
+        :type bucket: str
+        :param bucket: The name of the bucket to download from
+
+        :type key: str
+        :param key: The name of the key to download from
+
+        :type filename: str
+        :param filename: The name of a file to download to.
+
+        :type extra_args: dict
+        :param extra_args: Extra arguments that may be passed to the
+            client operation
+
+        :type expected_size: int
+        :param expected_size: The expected size in bytes of the download. If
+            provided, the downloader will not call HeadObject to determine the
+            object's size and use the provided value instead. The size is
+            needed to determine whether to do a multipart download.
+
+        :rtype: s3transfer.futures.TransferFuture
+        :returns: Transfer future representing the download
+        """
+        self._start_if_needed()
+        if extra_args is None:
+            extra_args = {}
+        self._validate_all_known_args(extra_args)
+        self._download_request_queue.put(
+            DownloadFileRequest(
+                transfer_id=self._id_counter, bucket=bucket, key=key,
+                filename=filename, extra_args=extra_args,
+                expected_size=expected_size,
+            )
+        )
+        self._id_counter += 1
+        # TODO: Return a TransferFuture
+
+    def shutdown(self):
+        """Shutdown the downloader
+
+        It will wait till all downloads are complete before returning.
+        """
+        self._shutdown_submitter()
+        self._shutdown_get_object_workers()
+        self._shutdown_transfer_monitor_manager()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.shutdown()
+
+    def _start_if_needed(self):
+        with self._start_lock:
+            if not self._started:
+                self._start()
+
+    def _start(self):
+        self._start_transfer_monitor_manager()
+        self._start_submitter()
+        self._start_get_object_workers()
+        self._started = True
+
+    def _validate_all_known_args(self, provided):
+        for kwarg in provided:
+            if kwarg not in ALLOWED_DOWNLOAD_ARGS:
+                raise ValueError(
+                    "Invalid extra_args key '%s', "
+                    "must be one of: %s" % (
+                        kwarg, ', '.join(ALLOWED_DOWNLOAD_ARGS)))
+
+    def _start_transfer_monitor_manager(self):
+        self._manager = TransferMonitorManager()
+        self._manager.start()
+        self._transfer_monitor = self._manager.TransferMonitor()
+
+    def _start_submitter(self):
+        self._submitter = GetObjectSubmitter(
+            transfer_config=self._transfer_config,
+            client_factory=self._client_factory,
+            transfer_monitor=self._transfer_monitor,
+            osutil=self._osutil,
+            download_request_queue=self._download_request_queue,
+            worker_queue=self._worker_queue
+        )
+        self._submitter.start()
+
+    def _start_get_object_workers(self):
+        for _ in range(self._transfer_config.max_request_processes):
+            worker = GetObjectWorker(
+                queue=self._worker_queue,
+                client_factory=self._client_factory,
+                transfer_monitor=self._transfer_monitor,
+                osutil=self._osutil,
+            )
+            worker.start()
+            self._workers.append(worker)
+
+    def _shutdown_transfer_monitor_manager(self):
+        self._manager.shutdown()
+
+    def _shutdown_submitter(self):
+        self._download_request_queue.put(SHUTDOWN_SIGNAL)
+        self._submitter.join()
+
+    def _shutdown_get_object_workers(self):
+        for _ in self._workers:
+            self._worker_queue.put(SHUTDOWN_SIGNAL)
+        for worker in self._workers:
+            worker.join()
 
 
 class ClientFactory(object):
@@ -148,6 +301,13 @@ class TransferMonitor(object):
         with self._job_count_lock:
             self._transfer_job_count[transfer_id] -= 1
             return self._transfer_job_count[transfer_id]
+
+
+class TransferMonitorManager(multiprocessing.managers.BaseManager):
+    pass
+
+
+TransferMonitorManager.register('TransferMonitor', TransferMonitor)
 
 
 class GetObjectSubmitter(multiprocessing.Process):

@@ -109,6 +109,7 @@ class ProcessPoolDownloader(object):
 
         self._id_counter = 0
         self._started = False
+        self._start_lock = threading.Lock()
 
         # These below are initialized in the start() method
         self._manager = None
@@ -142,7 +143,7 @@ class ProcessPoolDownloader(object):
         :rtype: s3transfer.futures.TransferFuture
         :returns: Transfer future representing the download
         """
-        self._assert_has_started()
+        self._start_if_needed()
         if extra_args is None:
             extra_args = {}
         self._validate_all_known_args(extra_args)
@@ -156,12 +157,6 @@ class ProcessPoolDownloader(object):
         self._id_counter += 1
         # TODO: Return a TransferFuture
 
-    def start(self):
-        self._start_transfer_monitor_manager()
-        self._start_submitter()
-        self._start_get_object_workers()
-        self._started = True
-
     def shutdown(self):
         """Shutdown the downloader
 
@@ -172,17 +167,21 @@ class ProcessPoolDownloader(object):
         self._shutdown_transfer_monitor_manager()
 
     def __enter__(self):
-        self.start()
         return self
 
     def __exit__(self, *args):
         self.shutdown()
 
-    def _assert_has_started(self):
-        if not self._started:
-            raise RuntimeError(
-                'The start() method must be called before calling '
-                'download_file()')
+    def _start_if_needed(self):
+        with self._start_lock:
+            if not self._started:
+                self._start()
+
+    def _start(self):
+        self._start_transfer_monitor_manager()
+        self._start_submitter()
+        self._start_get_object_workers()
+        self._started = True
 
     def _validate_all_known_args(self, provided):
         for kwarg in provided:

@@ -101,6 +101,24 @@ class TestProcessPoolDownloader(unittest.TestCase):
             self.downloader.download_file(self.bucket, self.key, self.filename)
         self.assert_contents(self.filename, self.remote_contents)
 
+    def test_download_multiple_files(self):
+        self.stubbed_client.add_response(
+            'get_object', {'Body': self.stream}
+        )
+        self.stubbed_client.add_response(
+            'get_object', {'Body': six.BytesIO(self.remote_contents)}
+        )
+        with self.downloader:
+            self.downloader.download_file(
+                self.bucket, self.key, self.filename,
+                expected_size=len(self.remote_contents))
+            other_file = self.files.full_path('filename2')
+            self.downloader.download_file(
+                self.bucket, self.key, other_file,
+                expected_size=len(self.remote_contents))
+        self.assert_contents(self.filename, self.remote_contents)
+        self.assert_contents(other_file, self.remote_contents)
+
     def test_download_file_ranged_download(self):
         half_of_content_length = int(len(self.remote_contents)/2)
         self.stubbed_client.add_response(
@@ -174,10 +192,6 @@ class TestProcessPoolDownloader(unittest.TestCase):
         self.mock_client_factory.assert_called_with(
             {'region_name': 'myregion'}
         )
-
-    def test_asserts_start_is_called(self):
-        with self.assertRaises(RuntimeError):
-            self.downloader.download_file(self.bucket, self.key, self.filename)
 
     def test_validates_extra_args(self):
         with self.downloader:

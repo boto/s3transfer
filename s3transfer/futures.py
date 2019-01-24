@@ -68,7 +68,7 @@ class BaseTransferMeta(object):
     @property
     def user_context(self):
         """A dictionary that requesters can store data in"""
-        raise NotImplementedError('transfer_id')
+        raise NotImplementedError('user_context')
 
 
 class TransferFuture(BaseTransferFuture):

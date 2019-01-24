@@ -15,12 +15,14 @@ import os
 from multiprocessing.managers import BaseManager
 
 import mock
+import botocore.exceptions
 import botocore.session
 from botocore.stub import Stubber
 
 from tests import unittest
 from tests import FileCreator
 from s3transfer.compat import six
+from s3transfer.exceptions import CancelledError
 from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import ProcessPoolDownloader
 
@@ -200,3 +202,34 @@ class TestProcessPoolDownloader(unittest.TestCase):
                     self.bucket, self.key, self.filename,
                     extra_args={'NotSupported': 'NotSupported'}
                 )
+
+    def test_result_with_success(self):
+        self.stubbed_client.add_response(
+            'get_object', {'Body': self.stream}
+        )
+        with self.downloader:
+            future = self.downloader.download_file(
+                self.bucket, self.key, self.filename,
+                expected_size=len(self.remote_contents))
+            self.assertIsNone(future.result())
+
+    def test_result_with_exception(self):
+        self.stubbed_client.add_client_error('get_object', 'NoSuchKey')
+        with self.downloader:
+            future = self.downloader.download_file(
+                self.bucket, self.key, self.filename,
+                expected_size=len(self.remote_contents))
+            with self.assertRaises(botocore.exceptions.ClientError):
+                future.result()
+
+    def test_result_with_cancel(self):
+        self.stubbed_client.add_response(
+            'get_object', {'Body': self.stream}
+        )
+        with self.downloader:
+            future = self.downloader.download_file(
+                self.bucket, self.key, self.filename,
+                expected_size=len(self.remote_contents))
+            future.cancel()
+            with self.assertRaises(CancelledError):
+                future.result()

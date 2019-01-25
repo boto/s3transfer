@@ -88,11 +88,23 @@ def human_readable_size(value):
             return '%.1f %s' % ((base * bytes_int / unit), suffix)
 
 
+def human_readable_throughput(value):
+    hummanize_suffixes = ('Kbps', 'Mbps', 'Gbps', 'Tbps')
+    base = 1024
+    bits_per_sec_int = float(value) * 8.0
+
+    for i, suffix in enumerate(hummanize_suffixes):
+        unit = base ** (i+2)
+        if round((bits_per_sec_int / unit) * base) < base:
+            return '%.1f %s' % ((base * bits_per_sec_int / unit), suffix)
+
+
 class Summarizer(object):
     DATA_INDEX_IN_ROW = {
         'time': 0,
         'memory': 1,
-        'cpu': 2
+        'cpu': 2,
+        'recv_throughput': 4,
     }
 
     def __init__(self):
@@ -104,17 +116,21 @@ class Summarizer(object):
             'time': [],
             'average_memory': [],
             'average_cpu': [],
+            'average_recv_throughput': [],
             'max_memory': [],
             'max_cpu': [],
+            'max_recv_throughput': [],
         }
         self._averages = {
             'memory': 0.0,
             'cpu': 0.0,
+            'recv_throughput': 0.0,
 
         }
         self._maximums = {
             'memory': 0.0,
-            'cpu': 0.0
+            'cpu': 0.0,
+            'recv_throughput': 0.0,
         }
 
     @property
@@ -130,12 +146,20 @@ class Summarizer(object):
         return self._average_across_all_files('max_memory')
 
     @property
+    def max_recv_throughput(self):
+        return self._average_across_all_files('max_recv_throughput')
+
+    @property
     def average_cpu(self):
         return self._average_across_all_files('average_cpu')
 
     @property
     def average_memory(self):
         return self._average_across_all_files('average_memory')
+
+    @property
+    def average_recv_throughput(self):
+        return self._average_across_all_files('average_recv_throughput')
 
     @property
     def std_dev_total_time(self):
@@ -150,12 +174,21 @@ class Summarizer(object):
         return self._standard_deviation_across_all_files('max_memory')
 
     @property
+    def std_dev_max_recv_throughput(self):
+        return self._standard_deviation_across_all_files('max_recv_throughput')
+
+    @property
     def std_dev_average_cpu(self):
         return self._standard_deviation_across_all_files('average_cpu')
 
     @property
     def std_dev_average_memory(self):
         return self._standard_deviation_across_all_files('average_memory')
+
+    @property
+    def std_dev_average_recv_throughput(self):
+        return self._standard_deviation_across_all_files(
+            'average_recv_throughput')
 
     def _average_across_all_files(self, name):
         return sum(self._totals[name])/len(self._totals[name])
@@ -172,16 +205,22 @@ class Summarizer(object):
         :return: str of formatted table
         """
         h = human_readable_size
+        h_throughput = human_readable_throughput
         table = [
             ['Total Time (seconds)', '%.3f' % self.total_time,
              self.std_dev_total_time],
             ['Maximum Memory', h(self.max_memory), h(self.std_dev_max_memory)],
             ['Maximum CPU (percent)',  '%.1f' % self.max_cpu,
              self.std_dev_max_cpu],
+            ['Maximum Recv Throughput', h_throughput(self.max_recv_throughput),
+             h_throughput(self.max_recv_throughput)],
             ['Average Memory', h(self.average_memory),
              h(self.std_dev_average_memory)],
             ['Average CPU (percent)', '%.1f' % self.average_cpu,
              self.std_dev_average_cpu],
+            ['Average Recv Throughput',
+             h_throughput(self.average_recv_throughput),
+             h_throughput(self.average_recv_throughput)],
         ]
         return tabulate(
             table,
@@ -240,6 +279,7 @@ class Summarizer(object):
         self._num_rows += 1
         self.process_data_point(row, 'memory')
         self.process_data_point(row, 'cpu')
+        self.process_data_point(row, 'recv_throughput')
 
     def process_data_point(self, row, name):
         # Determine where in the CSV row the requested data is located.
@@ -255,11 +295,15 @@ class Summarizer(object):
         self._totals['time'].append(self._end_time - self._start_time)
         self._totals['max_cpu'].append(self._maximums['cpu'])
         self._totals['max_memory'].append(self._maximums['memory'])
+        self._totals['max_recv_throughput'].append(
+            self._maximums['recv_throughput']
+        )
         self._totals['average_cpu'].append(
                 self._averages['cpu']/self._num_rows)
         self._totals['average_memory'].append(
             self._averages['memory']/self._num_rows)
-
+        self._totals['average_recv_throughput'].append(
+            self._averages['recv_throughput']/self._num_rows)
         # Reset some of the data needed to be tracked for each specific
         # file.
         self._num_rows = 0

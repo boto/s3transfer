@@ -90,6 +90,7 @@ def run_benchmark(pid, output_file, data_interval):
 
             # Determine the lapsed time to determine the network io rate.
             current_time = time.time()
+            previous_net = current_net
             dt = current_time - previous_time
             previous_time = current_time
             sent_rate = sent_delta / dt

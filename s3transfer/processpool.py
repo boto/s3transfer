@@ -193,10 +193,12 @@ are using ``us-west-2`` as their region.
 
 """
 import collections
+import contextlib
 import logging
 import multiprocessing
 import multiprocessing.managers
 import threading
+import signal
 
 import botocore.session
 
@@ -249,6 +251,13 @@ GetObjectJob = collections.namedtuple(
 )
 
 
+@contextlib.contextmanager
+def ignore_ctrl_c():
+    original_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    yield
+    signal.signal(signal.SIGINT, original_handler)
+
+
 class ProcessTransferConfig(object):
     def __init__(self,
                  multipart_threshold=8 * MB,
@@ -294,7 +303,6 @@ class ProcessPoolDownloader(object):
         self._worker_queue = multiprocessing.Queue(1000)
         self._osutil = OSUtils()
 
-        self._id_counter = 0
         self._started = False
         self._start_lock = threading.Lock()
 
@@ -334,9 +342,10 @@ class ProcessPoolDownloader(object):
         if extra_args is None:
             extra_args = {}
         self._validate_all_known_args(extra_args)
+        transfer_id = self._transfer_monitor.notify_new_transfer()
         self._download_request_queue.put(
             DownloadFileRequest(
-                transfer_id=self._id_counter, bucket=bucket, key=key,
+                transfer_id=transfer_id, bucket=bucket, key=key,
                 filename=filename, extra_args=extra_args,
                 expected_size=expected_size,
             )
@@ -344,7 +353,7 @@ class ProcessPoolDownloader(object):
         call_args = CallArgs(
             bucket=bucket, key=key, filename=filename, extra_args=extra_args,
             expected_size=expected_size)
-        future = self._get_transfer_future(call_args)
+        future = self._get_transfer_future(transfer_id, call_args)
         return future
 
     def shutdown(self):
@@ -359,8 +368,9 @@ class ProcessPoolDownloader(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, *args):
-        # TODO: If a Ctrl-C happened add logic to cancel all jobs
+    def __exit__(self, exc_type, exc_value, *args):
+        if isinstance(exc_value, KeyboardInterrupt):
+            self._transfer_monitor.notify_cancel_all_in_progress()
         self.shutdown()
 
     def _start_if_needed(self):
@@ -382,18 +392,20 @@ class ProcessPoolDownloader(object):
                     "must be one of: %s" % (
                         kwarg, ', '.join(ALLOWED_DOWNLOAD_ARGS)))
 
-    def _get_transfer_future(self, call_args):
-        transfer_id = self._id_counter
+    def _get_transfer_future(self, transfer_id, call_args):
         meta = ProcessPoolTransferMeta(
             call_args=call_args, transfer_id=transfer_id)
         future = ProcessPoolTransferFuture(
             monitor=self._transfer_monitor, meta=meta)
-        self._id_counter += 1
         return future
 
     def _start_transfer_monitor_manager(self):
         self._manager = TransferMonitorManager()
-        self._manager.start()
+        # We do not want Ctrl-C's to cause the manager to shutdown immediately
+        # as worker processes will still need to communicate with it when they
+        # are shutting down. So instead we ignore Ctrl-C and let the manager
+        # be explicitly shutdown when shutting down the downloader.
+        self._manager.start(signal.signal, (signal.SIGINT, signal.SIG_IGN))
         self._transfer_monitor = self._manager.TransferMonitor()
 
     def _start_submitter(self):
@@ -457,6 +469,21 @@ class ProcessPoolTransferFuture(BaseTransferFuture):
         try:
             return self._monitor.poll_for_result(self._meta.transfer_id)
         except KeyboardInterrupt:
+            # For the multiprocessing Manager, a thread is given a single
+            # connection to reuse in communicating between the thread in the
+            # main process and the Manager's process. If a Ctrl-C happens when
+            # polling for the result, it will make the main thread stop trying
+            # to receive from the connection, but the Manager process will not
+            # know that the main process has stopped trying to receive and
+            # will not close the connection. As a result if another message is
+            # sent to the Manager process, the listener in the Manager
+            # processes will not process the new message as it is still trying
+            # trying to process the previous message (that was Ctrl-C'd) and
+            # thus cause the thread in the main process to hang on its send.
+            # The only way around this is to create a new connection and send
+            # messages from that new connection instead.
+            if hasattr(self._monitor, '_connect'):
+                self._monitor._connect()
             self.cancel()
             raise
 
@@ -517,7 +544,16 @@ class TransferMonitor(object):
         #  marked as done and the reference to the future is no longer being
         #  held onto. Without this logic, this dictionary will continue to
         #  grow in size with no limit.
-        self._transfer_states = collections.defaultdict(TransferState)
+        self._transfer_states = {}
+        self._id_count = 0
+        self._init_lock = threading.Lock()
+
+    def notify_new_transfer(self):
+        with self._init_lock:
+            transfer_id = self._id_count
+            self._transfer_states[transfer_id] = TransferState()
+            self._id_count += 1
+            return transfer_id
 
     def is_done(self, transfer_id):
         """Determine a particular transfer is complete
@@ -559,6 +595,11 @@ class TransferMonitor(object):
         # make sure to update this signature to ensure pickleability of the
         # arguments or have the ProxyObject do the serialization.
         self._transfer_states[transfer_id].exception = exception
+
+    def notify_cancel_all_in_progress(self):
+        for transfer_state in self._transfer_states.values():
+            if not transfer_state.done:
+                transfer_state.exception = CancelledError()
 
     def get_exception(self, transfer_id):
         """Retrieve the exception encountered for the transfer
@@ -640,7 +681,34 @@ class TransferMonitorManager(multiprocessing.managers.BaseManager):
 TransferMonitorManager.register('TransferMonitor', TransferMonitor)
 
 
-class GetObjectSubmitter(multiprocessing.Process):
+class BaseS3TransferProcess(multiprocessing.Process):
+    def __init__(self, client_factory):
+        super(BaseS3TransferProcess, self).__init__()
+        self._client_factory = client_factory
+        self._client = None
+
+    def run(self):
+        # Clients are not pickleable so their instantiation cannot happen
+        # in the __init__ for processes that are created under the
+        # spawn method.
+        self._client = self._client_factory.create_client()
+        with ignore_ctrl_c():
+            # By default these processes are ran as child processes to the
+            # main process. Any Ctrl-c encountered in the main process is
+            # propagated to the child process and interrupt it at any time.
+            # To avoid any potentially bad states caused from an interrupt
+            # (i.e. a transfer failing to notify its done or making the
+            # communication protocol become out of sync with the
+            # TransferMonitor), we ignore all Ctrl-C's and allow the main
+            # process to notify these child processes when to stop processing
+            # jobs.
+            self._do_run()
+
+    def _do_run(self):
+        raise NotImplementedError('_do_run()')
+
+
+class GetObjectSubmitter(BaseS3TransferProcess):
     def __init__(self, transfer_config, client_factory,
                  transfer_monitor, osutil, download_request_queue,
                  worker_queue):
@@ -657,20 +725,14 @@ class GetObjectSubmitter(multiprocessing.Process):
         :param worker_queue: Queue to submit GetObjectJobs for workers
             to perform.
         """
-        super(GetObjectSubmitter, self).__init__()
+        super(GetObjectSubmitter, self).__init__(client_factory)
         self._transfer_config = transfer_config
-        self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor
         self._osutil = osutil
         self._download_request_queue = download_request_queue
         self._worker_queue = worker_queue
-        self._client = None
 
-    def run(self):
-        # Client are not pickleable so their instantiation cannot happen
-        # in the __init__ for processes that are created under the
-        # spawn method.
-        self._client = self._client_factory.create_client()
+    def _do_run(self):
         while True:
             download_file_request = self._download_request_queue.get()
             if download_file_request == SHUTDOWN_SIGNAL:
@@ -749,7 +811,7 @@ class GetObjectSubmitter(multiprocessing.Process):
         self._worker_queue.put(GetObjectJob(**get_object_job_kwargs))
 
 
-class GetObjectWorker(multiprocessing.Process):
+class GetObjectWorker(BaseS3TransferProcess):
     # TODO: It may make sense to expose these class variables as configuration
     # options if users want to tweak them.
     _MAX_ATTEMPTS = 5
@@ -768,18 +830,13 @@ class GetObjectWorker(multiprocessing.Process):
         :param osutil: OSUtils object to use for os-related behavior when
             performing the transfer.
         """
-        super(GetObjectWorker, self).__init__()
+        super(GetObjectWorker, self).__init__(client_factory)
         self._queue = queue
         self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor
         self._osutil = osutil
-        self._client = None
 
-    def run(self):
-        # Client are not pickleable so their instantiation cannot happen
-        # in the __init__ for processes that are created under the
-        # spawn method.
-        self._client = self._client_factory.create_client()
+    def _do_run(self):
         while True:
             job = self._queue.get()
             if job == SHUTDOWN_SIGNAL:

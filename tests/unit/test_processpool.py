@@ -45,6 +45,14 @@ from s3transfer.processpool import GetObjectSubmitter
 from s3transfer.processpool import GetObjectWorker
 
 
+class RenameFailingOSUtils(OSUtils):
+    def __init__(self, exception):
+        self.exception = exception
+
+    def rename_file(self, current_filename, new_filename):
+        raise self.exception
+
+
 class TestIgnoreCtrlC(unittest.TestCase):
     @skip_if_windows('os.kill() with SIGINT not supported on Windows')
     def test_ignore_ctrl_c(self):
@@ -54,14 +62,6 @@ class TestIgnoreCtrlC(unittest.TestCase):
             except KeyboardInterrupt:
                 self.fail('The ignore_ctrl_c context manager should have '
                           'ignored the KeyboardInterrupt exception')
-
-
-class RenameFailingOSUtils(OSUtils):
-    def __init__(self, exception):
-        self.exception = exception
-
-    def rename_file(self, current_filename, new_filename):
-        raise self.exception
 
 
 class TestProcessPoolTransferFuture(unittest.TestCase):

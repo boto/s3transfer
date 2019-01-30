@@ -196,7 +196,6 @@ import collections
 import contextlib
 import logging
 import multiprocessing
-import multiprocessing.managers
 import threading
 import signal
 
@@ -205,6 +204,7 @@ import botocore.session
 from s3transfer.constants import MB
 from s3transfer.constants import ALLOWED_DOWNLOAD_ARGS
 from s3transfer.compat import MAXINT
+from s3transfer.compat import BaseManager
 from s3transfer.exceptions import CancelledError
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.futures import BaseTransferFuture
@@ -674,7 +674,7 @@ class TransferState(object):
             return self._jobs_to_complete
 
 
-class TransferMonitorManager(multiprocessing.managers.BaseManager):
+class TransferMonitorManager(BaseManager):
     pass
 
 

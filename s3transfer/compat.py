@@ -15,7 +15,6 @@ import sys
 import os
 import errno
 import socket
-import multiprocessing.managers
 
 from botocore.compat import six
 
@@ -103,10 +102,10 @@ if sys.version_info[:2] == (2, 6):
     # For Python 2.6, the start() method does not accept initializers.
     # So we backport the functionality. This is strictly a copy from the
     # Python 2.7 version.
-    from multiprocessing.managers import State
-    from multiprocessing import connection
-    from multiprocessing import Process
-    from multiprocessing import util
+    import multiprocessing
+    import multiprocessing.managers
+    import multiprocessing.connection
+    import multiprocessing.util
 
 
     class BaseManager(multiprocessing.managers.BaseManager):
@@ -114,17 +113,17 @@ if sys.version_info[:2] == (2, 6):
             '''
             Spawn a server process for this manager object
             '''
-            assert self._state.value == State.INITIAL
+            assert self._state.value == multiprocessing.managers.State.INITIAL
 
             if initializer is not None and not hasattr(initializer,
                                                        '__call__'):
                 raise TypeError('initializer must be a callable')
 
             # pipe over which we will retrieve address of server
-            reader, writer = connection.Pipe(duplex=False)
+            reader, writer = multiprocessing.Pipe(duplex=False)
 
             # spawn process which runs a server
-            self._process = Process(
+            self._process = multiprocessing.Process(
                 target=type(self)._run_server,
                 args=(self._registry, self._address, self._authkey,
                       self._serializer, writer, initializer, initargs),
@@ -139,8 +138,8 @@ if sys.version_info[:2] == (2, 6):
             reader.close()
 
             # register a finalizer
-            self._state.value = State.STARTED
-            self.shutdown = util.Finalize(
+            self._state.value = multiprocessing.managers.State.STARTED
+            self.shutdown = multiprocessing.util.Finalize(
                 self, type(self)._finalize_manager,
                 args=(self._process, self._address, self._authkey,
                       self._state, self._Client),
@@ -165,11 +164,10 @@ if sys.version_info[:2] == (2, 6):
             writer.close()
 
             # run the manager
-            util.info('manager serving at %r', server.address)
+            multiprocessing.util.info('manager serving at %r', server.address)
 
             server.serve_forever()
 
 
 else:
-    class BaseManager(multiprocessing.managers.BaseManager):
-        pass
+    from multiprocessing.managers import BaseManager

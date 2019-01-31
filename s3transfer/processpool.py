@@ -482,8 +482,7 @@ class ProcessPoolTransferFuture(BaseTransferFuture):
             # thus cause the thread in the main process to hang on its send.
             # The only way around this is to create a new connection and send
             # messages from that new connection instead.
-            if hasattr(self._monitor, '_connect'):
-                self._monitor._connect()
+            self._monitor._connect()
             self.cancel()
             raise
 

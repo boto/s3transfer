@@ -49,7 +49,7 @@ happen in parallel. The first ``download_file`` call does not block the
 second ``download_file`` call. The snippet blocks when exiting
 the context manager and blocks until both downloads are complete.
 
-Alternatively, the ``ProcessProcessPoolDownloader`` can be instantiated
+Alternatively, the ``ProcessPoolDownloader`` can be instantiated
 and explicitly be shutdown using :meth:`ProcessPoolDownloader.shutdown`:
 
 .. code:: python
@@ -104,9 +104,9 @@ Futures
 =======
 
 When ``download_file`` is called, it immediately returns a
-:class:`ProcessPoolTransferFuture`. The future useful for polling for and
-retrieving  the state of a particular transfer. To get the result of
-download, call :meth:`ProcessPoolTransferFuture.result`. The method blocks
+:class:`ProcessPoolTransferFuture`. The future can be used to poll the state
+of a particular transfer. To get the result of the download,
+call :meth:`ProcessPoolTransferFuture.result`. The method blocks
 until the transfer completes, whether it succeeds or fails. For example:
 
 .. code:: python

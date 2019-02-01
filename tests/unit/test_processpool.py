@@ -36,6 +36,7 @@ from s3transfer.processpool import ignore_ctrl_c
 from s3transfer.processpool import DownloadFileRequest
 from s3transfer.processpool import GetObjectJob
 from s3transfer.processpool import ProcessTransferConfig
+from s3transfer.processpool import ProcessPoolDownloader
 from s3transfer.processpool import ProcessPoolTransferFuture
 from s3transfer.processpool import ProcessPoolTransferMeta
 from s3transfer.processpool import TransferMonitor
@@ -62,6 +63,14 @@ class TestIgnoreCtrlC(unittest.TestCase):
             except KeyboardInterrupt:
                 self.fail('The ignore_ctrl_c context manager should have '
                           'ignored the KeyboardInterrupt exception')
+
+
+class TestProcessPoolDownloader(unittest.TestCase):
+    def test_uses_client_kwargs(self):
+        with mock.patch('s3transfer.processpool.ClientFactory') as factory:
+            ProcessPoolDownloader(client_kwargs={'region_name': 'myregion'})
+            self.assertEqual(
+                factory.call_args[0][0], {'region_name': 'myregion'})
 
 
 class TestProcessPoolTransferFuture(unittest.TestCase):

@@ -253,9 +253,15 @@ GetObjectJob = collections.namedtuple(
 
 @contextlib.contextmanager
 def ignore_ctrl_c():
-    original_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    original_handler = _add_ignore_handler_for_interrupts()
     yield
     signal.signal(signal.SIGINT, original_handler)
+
+
+def _add_ignore_handler_for_interrupts():
+    # Windows is unable to pickle signal.signal directly so it needs to
+    # be wrapped in a function defined at the module level
+    return signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 class ProcessTransferConfig(object):
@@ -405,7 +411,7 @@ class ProcessPoolDownloader(object):
         # as worker processes will still need to communicate with it when they
         # are shutting down. So instead we ignore Ctrl-C and let the manager
         # be explicitly shutdown when shutting down the downloader.
-        self._manager.start(signal.signal, (signal.SIGINT, signal.SIG_IGN))
+        self._manager.start(_add_ignore_handler_for_interrupts)
         self._transfer_monitor = self._manager.TransferMonitor()
 
     def _start_submitter(self):

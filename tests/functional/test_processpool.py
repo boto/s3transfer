@@ -25,6 +25,7 @@ from s3transfer.compat import six
 from s3transfer.exceptions import CancelledError
 from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import ProcessPoolDownloader
+from s3transfer.processpool import ClientFactory
 
 
 class StubbedClient(object):
@@ -56,6 +57,23 @@ class StubbedClientManager(BaseManager):
 StubbedClientManager.register('StubbedClient', StubbedClient)
 
 
+# Ideally a Mock would be used here. However, they cannot be pickled
+# for Windows. So instead we define a factory class at the module level that
+# can return a stubbed client we initialized in the setUp.
+class StubbedClientFactory(object):
+    def __init__(self, stubbed_client):
+        self._stubbed_client = stubbed_client
+
+    def __call__(self, *args, **kwargs):
+        # The __call__ is defined so we can provide an instance of the
+        # StubbedClientFactory to mock.patch() and have the instance be
+        # returned when the patched class is instantiated.
+        return self
+
+    def create_client(self):
+        return self._stubbed_client
+
+
 class TestProcessPoolDownloader(unittest.TestCase):
     def setUp(self):
         # The stubbed client needs to run in a manager to be shared across
@@ -63,14 +81,14 @@ class TestProcessPoolDownloader(unittest.TestCase):
         # processes.
         self.manager = StubbedClientManager()
         self.manager.start()
-        self.client_factory_patch = mock.patch(
-            's3transfer.processpool.ClientFactory'
-        )
         self.stubbed_client = self.manager.StubbedClient()
-        self.mock_client_factory = self.client_factory_patch.start()
-        self.mock_client_factory.\
-            return_value.create_client.return_value = self.stubbed_client
+        self.stubbed_client_factory = StubbedClientFactory(self.stubbed_client)
 
+        self.client_factory_patch = mock.patch(
+            's3transfer.processpool.ClientFactory',
+            self.stubbed_client_factory
+        )
+        self.client_factory_patch.start()
         self.files = FileCreator()
 
         self.config = ProcessTransferConfig(
@@ -188,12 +206,6 @@ class TestProcessPoolDownloader(unittest.TestCase):
         # Any tempfile should have been erased as well
         possible_matches = glob.glob('%s*' % self.filename + os.extsep)
         self.assertEqual(possible_matches, [])
-
-    def test_uses_client_kwargs(self):
-        ProcessPoolDownloader(client_kwargs={'region_name': 'myregion'})
-        self.mock_client_factory.assert_called_with(
-            {'region_name': 'myregion'}
-        )
 
     def test_validates_extra_args(self):
         with self.downloader:

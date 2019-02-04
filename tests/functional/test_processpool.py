@@ -233,3 +233,22 @@ class TestProcessPoolDownloader(unittest.TestCase):
             future.cancel()
             with self.assertRaises(CancelledError):
                 future.result()
+
+    def test_shutdown_with_no_downloads(self):
+        downloader = ProcessPoolDownloader()
+        try:
+            downloader.shutdown()
+        except AttributeError:
+            self.fail(
+                'The downloader should be able to be shutdown even though '
+                'the downloader was never started.'
+            )
+
+    def test_shutdown_with_no_downloads_and_ctrl_c(self):
+        # Special shutdown logic happens if a KeyboardInterrupt is raised in
+        # the context manager. However, this logic can not happen if the
+        # downloader was never started. So a KeyboardInterrupt should be
+        # the only exception propagated.
+        with self.assertRaises(KeyboardInterrupt):
+            with self.downloader:
+                raise KeyboardInterrupt()

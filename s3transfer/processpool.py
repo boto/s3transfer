@@ -361,16 +361,15 @@ class ProcessPoolDownloader(object):
 
         It will wait till all downloads are complete before returning.
         """
-        self._shutdown_submitter()
-        self._shutdown_get_object_workers()
-        self._shutdown_transfer_monitor_manager()
+        self._shutdown_if_needed()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, *args):
         if isinstance(exc_value, KeyboardInterrupt):
-            self._transfer_monitor.notify_cancel_all_in_progress()
+            if self._transfer_monitor is not None:
+                self._transfer_monitor.notify_cancel_all_in_progress()
         self.shutdown()
 
     def _start_if_needed(self):
@@ -429,6 +428,17 @@ class ProcessPoolDownloader(object):
             )
             worker.start()
             self._workers.append(worker)
+
+    def _shutdown_if_needed(self):
+        with self._start_lock:
+            if self._started:
+                self._shutdown()
+
+    def _shutdown(self):
+        self._shutdown_submitter()
+        self._shutdown_get_object_workers()
+        self._shutdown_transfer_monitor_manager()
+        self._started = False
 
     def _shutdown_transfer_monitor_manager(self):
         self._manager.shutdown()

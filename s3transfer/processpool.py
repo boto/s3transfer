@@ -343,13 +343,14 @@ class ProcessPoolDownloader(object):
             extra_args = {}
         self._validate_all_known_args(extra_args)
         transfer_id = self._transfer_monitor.notify_new_transfer()
-        self._download_request_queue.put(
-            DownloadFileRequest(
+        download_file_request = DownloadFileRequest(
                 transfer_id=transfer_id, bucket=bucket, key=key,
                 filename=filename, extra_args=extra_args,
                 expected_size=expected_size,
             )
-        )
+        logger.debug(
+            'Submitting download file request: %s.', download_file_request)
+        self._download_request_queue.put(download_file_request)
         call_args = CallArgs(
             bucket=bucket, key=key, filename=filename, extra_args=extra_args,
             expected_size=expected_size)
@@ -399,6 +400,7 @@ class ProcessPoolDownloader(object):
         return future
 
     def _start_transfer_monitor_manager(self):
+        logger.debug('Starting the TransferMonitorManager.')
         self._manager = TransferMonitorManager()
         # We do not want Ctrl-C's to cause the manager to shutdown immediately
         # as worker processes will still need to communicate with it when they
@@ -408,6 +410,7 @@ class ProcessPoolDownloader(object):
         self._transfer_monitor = self._manager.TransferMonitor()
 
     def _start_submitter(self):
+        logger.debug('Starting the GetObjectSubmitter.')
         self._submitter = GetObjectSubmitter(
             transfer_config=self._transfer_config,
             client_factory=self._client_factory,
@@ -419,6 +422,8 @@ class ProcessPoolDownloader(object):
         self._submitter.start()
 
     def _start_get_object_workers(self):
+        logger.debug('Starting %s GetObjectWorkers.',
+                     self._transfer_config.max_request_processes)
         for _ in range(self._transfer_config.max_request_processes):
             worker = GetObjectWorker(
                 queue=self._worker_queue,
@@ -441,13 +446,16 @@ class ProcessPoolDownloader(object):
         self._started = False
 
     def _shutdown_transfer_monitor_manager(self):
+        logger.debug('Shutting down the TransferMonitorManager.')
         self._manager.shutdown()
 
     def _shutdown_submitter(self):
+        logger.debug('Shutting down the GetObjectSubmitter.')
         self._download_request_queue.put(SHUTDOWN_SIGNAL)
         self._submitter.join()
 
     def _shutdown_get_object_workers(self):
+        logger.debug('Shutting down the GetObjectWorker.')
         for _ in self._workers:
             self._worker_queue.put(SHUTDOWN_SIGNAL)
         for worker in self._workers:
@@ -745,10 +753,15 @@ class GetObjectSubmitter(BaseS3TransferProcess):
         while True:
             download_file_request = self._download_request_queue.get()
             if download_file_request == SHUTDOWN_SIGNAL:
+                logger.debug(
+                    'Submitter shutdown signal received.')
                 return
             try:
                 self._submit_get_object_jobs(download_file_request)
             except Exception as e:
+                logger.debug('Exception caught when submitting jobs for '
+                             'download file request %s: %s',
+                             download_file_request, e, exc_info=True)
                 self._transfer_monitor.notify_exception(
                     download_file_request.transfer_id, e)
                 self._transfer_monitor.notify_done(
@@ -782,7 +795,7 @@ class GetObjectSubmitter(BaseS3TransferProcess):
 
     def _submit_single_get_object_job(self, download_file_request,
                                       temp_filename):
-        self._transfer_monitor.notify_expected_jobs_to_complete(
+        self._notify_jobs_to_complete(
             download_file_request.transfer_id, 1)
         self._submit_get_object_job(
             transfer_id=download_file_request.transfer_id,
@@ -798,7 +811,7 @@ class GetObjectSubmitter(BaseS3TransferProcess):
                                        temp_filename, size):
         part_size = self._transfer_config.multipart_chunksize
         num_parts = calculate_num_parts(size, part_size)
-        self._transfer_monitor.notify_expected_jobs_to_complete(
+        self._notify_jobs_to_complete(
             download_file_request.transfer_id, num_parts)
         for i in range(num_parts):
             offset = i * part_size
@@ -818,6 +831,14 @@ class GetObjectSubmitter(BaseS3TransferProcess):
 
     def _submit_get_object_job(self, **get_object_job_kwargs):
         self._worker_queue.put(GetObjectJob(**get_object_job_kwargs))
+
+    def _notify_jobs_to_complete(self, transfer_id, jobs_to_complete):
+        logger.debug(
+            'Notifying %s job(s) to complete for transfer_id %s.',
+            jobs_to_complete, transfer_id
+        )
+        self._transfer_monitor.notify_expected_jobs_to_complete(
+            transfer_id, jobs_to_complete)
 
 
 class GetObjectWorker(BaseS3TransferProcess):
@@ -849,10 +870,19 @@ class GetObjectWorker(BaseS3TransferProcess):
         while True:
             job = self._queue.get()
             if job == SHUTDOWN_SIGNAL:
+                logger.debug(
+                    'Worker shutdown signal received.')
                 return
             if not self._transfer_monitor.get_exception(job.transfer_id):
                 self._run_get_object_job(job)
+            else:
+                logger.debug(
+                    'Skipping get object job %s because there was a previous '
+                    'exception.', job)
             remaining = self._transfer_monitor.notify_job_complete(
+                job.transfer_id)
+            logger.debug(
+                '%s jobs remaining for transfer_id %s.', remaining,
                 job.transfer_id)
             if not remaining:
                 self._finalize_download(
@@ -867,6 +897,9 @@ class GetObjectWorker(BaseS3TransferProcess):
                 offset=job.offset
             )
         except Exception as e:
+            logger.debug('Exception caught when downloading object for '
+                         'get object job %s: %s',
+                         job, e, exc_info=True)
             self._transfer_monitor.notify_exception(job.transfer_id, e)
 
     def _do_get_object(self, bucket, key, extra_args, temp_filename, offset):

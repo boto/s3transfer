@@ -455,7 +455,7 @@ class ProcessPoolDownloader(object):
         self._submitter.join()
 
     def _shutdown_get_object_workers(self):
-        logger.debug('Shutting down the GetObjectWorker.')
+        logger.debug('Shutting down the GetObjectWorkers.')
         for _ in self._workers:
             self._worker_queue.put(SHUTDOWN_SIGNAL)
         for worker in self._workers:

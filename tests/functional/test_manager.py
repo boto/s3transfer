@@ -40,7 +40,7 @@ class SignalTransferringBody(RawIOBase):
     def signal_not_transferring(self):
         self.signal_not_transferring_call_count += 1
 
-    def seek(self, where):
+    def seek(self, where, whence=0):
         pass
 
     def tell(self):

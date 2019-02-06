@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.2.0
+=====
+
+* feature:``ProcessPoolDownloader``: Add ``ProcessPoolDownloader`` class to speed up download throughput by using processes instead of threads.
+
+
 0.1.13
 ======
 

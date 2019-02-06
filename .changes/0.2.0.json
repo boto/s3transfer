@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``ProcessPoolDownloader``", 
+    "description": "Add ``ProcessPoolDownloader`` class to speed up download throughput by using processes instead of threads.", 
+    "type": "feature"
+  }
+]

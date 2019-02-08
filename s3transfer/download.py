@@ -11,8 +11,6 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import logging
-import os
-import socket
 import threading
 import heapq
 
@@ -100,7 +98,7 @@ class DownloadOutputManager(object):
         self._transfer_coordinator.submit(
             self._io_executor,
             self.get_io_write_task(fileobj, data, offset)
-         )
+        )
 
     def get_io_write_task(self, fileobj, data, offset):
         """Get an IO write task for the requested set of data

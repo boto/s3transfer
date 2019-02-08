@@ -507,6 +507,7 @@ class GetObjectTask(Task):
         last_exception = None
         for i in range(max_attempts):
             try:
+                current_index = start_index
                 response = client.get_object(
                     Bucket=bucket, Key=key, **extra_args)
                 streaming_body = StreamReaderProgress(
@@ -516,7 +517,6 @@ class GetObjectTask(Task):
                         bandwidth_limiter.get_bandwith_limited_stream(
                             streaming_body, self._transfer_coordinator)
 
-                current_index = start_index
                 chunks = DownloadChunkIterator(streaming_body, io_chunksize)
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation

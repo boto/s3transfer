@@ -10,6 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import s3transfer
+
+
 KB = 1024
 MB = KB * KB
 
@@ -20,3 +23,6 @@ ALLOWED_DOWNLOAD_ARGS = [
     'SSECustomerKeyMD5',
     'RequestPayer',
 ]
+
+USER_AGENT = 's3transfer/%s' % s3transfer.__version__
+PROCESS_USER_AGENT = '%s processpool' % USER_AGENT

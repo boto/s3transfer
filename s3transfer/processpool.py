@@ -198,11 +198,14 @@ import logging
 import multiprocessing
 import threading
 import signal
+from copy import deepcopy
 
 import botocore.session
+from botocore.config import Config
 
 from s3transfer.constants import MB
 from s3transfer.constants import ALLOWED_DOWNLOAD_ARGS
+from s3transfer.constants import PROCESS_USER_AGENT
 from s3transfer.compat import MAXINT
 from s3transfer.compat import BaseManager
 from s3transfer.exceptions import CancelledError
@@ -547,6 +550,13 @@ class ClientFactory(object):
         self._client_kwargs = client_kwargs
         if self._client_kwargs is None:
             self._client_kwargs = {}
+
+        client_config = deepcopy(self._client_kwargs.get('config', Config()))
+        if not client_config.user_agent_extra:
+            client_config.user_agent_extra = PROCESS_USER_AGENT
+        else:
+            client_config.user_agent_extra += " " + PROCESS_USER_AGENT
+        self._client_kwargs['config'] = client_config
 
     def create_client(self):
         """Create a botocore S3 client"""

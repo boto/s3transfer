@@ -20,6 +20,7 @@ from six.moves import queue
 from botocore.exceptions import ClientError
 from botocore.exceptions import ReadTimeoutError
 from botocore.client import BaseClient
+from botocore.config import Config
 
 from tests import unittest
 from tests import skip_if_windows
@@ -27,6 +28,7 @@ from tests import FileCreator
 from tests import StreamWithError
 from tests import StubbedClientTest
 from s3transfer.compat import six
+from s3transfer.constants import PROCESS_USER_AGENT
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.exceptions import CancelledError
 from s3transfer.utils import OSUtils
@@ -143,10 +145,25 @@ class TestClientFactory(unittest.TestCase):
         client = ClientFactory().create_client()
         self.assertIsInstance(client, BaseClient)
         self.assertEqual(client.meta.service_model.service_name, 's3')
+        self.assertIn(PROCESS_USER_AGENT, client.meta.config.user_agent)
 
     def test_create_client_with_client_kwargs(self):
         client = ClientFactory({'region_name': 'myregion'}).create_client()
         self.assertEqual(client.meta.region_name, 'myregion')
+
+    def test_user_agent_with_config(self):
+        client = ClientFactory({'config': Config()}).create_client()
+        self.assertIn(PROCESS_USER_AGENT, client.meta.config.user_agent)
+
+    def test_user_agent_with_existing_user_agent_extra(self):
+        config = Config(user_agent_extra='foo/1.0')
+        client = ClientFactory({'config': config}).create_client()
+        self.assertIn(PROCESS_USER_AGENT, client.meta.config.user_agent)
+
+    def test_user_agent_with_existing_user_agent(self):
+        config = Config(user_agent='foo/1.0')
+        client = ClientFactory({'config': config}).create_client()
+        self.assertIn(PROCESS_USER_AGENT, client.meta.config.user_agent)
 
 
 class TestTransferMonitor(unittest.TestCase):

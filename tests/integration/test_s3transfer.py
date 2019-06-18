@@ -19,6 +19,7 @@ import hashlib
 import string
 
 from tests import unittest
+from tests.integration import BaseTransferManagerIntegTest
 import botocore.session
 from botocore.compat import six
 from botocore.client import Config
@@ -104,42 +105,13 @@ class FileCreator(object):
         return os.path.join(self.rootdir, filename)
 
 
-class TestS3Transfers(unittest.TestCase):
+class TestS3Transfers(BaseTransferManagerIntegTest):
     """Tests for the high level s3transfer module."""
 
-    @classmethod
-    def setUpClass(cls):
-        cls.region = 'us-west-2'
-        cls.session = botocore.session.get_session()
-        cls.client = cls.session.create_client('s3', cls.region)
-        cls.bucket_name = random_bucket_name()
-        cls.client.create_bucket(
-            Bucket=cls.bucket_name,
-            CreateBucketConfiguration={'LocationConstraint': cls.region})
-
-    def setUp(self):
-        self.files = FileCreator()
-
-    def tearDown(self):
-        self.files.remove_all()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.client.delete_bucket(Bucket=cls.bucket_name)
-
-    def delete_object(self, key):
-        self.client.delete_object(
-            Bucket=self.bucket_name,
-            Key=key)
-
-    def object_exists(self, key):
-        self.client.head_object(Bucket=self.bucket_name,
-                                Key=key)
-        return True
-
     def create_s3_transfer(self, config=None):
-        return s3transfer.S3Transfer(self.client,
-                                            config=config)
+        return s3transfer.S3Transfer(
+            self.client, config=config
+        )
 
     def assert_has_public_read_acl(self, response):
         grants = response['Grants']
@@ -200,6 +172,7 @@ class TestS3Transfers(unittest.TestCase):
         transfer.upload_file(filename, self.bucket_name,
                              '6mb.txt', extra_args=extra_args)
         self.addCleanup(self.delete_object, '6mb.txt')
+        self.wait_object_exists('6mb.txt', extra_args)
         # A head object will fail if it has a customer key
         # associated with it and it's not provided in the HeadObject
         # request so we can use this to verify our functionality.
@@ -258,6 +231,7 @@ class TestS3Transfers(unittest.TestCase):
                              'foo.txt', extra_args={'ACL': 'public-read'})
         self.addCleanup(self.delete_object, 'foo.txt')
 
+        self.wait_object_exists('foo.txt')
         response = self.client.get_object_acl(
             Bucket=self.bucket_name, Key='foo.txt')
         self.assert_has_public_read_acl(response)
@@ -284,11 +258,8 @@ class TestS3Transfers(unittest.TestCase):
             'SSECustomerKey': key_bytes,
             'SSECustomerAlgorithm': 'AES256',
         }
-        self.client.put_object(Bucket=self.bucket_name,
-                               Key='foo.txt',
-                               Body=b'hello world',
-                               **extra_args)
-        self.addCleanup(self.delete_object, 'foo.txt')
+        filename = self.files.create_file('foo.txt', 'hello world')
+        self.upload_file(filename, 'foo.txt', extra_args)
         transfer = self.create_s3_transfer()
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
@@ -308,10 +279,7 @@ class TestS3Transfers(unittest.TestCase):
         transfer = self.create_s3_transfer()
         filename = self.files.create_file_with_size(
             '20mb.txt', filesize=20 * 1024 * 1024)
-        with open(filename, 'rb') as f:
-            self.client.put_object(Bucket=self.bucket_name,
-                                   Key='20mb.txt', Body=f)
-        self.addCleanup(self.delete_object, '20mb.txt')
+        self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         transfer.download_file(self.bucket_name, '20mb.txt',
@@ -321,14 +289,9 @@ class TestS3Transfers(unittest.TestCase):
 
     def test_download_below_threshold(self):
         transfer = self.create_s3_transfer()
-
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=1024 * 1024)
-        with open(filename, 'rb') as f:
-            self.client.put_object(Bucket=self.bucket_name,
-                                   Key='foo.txt',
-                                   Body=f)
-            self.addCleanup(self.delete_object, 'foo.txt')
+        self.upload_file(filename, 'foo.txt')
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         transfer.download_file(self.bucket_name, 'foo.txt',
@@ -337,14 +300,9 @@ class TestS3Transfers(unittest.TestCase):
 
     def test_download_above_threshold(self):
         transfer = self.create_s3_transfer()
-
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=20 * 1024 * 1024)
-        with open(filename, 'rb') as f:
-            self.client.put_object(Bucket=self.bucket_name,
-                                   Key='foo.txt',
-                                   Body=f)
-            self.addCleanup(self.delete_object, 'foo.txt')
+        self.upload_file(filename, 'foo.txt')
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         transfer.download_file(self.bucket_name, 'foo.txt',

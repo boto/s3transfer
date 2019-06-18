@@ -57,27 +57,29 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             Bucket=self.bucket_name,
             Key=key)
 
-    def object_exists(self, key):
+    def object_exists(self, key, extra_args=None):
         try:
-            self._wait_object_exists(key)
+            self.wait_object_exists(key, extra_args)
             return True
         except WaiterError:
             return False
 
-    def _wait_object_exists(self, key):
+    def wait_object_exists(self, key, extra_args=None):
+        if extra_args is None:
+            extra_args = {}
         for _ in range(3):
             self.client.get_waiter('object_exists').wait(
                 Bucket=self.bucket_name,
                 Key=key,
+                **extra_args
             )
 
     def create_transfer_manager(self, config=None):
         return TransferManager(self.client, config=config)
 
-    def upload_file(self, filename, key):
+    def upload_file(self, filename, key, extra_args=None):
+        transfer = self.create_transfer_manager()
         with open(filename, 'rb') as f:
-            self.client.put_object(Bucket=self.bucket_name,
-                                   Key=key,
-                                   Body=f)
-            self._wait_object_exists(key)
+            transfer.upload(f, self.bucket_name, key, extra_args)
+            self.wait_object_exists(key, extra_args)
             self.addCleanup(self.delete_object, key)

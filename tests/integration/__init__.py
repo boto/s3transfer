@@ -11,7 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import botocore.session
-from botocore.exceptions import ClientError
+from botocore.exceptions import WaiterError
 
 from tests import unittest
 from tests import FileCreator
@@ -59,10 +59,17 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
 
     def object_exists(self, key):
         try:
-            self.client.head_object(Bucket=self.bucket_name, Key=key)
+            self._wait_object_exists(key)
             return True
-        except ClientError:
+        except WaiterError:
             return False
+
+    def _wait_object_exists(self, key):
+        for _ in range(3):
+            self.client.get_waiter('object_exists').wait(
+                Bucket=self.bucket_name,
+                Key=key,
+            )
 
     def create_transfer_manager(self, config=None):
         return TransferManager(self.client, config=config)
@@ -72,4 +79,5 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             self.client.put_object(Bucket=self.bucket_name,
                                    Key=key,
                                    Body=f)
+            self._wait_object_exists(key)
             self.addCleanup(self.delete_object, key)

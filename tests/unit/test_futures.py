@@ -501,7 +501,7 @@ class TestBoundedExecutor(unittest.TestCase):
         self.assert_submit_would_block(second_task)
 
     def test_executor_clears_capacity_on_done_tasks(self):
-        first_task = self.get_task(ReturnFooTask)
+        first_task = self.get_sleep_task()
         second_task = self.get_task(ReturnFooTask)
 
         # Submit a task.

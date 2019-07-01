@@ -14,6 +14,7 @@ import glob
 import os
 import time
 
+import threading
 from concurrent.futures import CancelledError
 
 from tests import assert_files_equal
@@ -23,6 +24,7 @@ from tests import RecordingSubscriber
 from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
 from s3transfer.manager import TransferConfig
+from s3transfer.subscribers import BaseSubscriber
 
 
 class TestDownload(BaseTransferManagerIntegTest):
@@ -73,16 +75,25 @@ class TestDownload(BaseTransferManagerIntegTest):
         self.upload_file(filename, '60mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '60mb.txt')
-        sleep_time = 0.5
+        timeout = 10
+        bytes_transferring = threading.Event()
+        subscriber = WaitForTransferStart(bytes_transferring)
+        wait_time = 0
         try:
             with transfer_manager:
                 start_time = time.time()
                 future = transfer_manager.download(
-                    self.bucket_name, '60mb.txt', download_path)
-                # Sleep for a little to get the transfer process going
-                time.sleep(sleep_time)
+                    self.bucket_name, '60mb.txt', download_path,
+                    subscribers=[subscriber]
+                )
+                if not bytes_transferring.wait(timeout):
+                    future.cancel()
+                    raise RuntimeError(
+                        "Download transfer did not start after waiting for "
+                        "%s seconds." % timeout)
                 # Raise an exception which should cause the preceeding
                 # download to cancel and exit quickly
+                wait_time += time.time() - start_time
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -90,7 +101,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple second after
         # sleeping to exit.
-        max_allowed_exit_time = sleep_time + 4
+        max_allowed_exit_time = wait_time + 4
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
             "Failed to exit under %s. Instead exited in %s." % (
@@ -247,3 +258,12 @@ class TestDownload(BaseTransferManagerIntegTest):
             self.fail(
                 'Should have been able to download to /dev/null but received '
                 'following exception %s' % e)
+
+
+class WaitForTransferStart(BaseSubscriber):
+    def __init__(self, bytes_transfer_started_event):
+        self._bytes_transfer_started_event = bytes_transfer_started_event
+
+    def on_progress(self, **kwargs):
+        if not self._bytes_transfer_started_event.is_set():
+            self._bytes_transfer_started_event.set()

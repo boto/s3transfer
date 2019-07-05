@@ -65,6 +65,19 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
         except WaiterError:
             return False
 
+    def object_not_exists(self, key, extra_args=None):
+        if extra_args is None:
+            extra_args = {}
+        try:
+            self.client.get_waiter('object_not_exists').wait(
+                Bucket=self.bucket_name,
+                Key=key,
+                **extra_args
+            )
+            return True
+        except WaiterError:
+            return False
+
     def wait_object_exists(self, key, extra_args=None):
         if extra_args is None:
             extra_args = {}

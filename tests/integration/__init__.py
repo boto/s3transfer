@@ -17,6 +17,7 @@ from tests import unittest
 from tests import FileCreator
 from tests import random_bucket_name
 from s3transfer.manager import TransferManager
+from s3transfer.subscribers import BaseSubscriber
 
 
 def recursive_delete(client, bucket_name):
@@ -83,3 +84,12 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             transfer.upload(f, self.bucket_name, key, extra_args)
             self.wait_object_exists(key, extra_args)
             self.addCleanup(self.delete_object, key)
+
+
+class WaitForTransferStart(BaseSubscriber):
+    def __init__(self, bytes_transfer_started_event):
+        self._bytes_transfer_started_event = bytes_transfer_started_event
+
+    def on_progress(self, **kwargs):
+        if not self._bytes_transfer_started_event.is_set():
+            self._bytes_transfer_started_event.set()

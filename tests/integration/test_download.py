@@ -13,8 +13,8 @@
 import glob
 import os
 import time
-
 import threading
+
 from concurrent.futures import CancelledError
 
 from tests import assert_files_equal
@@ -23,6 +23,7 @@ from tests import skip_if_using_serial_implementation
 from tests import RecordingSubscriber
 from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
+from tests.integration import WaitForTransferStart
 from s3transfer.manager import TransferConfig
 from s3transfer.subscribers import BaseSubscriber
 
@@ -78,10 +79,8 @@ class TestDownload(BaseTransferManagerIntegTest):
         timeout = 10
         bytes_transferring = threading.Event()
         subscriber = WaitForTransferStart(bytes_transferring)
-        wait_time = 0
         try:
             with transfer_manager:
-                start_time = time.time()
                 future = transfer_manager.download(
                     self.bucket_name, '60mb.txt', download_path,
                     subscribers=[subscriber]
@@ -93,7 +92,7 @@ class TestDownload(BaseTransferManagerIntegTest):
                         "%s seconds." % timeout)
                 # Raise an exception which should cause the preceeding
                 # download to cancel and exit quickly
-                wait_time += time.time() - start_time
+                start_time = time.time()
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -101,11 +100,12 @@ class TestDownload(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple second after
         # sleeping to exit.
-        max_allowed_exit_time = wait_time + 4
+        max_allowed_exit_time = 5
+        actual_time_to_exit = end_time - start_time
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
+            actual_time_to_exit, max_allowed_exit_time,
             "Failed to exit under %s. Instead exited in %s." % (
-                max_allowed_exit_time, end_time - start_time)
+                max_allowed_exit_time, actual_time_to_exit)
         )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt
@@ -258,12 +258,3 @@ class TestDownload(BaseTransferManagerIntegTest):
             self.fail(
                 'Should have been able to download to /dev/null but received '
                 'following exception %s' % e)
-
-
-class WaitForTransferStart(BaseSubscriber):
-    def __init__(self, bytes_transfer_started_event):
-        self._bytes_transfer_started_event = bytes_transfer_started_event
-
-    def on_progress(self, **kwargs):
-        if not self._bytes_transfer_started_event.is_set():
-            self._bytes_transfer_started_event.set()

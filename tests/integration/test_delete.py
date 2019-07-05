@@ -28,4 +28,4 @@ class TestDeleteObject(BaseTransferManagerIntegTest):
                                          key=key_name)
         future.result()
 
-        self.assertFalse(self.object_exists(key_name))
+        self.assertTrue(self.object_not_exists(key_name))

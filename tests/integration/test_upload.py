@@ -132,12 +132,12 @@ class TestUpload(BaseTransferManagerIntegTest):
 
         try:
             with transfer_manager:
-                start_time = time.time()
                 for i, fileobj in enumerate(fileobjs):
                     futures.append(transfer_manager.upload(
                         fileobj, self.bucket_name, keynames[i]))
                 # Raise an exception which should cause the preceeding
                 # transfer to cancel and exit quickly
+                start_time = time.time()
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -157,7 +157,7 @@ class TestUpload(BaseTransferManagerIntegTest):
                 future.result()
         # For the transfer that did get cancelled, make sure the object
         # does not exist.
-        self.assertFalse(self.object_exists(future.meta.call_args.key))
+        self.assertTrue(self.object_not_exists(future.meta.call_args.key))
 
     def test_progress_subscribers_on_upload(self):
         subscriber = RecordingSubscriber()

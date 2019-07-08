@@ -72,13 +72,13 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         sleep_time = 0.5
         try:
             with downloader:
-                start_time = time.time()
                 downloader.download_file(
                     self.bucket_name, '60mb.txt', download_path)
                 # Sleep for a little to get the transfer process going
                 time.sleep(sleep_time)
                 # Raise an exception which should cause the preceding
                 # download to cancel and exit quickly
+                start_time = time.time()
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -86,7 +86,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple second after
         # sleeping to exit.
-        max_allowed_exit_time = sleep_time + 4
+        max_allowed_exit_time = 5
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
             "Failed to exit under %s. Instead exited in %s." % (

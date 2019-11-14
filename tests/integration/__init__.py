@@ -100,7 +100,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
     def wait_object_exists(self, key, extra_args=None):
         if extra_args is None:
             extra_args = {}
-        for _ in range(3):
+        for _ in range(5):
             self.client.get_waiter('object_exists').wait(
                 Bucket=self.bucket_name,
                 Key=key,

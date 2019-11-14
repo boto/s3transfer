@@ -10,6 +10,7 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import botocore
 import botocore.session
 from botocore.exceptions import WaiterError
 
@@ -21,13 +22,31 @@ from s3transfer.subscribers import BaseSubscriber
 
 
 def recursive_delete(client, bucket_name):
-    # Recursively deletes a bucket and all of its contents.
-    objects = client.get_paginator('list_objects').paginate(
-        Bucket=bucket_name)
-    for key in objects.search('Contents[].Key || `[]`'):
-        if key:
-            client.delete_object(Bucket=bucket_name, Key=key)
-    client.delete_bucket(Bucket=bucket_name)
+    # Ensure the bucket exists before attempting to wipe it out
+    exists_waiter = client.get_waiter('bucket_exists')
+    exists_waiter.wait(Bucket=bucket_name)
+    page = client.get_paginator('list_objects')
+    # Use pages paired with batch delete_objects().
+    for page in page.paginate(Bucket=bucket_name):
+        keys = [{'Key': obj['Key']} for obj in page.get('Contents', [])]
+        if keys:
+            client.delete_objects(Bucket=bucket_name, Delete={'Objects': keys})
+    for _ in range(5):
+        try:
+            client.delete_bucket(Bucket=bucket)
+            break
+        except client.exceptions.NoSuchBucket:
+            exists_waiter.wait(Bucket=bucket_name)
+        except Exception as e:
+            # We can sometimes get exceptions when trying to
+            # delete a bucket.  We'll let the waiter make
+            # the final call as to whether the bucket was able
+            # to be deleted.
+            not_exists_waiter = client.get_waiter('bucket_not_exists')
+            try:
+                not_exists_waiter.wait(Bucket=bucket_name)
+            except botocore.exceptions.WaiterError:
+                continue
 
 
 class BaseTransferManagerIntegTest(unittest.TestCase):
@@ -81,7 +100,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
     def wait_object_exists(self, key, extra_args=None):
         if extra_args is None:
             extra_args = {}
-        for _ in range(3):
+        for _ in range(5):
             self.client.get_waiter('object_exists').wait(
                 Bucket=self.bucket_name,
                 Key=key,

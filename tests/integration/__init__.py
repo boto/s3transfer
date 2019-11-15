@@ -33,7 +33,7 @@ def recursive_delete(client, bucket_name):
             client.delete_objects(Bucket=bucket_name, Delete={'Objects': keys})
     for _ in range(5):
         try:
-            client.delete_bucket(Bucket=bucket)
+            client.delete_bucket(Bucket=bucket_name)
             break
         except client.exceptions.NoSuchBucket:
             exists_waiter.wait(Bucket=bucket_name)

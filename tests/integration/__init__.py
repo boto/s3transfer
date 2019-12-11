@@ -10,6 +10,8 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import time
+
 import botocore
 import botocore.session
 from botocore.exceptions import WaiterError
@@ -61,6 +63,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
         cls.client.create_bucket(
             Bucket=cls.bucket_name,
             CreateBucketConfiguration={'LocationConstraint': cls.region})
+        cls.wait_bucket_exists(cls.bucket_name)
 
     def setUp(self):
         self.files = FileCreator()
@@ -71,6 +74,12 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         recursive_delete(cls.client, cls.bucket_name)
+
+    @classmethod
+    def wait_bucket_exists(cls, bucket_name, num_success=5, initial_delay=2):
+        time.sleep(initial_delay)
+        for _ in range(num_success):
+            cls.client.get_waiter('bucket_exists').wait(Bucket=bucket_name)
 
     def delete_object(self, key):
         self.client.delete_object(

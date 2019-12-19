@@ -271,7 +271,9 @@ class ProcessTransferConfig(object):
     def __init__(self,
                  multipart_threshold=8 * MB,
                  multipart_chunksize=8 * MB,
-                 max_request_processes=10):
+                 max_request_processes=10,
+                 io_chunksize=2 * MB,
+                 max_attempts=5):
         """Configuration for the ProcessPoolDownloader
 
         :param multipart_threshold: The threshold for which ranged downloads
@@ -281,7 +283,14 @@ class ProcessTransferConfig(object):
 
         :param max_request_processes: The maximum number of processes that
             will be making S3 API transfer-related requests at a time.
+
+        :param io_chunksize: The max size of each chunk written to the disk.
+
+        :param max_attempts: The maximum number of attempts to get the object
+            before failing the download
         """
+        self.max_attempts = max_attempts
+        self.io_chunksize = io_chunksize
         self.multipart_threshold = multipart_threshold
         self.multipart_chunksize = multipart_chunksize
         self.max_request_processes = max_request_processes
@@ -353,10 +362,10 @@ class ProcessPoolDownloader(object):
         self._validate_all_known_args(extra_args)
         transfer_id = self._transfer_monitor.notify_new_transfer()
         download_file_request = DownloadFileRequest(
-                transfer_id=transfer_id, bucket=bucket, key=key,
-                filename=filename, extra_args=extra_args,
-                expected_size=expected_size,
-            )
+            transfer_id=transfer_id, bucket=bucket, key=key,
+            filename=filename, extra_args=extra_args,
+            expected_size=expected_size,
+        )
         logger.debug(
             'Submitting download file request: %s.', download_file_request)
         self._download_request_queue.put(download_file_request)
@@ -439,6 +448,7 @@ class ProcessPoolDownloader(object):
                 client_factory=self._client_factory,
                 transfer_monitor=self._transfer_monitor,
                 osutil=self._osutil,
+                transfer_config=self._transfer_config
             )
             worker.start()
             self._workers.append(worker)
@@ -858,12 +868,8 @@ class GetObjectSubmitter(BaseS3TransferProcess):
 
 
 class GetObjectWorker(BaseS3TransferProcess):
-    # TODO: It may make sense to expose these class variables as configuration
-    # options if users want to tweak them.
-    _MAX_ATTEMPTS = 5
-    _IO_CHUNKSIZE = 2 * MB
 
-    def __init__(self, queue, client_factory, transfer_monitor, osutil):
+    def __init__(self, queue, client_factory, transfer_monitor, osutil, transfer_config):
         """Fulfills GetObjectJobs
 
         Downloads the S3 object, writes it to the specified file, and
@@ -875,12 +881,14 @@ class GetObjectWorker(BaseS3TransferProcess):
         :param transfer_monitor: Monitor for notifying
         :param osutil: OSUtils object to use for os-related behavior when
             performing the transfer.
+        :param transfer_config: Configuration for transfers.
         """
         super(GetObjectWorker, self).__init__(client_factory)
         self._queue = queue
         self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor
         self._osutil = osutil
+        self._transfer_config = transfer_config
 
     def _do_run(self):
         while True:
@@ -920,7 +928,7 @@ class GetObjectWorker(BaseS3TransferProcess):
 
     def _do_get_object(self, bucket, key, extra_args, temp_filename, offset):
         last_exception = None
-        for i in range(self._MAX_ATTEMPTS):
+        for i in range(self._transfer_config.max_attempts):
             try:
                 response = self._client.get_object(
                     Bucket=bucket, Key=key, **extra_args)
@@ -928,15 +936,15 @@ class GetObjectWorker(BaseS3TransferProcess):
                 return
             except S3_RETRYABLE_DOWNLOAD_ERRORS as e:
                 logger.debug('Retrying exception caught (%s), '
-                             'retrying request, (attempt %s / %s)', e, i+1,
-                             self._MAX_ATTEMPTS, exc_info=True)
+                             'retrying request, (attempt %s / %s)', e, i + 1,
+                             self._transfer_config.max_attempts, exc_info=True)
                 last_exception = e
         raise RetriesExceededError(last_exception)
 
     def _write_to_file(self, filename, offset, body):
         with open(filename, 'rb+') as f:
             f.seek(offset)
-            chunks = iter(lambda: body.read(self._IO_CHUNKSIZE), b'')
+            chunks = iter(lambda: body.read(self._transfer_config.io_chunksize), b'')
             for chunk in chunks:
                 f.write(chunk)
 

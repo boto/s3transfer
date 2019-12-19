@@ -488,11 +488,13 @@ class TestGetObjectWorker(StubbedClientTest):
         self.client_factory.create_client.return_value = self.client
         self.transfer_monitor = TransferMonitor()
         self.osutil = OSUtils()
+        self.transfer_config = ProcessTransferConfig()
         self.worker = GetObjectWorker(
             queue=self.queue,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
-            osutil=self.osutil
+            osutil=self.osutil,
+            transfer_config=self.transfer_config
         )
         self.transfer_id = self.transfer_monitor.notify_new_transfer()
         self.bucket = 'bucket'
@@ -659,11 +661,13 @@ class TestGetObjectWorker(StubbedClientTest):
     def test_run_fails_to_rename_file(self):
         exception = OSError()
         osutil = RenameFailingOSUtils(exception)
+        transfer_config=ProcessTransferConfig()
         self.worker = GetObjectWorker(
             queue=self.queue,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
-            osutil=osutil
+            osutil=osutil,
+            transfer_config=transfer_config
         )
         self.add_get_object_job()
         self.add_shutdown()

@@ -34,7 +34,13 @@ if sys.platform.startswith('win'):
 else:
     rename_file = os.rename
 
-if six.PY3:
+if six.PY2:
+    def accepts_kwargs(func):
+        return inspect.getargspec(func)[2]
+
+    SOCKET_ERROR = socket.error
+    MAXINT = sys.maxint
+else:
     def accepts_kwargs(func):
         # In python3.4.1, there's backwards incompatible
         # changes when using getargspec with functools.partials.
@@ -46,12 +52,7 @@ if six.PY3:
     # ConnectionError
     SOCKET_ERROR = ConnectionError
     MAXINT = None
-else:
-    def accepts_kwargs(func):
-        return inspect.getargspec(func)[2]
 
-    SOCKET_ERROR = socket.error
-    MAXINT = sys.maxint
 
 
 def seekable(fileobj):

@@ -14,6 +14,7 @@ import copy
 import os
 import shutil
 import tempfile
+import socket
 import mock
 
 from tests import BaseTaskTest
@@ -712,6 +713,19 @@ class TestGetObjectTask(BaseTaskTest):
         # should have been canceled before trying to add the contents to the
         # io queue.
         self.assert_io_writes([])
+
+    def test_handles_callback_on_initial_error(self):
+        # We can't use the stubber for this because we need to raise
+        # a S3_RETRYABLE_DOWNLOAD_ERRORS, and the stubber only allows
+        # you to raise a ClientError.
+        self.client.get_object = mock.Mock(side_effect=SOCKET_ERROR())
+        task = self.get_download_task()
+        task()
+        self.transfer_coordinator.announce_done()
+        # Should have failed out on a RetriesExceededError because
+        # get_object keeps raising a socket error.
+        with self.assertRaises(RetriesExceededError):
+            self.transfer_coordinator.result()
 
 
 class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):

@@ -11,8 +11,6 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import logging
-import os
-import socket
 import threading
 import heapq
 
@@ -100,7 +98,7 @@ class DownloadOutputManager(object):
         self._transfer_coordinator.submit(
             self._io_executor,
             self.get_io_write_task(fileobj, data, offset)
-         )
+        )
 
     def get_io_write_task(self, fileobj, data, offset):
         """Get an IO write task for the requested set of data
@@ -509,6 +507,7 @@ class GetObjectTask(Task):
         last_exception = None
         for i in range(max_attempts):
             try:
+                current_index = start_index
                 response = client.get_object(
                     Bucket=bucket, Key=key, **extra_args)
                 streaming_body = StreamReaderProgress(
@@ -518,7 +517,6 @@ class GetObjectTask(Task):
                         bandwidth_limiter.get_bandwith_limited_stream(
                             streaming_body, self._transfer_coordinator)
 
-                current_index = start_index
                 chunks = DownloadChunkIterator(streaming_body, io_chunksize)
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation

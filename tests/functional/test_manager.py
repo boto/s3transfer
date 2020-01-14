@@ -163,3 +163,12 @@ class TestTransferManager(StubbedClientTest):
         with self.assertRaises(ArbitraryException):
             with TransferManager(self.client):
                 raise ArbitraryException(u'\u2713')
+
+    def test_client_property(self):
+        manager = TransferManager(self.client)
+        self.assertIs(manager.client, self.client)
+
+    def test_config_property(self):
+        config = TransferConfig()
+        manager = TransferManager(self.client, config)
+        self.assertIs(manager.config, config)

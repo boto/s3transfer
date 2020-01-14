@@ -261,6 +261,14 @@ class TransferManager(object):
 
         self._register_handlers()
 
+    @property
+    def client(self):
+        return self._client
+
+    @property
+    def config(self):
+        return self._config
+
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
         """Uploads a file to S3
 

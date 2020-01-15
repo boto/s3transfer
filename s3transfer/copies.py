@@ -59,7 +59,8 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerKey',
         'CopySourceSSECustomerAlgorithm',
         'CopySourceSSECustomerKeyMD5',
-        'MetadataDirective'
+        'MetadataDirective',
+        'TaggingDirective',
     ]
 
     COMPLETE_MULTIPART_ARGS = [

@@ -1,0 +1,12 @@
+[
+  {
+    "category": "``TransferManager``", 
+    "description": "Expose ``client`` and ``config`` properties", 
+    "type": "enhancement"
+  }, 
+  {
+    "category": "Tags", 
+    "description": "Add support for ``Tagging`` and ``TaggingDirective``", 
+    "type": "enhancement"
+  }
+]

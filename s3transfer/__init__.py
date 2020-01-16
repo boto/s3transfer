@@ -349,6 +349,14 @@ class OSUtils(object):
     def rename_file(self, current_filename, new_filename):
         s3transfer.compat.rename_file(current_filename, new_filename)
 
+    def get_temp_filename(self, filename):
+        max_filename_len = 255
+        sep = os.extsep
+        ext = random_file_extension()
+        path,name = os.path.dirname(filename), os.path.basename(filename)
+        temp_filename = name[:max_filename_len-len(sep)-len(ext)] + sep + ext
+        return temp_filename
+
 
 class MultipartUploader(object):
     # These are the extra_args that need to be forwarded onto
@@ -668,7 +676,7 @@ class S3Transfer(object):
             extra_args = {}
         self._validate_all_known_args(extra_args, self.ALLOWED_DOWNLOAD_ARGS)
         object_size = self._object_size(bucket, key, extra_args)
-        temp_filename = filename + os.extsep + random_file_extension()
+        temp_filename = self._osutil.get_temp_filename(filename)
         try:
             self._download_file(bucket, key, temp_filename, object_size,
                                 extra_args, callback)

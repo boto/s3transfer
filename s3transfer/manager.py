@@ -177,6 +177,7 @@ class TransferManager(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'Tagging',
         'WebsiteRedirectLocation'
     ]
 
@@ -188,7 +189,8 @@ class TransferManager(object):
         'CopySourceSSECustomerAlgorithm',
         'CopySourceSSECustomerKey',
         'CopySourceSSECustomerKeyMD5',
-        'MetadataDirective'
+        'MetadataDirective',
+        'TaggingDirective',
     ]
 
     ALLOWED_DELETE_ARGS = [
@@ -260,6 +262,14 @@ class TransferManager(object):
             self._bandwidth_limiter = BandwidthLimiter(leaky_bucket)
 
         self._register_handlers()
+
+    @property
+    def client(self):
+        return self._client
+
+    @property
+    def config(self):
+        return self._config
 
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
         """Uploads a file to S3

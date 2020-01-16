@@ -2,6 +2,13 @@
 CHANGELOG
 =========
 
+0.3.1
+=====
+
+* enhancement:``TransferManager``: Expose ``client`` and ``config`` properties
+* enhancement:Tags: Add support for ``Tagging`` and ``TaggingDirective``
+
+
 0.3.0
 =====
 

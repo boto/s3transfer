@@ -297,10 +297,11 @@ class TestOSUtils(BaseUtilsTest):
         self.assertFalse(OSUtils().is_special_file(non_existant_filename))
 
     def test_get_temp_filename(self):
-        filename = 'myfile'
+        filename = ''.join([str(random.randint(0,9)) for i in range(0, 255)])
+        self.assertTrue(len(OSUtils().get_temp_filename(filename))<=255)
         self.assertIsNotNone(
             re.match(
-                '%s\.[0-9A-Fa-f]{8}$' % filename,
+                '%s\.[0-9A-Fa-f]{8}$' % filename[:255-8-1],
                 OSUtils().get_temp_filename(filename)
             )
         )

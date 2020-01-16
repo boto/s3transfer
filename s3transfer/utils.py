@@ -300,7 +300,9 @@ class OSUtils(object):
         return False
 
     def get_temp_filename(self, filename):
-        return filename + os.extsep + random_file_extension()
+        path,name = os.path.dirname(filename), os.path.basename(filename)
+        temp_filename = name[:255-8-1] + os.extsep + random_file_extension()
+        return temp_filename
 
     def allocate(self, filename, size):
         try:

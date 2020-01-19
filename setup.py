@@ -11,7 +11,7 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
 requires = [
-    'botocore>=1.3.0,<2.0.0',
+    'botocore>=1.12.36,<2.0.0',
 ]
 
 
@@ -39,7 +39,7 @@ setup(
     python_requires='>=2.6, !=3.0.*, !=3.1.*, !=3.2.*',
     install_requires=requires,
     extras_require={
-        ':python_version=="2.6" or python_version=="2.7"': [
+        ':python_version=="2.7"': [
             'futures>=2.2.0,<4.0.0']
     },
     license="Apache License 2.0",
@@ -49,10 +49,8 @@ setup(
         'Natural Language :: English',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',

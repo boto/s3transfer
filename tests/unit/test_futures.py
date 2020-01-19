@@ -470,7 +470,11 @@ class TestBoundedExecutor(unittest.TestCase):
         try:
             self.executor.submit(task, tag=tag, block=False)
         except NoResourcesAvailable:
-            self.fail('Task %s should not have been blocked' % task)
+            self.fail(
+                'Task %s should not have been blocked. Caused by:\n%s' % (
+                    task, traceback.format_exc()
+                )
+            )
 
     def add_done_callback_to_future(self, future, fn, *args, **kwargs):
         callback_for_future = FunctionContainer(fn, *args, **kwargs)
@@ -497,7 +501,7 @@ class TestBoundedExecutor(unittest.TestCase):
         self.assert_submit_would_block(second_task)
 
     def test_executor_clears_capacity_on_done_tasks(self):
-        first_task = self.get_task(ReturnFooTask)
+        first_task = self.get_sleep_task()
         second_task = self.get_task(ReturnFooTask)
 
         # Submit a task.

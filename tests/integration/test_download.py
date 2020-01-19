@@ -13,6 +13,7 @@
 import glob
 import os
 import time
+import threading
 
 from concurrent.futures import CancelledError
 
@@ -22,7 +23,9 @@ from tests import skip_if_using_serial_implementation
 from tests import RecordingSubscriber
 from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
+from tests.integration import WaitForTransferStart
 from s3transfer.manager import TransferConfig
+from s3transfer.subscribers import BaseSubscriber
 
 
 class TestDownload(BaseTransferManagerIntegTest):
@@ -73,16 +76,23 @@ class TestDownload(BaseTransferManagerIntegTest):
         self.upload_file(filename, '60mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '60mb.txt')
-        sleep_time = 0.5
+        timeout = 10
+        bytes_transferring = threading.Event()
+        subscriber = WaitForTransferStart(bytes_transferring)
         try:
             with transfer_manager:
-                start_time = time.time()
                 future = transfer_manager.download(
-                    self.bucket_name, '60mb.txt', download_path)
-                # Sleep for a little to get the transfer process going
-                time.sleep(sleep_time)
+                    self.bucket_name, '60mb.txt', download_path,
+                    subscribers=[subscriber]
+                )
+                if not bytes_transferring.wait(timeout):
+                    future.cancel()
+                    raise RuntimeError(
+                        "Download transfer did not start after waiting for "
+                        "%s seconds." % timeout)
                 # Raise an exception which should cause the preceeding
                 # download to cancel and exit quickly
+                start_time = time.time()
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -90,11 +100,12 @@ class TestDownload(BaseTransferManagerIntegTest):
         # The maximum time allowed for the transfer manager to exit.
         # This means that it should take less than a couple second after
         # sleeping to exit.
-        max_allowed_exit_time = sleep_time + 4
+        max_allowed_exit_time = 5
+        actual_time_to_exit = end_time - start_time
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
+            actual_time_to_exit, max_allowed_exit_time,
             "Failed to exit under %s. Instead exited in %s." % (
-                max_allowed_exit_time, end_time - start_time)
+                max_allowed_exit_time, actual_time_to_exit)
         )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt

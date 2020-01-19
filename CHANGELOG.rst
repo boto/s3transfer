@@ -2,6 +2,31 @@
 CHANGELOG
 =========
 
+0.3.1
+=====
+
+* enhancement:``TransferManager``: Expose ``client`` and ``config`` properties
+* enhancement:Tags: Add support for ``Tagging`` and ``TaggingDirective``
+
+
+0.3.0
+=====
+
+* feature:Python: Dropped support for Python 2.6 and 3.3.
+
+
+0.2.1
+=====
+
+* enhancment:ProcessPool: Adds user agent suffix.
+
+
+0.2.0
+=====
+
+* feature:``ProcessPoolDownloader``: Add ``ProcessPoolDownloader`` class to speed up download throughput by using processes instead of threads.
+
+
 0.1.13
 ======
 

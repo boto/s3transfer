@@ -239,6 +239,8 @@ class CountCallbackInvoker(object):
 
 
 class OSUtils(object):
+    _MAX_FILENAME_LEN = 255
+
     def get_file_size(self, filename):
         return os.path.getsize(filename)
 
@@ -300,7 +302,11 @@ class OSUtils(object):
         return False
 
     def get_temp_filename(self, filename):
-        return filename + os.extsep + random_file_extension()
+        suffix = os.extsep + random_file_extension()
+        path = os.path.dirname(filename)
+        name = os.path.basename(filename)
+        temp_filename = name[:self._MAX_FILENAME_LEN - len(suffix)] + suffix 
+        return os.path.join(path, temp_filename)
 
     def allocate(self, filename, size):
         try:

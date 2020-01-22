@@ -305,6 +305,16 @@ class TestOSUtils(BaseUtilsTest):
             )
         )
 
+    def test_get_temp_filename_len_255(self):
+        filename = 'a'*255
+        temp_filename = OSUtils().get_temp_filename(filename)
+        self.assertLessEqual(len(temp_filename), 255)
+    
+    def test_get_temp_filename_len_gt_255(self):
+        filename = 'a'*280
+        temp_filename = OSUtils().get_temp_filename(filename)
+        self.assertLessEqual(len(temp_filename), 255)
+
     def test_allocate(self):
         truncate_size = 1
         OSUtils().allocate(self.filename, truncate_size)

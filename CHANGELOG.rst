@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.2
+=====
+
+* bugfix:s3: Fixes boto/botocore`#1916 <https://github.com/boto/botocore/issues/1916>`__
+
+
 0.3.1
 =====
 

@@ -1,5 +1,0 @@
-{
-  "type": "bugfix",
-  "category": "s3",
-  "description": "Fixes boto/botocore`#1916 <https://github.com/boto/botocore/issues/1916>`__"
-}

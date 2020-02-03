@@ -11,7 +11,7 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
 requires = [
-    'botocore>=1.12.36,<2.0.0',
+    'botocore>=1.12.36,<2.0a.0',
 ]
 
 

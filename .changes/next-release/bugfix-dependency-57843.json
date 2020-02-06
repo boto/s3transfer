@@ -1,5 +1,0 @@
-{
-  "type": "bugfix",
-  "category": "dependency",
-  "description": "Updated botocore version range to allow for developmental installs."
-}

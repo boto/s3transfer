@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.3
+=====
+
+* bugfix:dependency: Updated botocore version range to allow for developmental installs.
+
+
 0.3.2
 =====
 

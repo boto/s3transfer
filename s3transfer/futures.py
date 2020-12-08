@@ -71,6 +71,40 @@ class BaseTransferMeta(object):
         raise NotImplementedError('user_context')
 
 
+class CRTTransferFuture(BaseTransferFuture):
+    def __init__(self, s3_request=None, crt_request=None):
+        """The future associated to a submitted transfer request via CRT S3 client
+
+        :type s3_request: S3Request
+        :param s3_request: The s3_request, that will
+
+        :type coordinator: TransferCoordinator
+        :param coordinator: The coordinator associated to the request. This
+            object is not visible to the requester.
+        """
+        self._s3_request = s3_request
+        # We just need to keep the crt_request alive. It will not keep the file open,
+        # until the native client reads from the file
+        self._crt_request = crt_request
+        self._crt_future = self._s3_request.finished_future
+
+    def done(self):
+        return self._crt_future.done()
+
+    def result(self):
+        try:
+            result = self._crt_future.result(1000)
+            return result
+        except KeyboardInterrupt as e:
+            self.cancel()
+            raise e
+
+    def cancel(self):
+        # Not supported yet.
+        raise NotImplementedError('cancel')
+        self._s3_request.cancel()
+
+
 class TransferFuture(BaseTransferFuture):
     def __init__(self, meta=None, coordinator=None):
         """The future associated to a submitted transfer request
@@ -122,6 +156,7 @@ class TransferFuture(BaseTransferFuture):
 
 class TransferMeta(BaseTransferMeta):
     """Holds metadata about the TransferFuture"""
+
     def __init__(self, call_args=None, transfer_id=None):
         self._call_args = call_args
         self._transfer_id = transfer_id
@@ -160,6 +195,7 @@ class TransferMeta(BaseTransferMeta):
 
 class TransferCoordinator(object):
     """A helper class for managing TransferFuture"""
+
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
         self._status = 'not-started'
@@ -511,6 +547,7 @@ class ExecutorFuture(object):
 
 class BaseExecutor(object):
     """Base Executor class implementation needed to work with s3transfer"""
+
     def __init__(self, max_workers=None):
         pass
 
@@ -523,6 +560,7 @@ class BaseExecutor(object):
 
 class NonThreadedExecutor(BaseExecutor):
     """A drop-in replacement non-threaded version of ThreadPoolExecutor"""
+
     def submit(self, fn, *args, **kwargs):
         future = NonThreadedExecutorFuture()
         try:
@@ -547,6 +585,7 @@ class NonThreadedExecutorFuture(object):
     Note that this future is **not** thread-safe as it is being used
     from the context of a non-threaded environment.
     """
+
     def __init__(self):
         self._result = None
         self._exception = None

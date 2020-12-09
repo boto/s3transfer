@@ -38,6 +38,7 @@ upload_future = crt_manager.upload_file(bucket='aws-crt-canary-bucket',
 
 
 upload_future.result()
+upload_future.result()
 # download_future.result()
 # s3_upload_request.finished_future.result(1000)
 # uploadfile.close()

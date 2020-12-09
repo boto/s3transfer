@@ -10,22 +10,45 @@ from awscrt.io import InputStream, LazyReadStream, ClientBootstrap, ClientTlsCon
 from awscrt.auth import AwsCredentialsProvider
 from awscrt.http import HttpHeaders, HttpRequest
 from urllib3.response import HTTPResponse
-from s3transfer.futures import CRTTransferFuture
+from s3transfer.futures import CRTTransferFuture, TransferMeta
 from s3transfer import OSUtils
+from s3transfer.utils import CallArgs
+
+import os
+import functools
 
 import io
 
 
-class CRTTransferManager:
+class CRTTransferManager(object):
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, *args):
+        for i in self.futures:
+            i.result()
+
     def __init__(self, session):
         self._submitter = CRTSubmitter(session)
+        # session.set_debug_logger()
 
-    def download_file(self, bucket, key, filename, extra_args=None,
-                      expected_size=None):
-        return self._submitter.submit('get_object', bucket, key, filename, extra_args)
+        self.futures = []
 
-    def upload_file(self, filename, bucket, key, extra_args=None):
-        return self._submitter.submit('put_object', bucket, key, filename, extra_args)
+    def download_file(self, bucket, key, filename, extra_args=None, subscribers=[]):
+        callargs = CallArgs(bucket=bucket, key=key, fileobj=filename,
+                            extra_args=extra_args, subscribers=subscribers, download_type="get_object")
+        return self._submit_transfer(callargs)
+
+    def upload_file(self, filename, bucket, key, extra_args=None, subscribers=[]):
+        callargs = CallArgs(bucket=bucket, key=key, fileobj=filename,
+                            extra_args=extra_args, subscribers=subscribers, download_type="put_object")
+        return self._submit_transfer(callargs)
+
+    def _submit_transfer(self, call_args):
+        future = self._submitter.submit(call_args)
+        self.futures.append(future)
+        return future
 
 
 class FakeRawResponse(six.BytesIO):
@@ -37,7 +60,7 @@ class FakeRawResponse(six.BytesIO):
             yield chunk
 
 
-class CRTSubmitter:
+class CRTSubmitter(object):
     # using botocore client
     def __init__(self, session):
         # Turn off the signing process and depends on the crt client to sign the request
@@ -70,20 +93,19 @@ class CRTSubmitter:
             FakeRawResponse(b""),
         )
 
-    def submit(self, download_type, bucket, key, filename, extra_args=None):
-        if download_type == 'get_object':
+    def submit(self, call_args):
+        if call_args.download_type == 'get_object':
             serialized_request = self._client.get_object(
-                Bucket=bucket, Key=key)["HTTPRequest"]
-        elif download_type == 'put_object':
+                Bucket=call_args.bucket, Key=call_args.key)["HTTPRequest"]
+        elif call_args.download_type == 'put_object':
             # Set the body stream later
             serialized_request = self._client.put_object(
-                Bucket=bucket, Key=key)["HTTPRequest"]
-
+                Bucket=call_args.bucket, Key=call_args.key)["HTTPRequest"]
         return self._executor.submit(
-            serialized_request, filename, download_type, extra_args)
+            serialized_request, call_args)
 
 
-class CRTExecutor:
+class CRTExecutor(object):
     # Do the job for real
     def __init__(self, configs=None):
         # parse the configs from CLI
@@ -102,7 +124,7 @@ class CRTExecutor:
             credential_provider=credential_provider,
             part_size=5 * 1024 * 1024)
 
-    def submit(self, serialized_http_requests, filename, download_type, extra_args=None):
+    def submit(self, serialized_http_requests, call_args):
         # Filename may be needed for handle the body of get_object.
         crt_request = CrtUtil.crt_request_from_aws_request(
             serialized_http_requests)
@@ -110,32 +132,25 @@ class CRTExecutor:
             # If host is not set, set it for the request before using CRT s3
             url_parts = urlsplit(serialized_http_requests.url)
             crt_request.headers.set("host", url_parts.netloc)
-        type = AwsS3RequestType.GET_OBJECT if download_type == 'get_object' else AwsS3RequestType.PUT_OBJECT
+        future = CRTTransferFuture(
+            None, crt_request, TransferMeta(call_args))
+        type = AwsS3RequestType.GET_OBJECT if call_args.download_type == 'get_object' else AwsS3RequestType.PUT_OBJECT
         if type == AwsS3RequestType.PUT_OBJECT:
             # TODO the data_len will be removed once the native client makes the change.
             # TODO Content-Length should probably be set by the native client, if the oringal value is 0
-            data_len = 10485760
-            if extra_args:
-                data_len = extra_args["data_len"]
+            file_stats = os.stat(call_args.fileobj)
+            data_len = file_stats.st_size
             crt_request.headers.set("Content-Length", str(data_len))
-            stream = LazyReadStream(filename, "r+b", data_len)
-            crt_request.body_stream = stream
-
-        def _on_response_headers(status_code, headers, **kwargs):
-            print(status_code)
-            print(dict(headers))
-
-        def _on_response_body(offset, chunk, **kwargs):
-            with open(filename, 'wb+') as f:
-                print(filename)
-                print(offset)
-                # seems like the seek here may srew up the file.
-                f.seek(offset)
-                f.write(chunk)
+            crt_request.body_stream = future.crt_body_stream
+        if os.path.exists("log.txt"):
+            os.remove("log.txt")
 
         init_logging(LogLevel.Trace, "log.txt")
         s3_request = self._crt_client.make_request(request=crt_request,
                                                    type=type,
-                                                   on_headers=_on_response_headers,
-                                                   on_body=_on_response_body)
-        return CRTTransferFuture(s3_request, crt_request)
+                                                   on_headers=future.on_response_headers,
+                                                   on_body=future.on_response_body,
+                                                   on_done=future.on_done)
+        future.subscriber_manager.on_queued()
+        future.set_s3_request(s3_request)
+        return future

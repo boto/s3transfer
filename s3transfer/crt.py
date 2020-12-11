@@ -122,7 +122,7 @@ class CRTExecutor(object):
             bootstrap=bootstrap,
             region="us-west-2",
             credential_provider=credential_provider,
-            part_size=5 * 1024 * 1024)
+            part_size=5*1024*1024)
 
     def submit(self, serialized_http_requests, call_args):
         # Filename may be needed for handle the body of get_object.
@@ -142,10 +142,11 @@ class CRTExecutor(object):
             data_len = file_stats.st_size
             crt_request.headers.set("Content-Length", str(data_len))
             crt_request.body_stream = future.crt_body_stream
-        if os.path.exists("log.txt"):
-            os.remove("log.txt")
+        log_name = "error_log.txt"
+        if os.path.exists(log_name):
+            os.remove(log_name)
 
-        init_logging(LogLevel.Trace, "log.txt")
+        init_logging(LogLevel.Error, log_name)
         s3_request = self._crt_client.make_request(request=crt_request,
                                                    type=type,
                                                    on_headers=future.on_response_headers,

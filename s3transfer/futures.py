@@ -16,6 +16,7 @@ import copy
 import logging
 import sys
 import threading
+import time
 
 from s3transfer.compat import MAXINT
 from s3transfer.compat import six
@@ -23,8 +24,7 @@ from s3transfer.exceptions import CancelledError, TransferNotDoneError
 from s3transfer.utils import FunctionContainer
 from s3transfer.utils import TaskSemaphore
 
-from awscli.customizations.s3.results import DoneResultSubscriber, ProgressResultSubscriber
-from awscli.customizations.s3.subscribers import ProvideLastModifiedTimeSubscriber, DirectoryCreatorSubscriber
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,10 @@ class CrtLazyReadStream(object):
 
     def _available_stream(self):
         if self._stream is None:
+            self._stream = open(self._filename, self._pattern)
+            return
+
+        if self._stream.closed:
             self._stream = open(self._filename, self._pattern)
 
     def read(self, length):
@@ -143,6 +147,39 @@ class CrtSubscribersManager(object):
             callback(self._future)
 
 
+class Statistics(object):
+
+    def __init__(self):
+        self.end_time = 0
+        self._GBPS = 1000 * 1000 * 1000
+        self._bytes_peak = 0
+        self._bytes_avg = 0
+        self._bytes_read = 0
+        self._bytes_sampled = 0
+        self.sec_first_byte = 0
+        self.star_time = time.time()
+        self.last_sample_time = time.time()
+
+    def record_read(self, size):
+        self._bytes_read+=size
+        if self.sec_first_byte == 0:
+            self.sec_first_byte = time.time() - self.star_time
+        time_now = time.time()
+        if time_now - self.last_sample_time > 1:
+            bytes_this_second = (self._bytes_read-self._bytes_sampled)/(time_now - self.last_sample_time)
+            self._bytes_sampled = self._bytes_read
+            self._bytes_avg = (self._bytes_avg+bytes_this_second)*0.5
+            if self._bytes_peak < bytes_this_second:
+                self._bytes_peak = bytes_this_second
+            self.last_sample_time = time_now
+
+    def bytes_peak(self):
+        return (self._bytes_peak*8)/self._GBPS
+
+    def bytes_avg(self):
+        return (self._bytes_avg*8)/self._GBPS
+
+
 class CRTTransferFuture(BaseTransferFuture):
     def __init__(self, s3_request=None, crt_request=None, meta=None):
         """The future associated to a submitted transfer request via CRT S3 client
@@ -159,6 +196,7 @@ class CRTTransferFuture(BaseTransferFuture):
         # until the native client reads from the file
         self._crt_request = crt_request
         self._crt_future = None
+        self._statistics = Statistics()
         if s3_request:
             self._crt_future = self._s3_request.finished_future
         self._meta = meta
@@ -166,8 +204,11 @@ class CRTTransferFuture(BaseTransferFuture):
             self._meta = TransferMeta()
         self.subscriber_manager = CrtSubscribersManager(
             meta.call_args.subscribers, self)
-        self.crt_body_stream = CrtLazyReadStream(
-            meta.call_args.fileobj, "r+b", self.subscriber_manager)
+
+        self.crt_body_stream = None
+        if meta.call_args.download_type == 'put_object':
+            self.crt_body_stream = CrtLazyReadStream(
+                meta.call_args.fileobj, "r+b", self.subscriber_manager)
 
     @property
     def meta(self):
@@ -179,15 +220,24 @@ class CRTTransferFuture(BaseTransferFuture):
         # print(dict(headers))
 
     def on_response_body(self, offset, chunk, **kwargs):
+        self._statistics.record_read(len(chunk))
         # why the filename here is still alive?
-        # if the file does not exist, create one? The subscriber will only create the directory??
-        with open(self.meta.call_args.fileobj, 'wb+') as f:
-            self.subscriber_manager.on_progress(len(chunk))
+        # if the file does not exist, create one? The subscriber will only create the directory?? Anybetter way?
+        # self.subscriber_manager.on_progress(len(chunk))
+        if not os.path.exists(self.meta.call_args.fileobj):
+            open(self.meta.call_args.fileobj, 'a').close()
+        with open(self.meta.call_args.fileobj, 'rb+') as f:
             # seems like the seek here may srew up the file.
             f.seek(offset)
             f.write(chunk)
 
     def on_done(self, **kwargs):
+        end_time = time.time()
+        print("Gbps peak:", self._statistics.bytes_peak())
+        print("Gbps avg:", self._statistics.bytes_avg())
+        print("lentency:", self._statistics.sec_first_byte)
+        print("start time", self._statistics.star_time, "end time", end_time)
+        print("total time used", end_time-self._statistics.star_time)
         self.subscriber_manager.on_done()
 
     def set_s3_request(self, s3_request):
@@ -199,7 +249,7 @@ class CRTTransferFuture(BaseTransferFuture):
 
     def result(self):
         try:
-            result = self._crt_future.result(10)
+            result = self._crt_future.result(1000)
             return result
         except KeyboardInterrupt as e:
             self.cancel()

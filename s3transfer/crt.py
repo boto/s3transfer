@@ -122,7 +122,7 @@ class CRTExecutor(object):
             bootstrap=bootstrap,
             region="us-west-2",
             credential_provider=credential_provider,
-            part_size=5*1024*1024)
+            throughput_target_gbps=100)
 
     def submit(self, serialized_http_requests, call_args):
         # Filename may be needed for handle the body of get_object.
@@ -136,17 +136,17 @@ class CRTExecutor(object):
             None, crt_request, TransferMeta(call_args))
         type = AwsS3RequestType.GET_OBJECT if call_args.download_type == 'get_object' else AwsS3RequestType.PUT_OBJECT
         if type == AwsS3RequestType.PUT_OBJECT:
-            # TODO the data_len will be removed once the native client makes the change.
-            # TODO Content-Length should probably be set by the native client, if the oringal value is 0
             file_stats = os.stat(call_args.fileobj)
             data_len = file_stats.st_size
             crt_request.headers.set("Content-Length", str(data_len))
+            crt_request.headers.set("Content-Type", "text/plain")
             crt_request.body_stream = future.crt_body_stream
         log_name = "error_log.txt"
         if os.path.exists(log_name):
             os.remove(log_name)
 
         init_logging(LogLevel.Error, log_name)
+        # future.subscriber_manager.on_queued()
         s3_request = self._crt_client.make_request(request=crt_request,
                                                    type=type,
                                                    on_headers=future.on_response_headers,

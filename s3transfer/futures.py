@@ -74,10 +74,11 @@ class BaseTransferMeta(object):
 
 
 class CrtLazyReadStream(object):
-    def __init__(self, filename, pattern, subscriber_manager, length=0):
+    def __init__(self, filename, pattern, subscriber_manager, statics, length=0):
         self._filename = filename
         self.length = length
         self._stream = None
+        self._statics = statics
         self._pattern = pattern
         self._subscriber_manager = subscriber_manager
 
@@ -94,6 +95,7 @@ class CrtLazyReadStream(object):
         data = self._stream.read(length)
         read_len = len(data)
         self._subscriber_manager.on_progress(read_len)
+        self._statics.record_read(read_len)
         if read_len is 0:
             self._stream.close()
         return data
@@ -102,6 +104,7 @@ class CrtLazyReadStream(object):
         # Read into memoryview m.
         self._available_stream()
         len = self._stream.readinto1(m)
+        self._statics.record_read(len)
         self._subscriber_manager.on_progress(len)
         if len is 0:
             self._stream.close()
@@ -208,7 +211,7 @@ class CRTTransferFuture(BaseTransferFuture):
         self.crt_body_stream = None
         if meta.call_args.download_type == 'put_object':
             self.crt_body_stream = CrtLazyReadStream(
-                meta.call_args.fileobj, "r+b", self.subscriber_manager)
+                meta.call_args.fileobj, "r+b", self.subscriber_manager, self._statistics)
 
     @property
     def meta(self):
@@ -221,9 +224,8 @@ class CRTTransferFuture(BaseTransferFuture):
 
     def on_response_body(self, offset, chunk, **kwargs):
         self._statistics.record_read(len(chunk))
-        # why the filename here is still alive?
         # if the file does not exist, create one? The subscriber will only create the directory?? Anybetter way?
-        # self.subscriber_manager.on_progress(len(chunk))
+        self.subscriber_manager.on_progress(len(chunk))
         if not os.path.exists(self.meta.call_args.fileobj):
             open(self.meta.call_args.fileobj, 'a').close()
         with open(self.meta.call_args.fileobj, 'rb+') as f:
@@ -233,11 +235,11 @@ class CRTTransferFuture(BaseTransferFuture):
 
     def on_done(self, **kwargs):
         end_time = time.time()
-        print("Gbps peak:", self._statistics.bytes_peak())
-        print("Gbps avg:", self._statistics.bytes_avg())
-        print("lentency:", self._statistics.sec_first_byte)
-        print("start time", self._statistics.star_time, "end time", end_time)
-        print("total time used", end_time-self._statistics.star_time)
+        # print("Gbps peak:", self._statistics.bytes_peak())
+        # print("Gbps avg:", self._statistics.bytes_avg())
+        # print("lentency:", self._statistics.sec_first_byte)
+        # print("start time", self._statistics.star_time, "end time", end_time)
+        # print("total time used", end_time-self._statistics.star_time)
         self.subscriber_manager.on_done()
 
     def set_s3_request(self, s3_request):

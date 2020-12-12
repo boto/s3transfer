@@ -11,9 +11,9 @@ suffix = ".txt"
 
 download_future = []
 
-for i in range(0, 100):
-    key = str(i)+suffix
-    file_name = dir+str(i)+"_download"+suffix
+for i in range(0, 10):
+    key = "0_10GB_"+str(i)+suffix
+    file_name = dir+"0_10GB"+suffix
     download_future.append(crt_manager.download_file(bucket='aws-crt-python-s3-testing-bucket',
                                                      key=key, filename=file_name))
 

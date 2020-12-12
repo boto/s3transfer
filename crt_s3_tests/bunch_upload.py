@@ -14,9 +14,9 @@ suffix = ".txt"
 
 upload_future = []
 
-for i in range(0, 100):
-    key = str(i)+suffix
-    file_name = dir+key
+for i in range(1, 20):
+    key = "0_10GB_"+str(i)+suffix
+    file_name = "cli_downloads/0_10GB.txt"
     upload_future.append(crt_manager.upload_file(bucket='aws-crt-python-s3-testing-bucket',
                                                  key=key, filename=file_name))
 

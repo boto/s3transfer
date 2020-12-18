@@ -129,15 +129,6 @@ class CRTSubmitter(object):
 
 
 class CrtCredentialProviderWrapper():
-    """
-    {
-        "Version": 1,
-        "AccessKeyId": "accesskey",
-        "SecretAccessKey": "secretAccessKey",
-        "SessionToken": "....",
-        "Expiration": 1247169778
-    }
-    """
 
     def __init__(self, session=None):
         self._session = session
@@ -165,7 +156,8 @@ class CRTExecutor(object):
         # if max_bandwidth not set, we will target 100 Gbps, which means as much as possible.
         target_gbps = 100
         if configs.max_bandwidth:
-            target_gbps = configs.max_bandwidth*8/GIGA
+            # Translate bytes to gigabits
+            target_gbps = configs.max_bandwidth*8/(1000*1000)
 
         self._crt_client = S3Client(
             bootstrap=bootstrap,

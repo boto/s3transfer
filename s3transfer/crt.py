@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class CRTTransferManager(object):
+    """
+    Transfer manager based on CRT s3 client.
+    """
 
     def __enter__(self):
         return self
@@ -49,14 +52,8 @@ class CRTTransferManager(object):
         return self._submit_transfer(callargs)
 
     def delete(self, bucket, key, extra_args=None, subscribers=[]):
-        # print(key)
         callargs = CallArgs(bucket=bucket, key=key,
                             extra_args=extra_args, subscribers=subscribers, request_type="delete_object")
-        return self._submit_transfer(callargs)
-
-    def copy(self, copy_source, bucket, key, extra_args=None, subscribers=[], source_client=None):
-        callargs = CallArgs(bucket=bucket, copy_source=copy_source, key=key,
-                            extra_args=extra_args, subscribers=subscribers, request_type="copy_object")
         return self._submit_transfer(callargs)
 
     def _submit_transfer(self, call_args):
@@ -129,6 +126,10 @@ class CRTSubmitter(object):
 
 
 class CrtCredentialProviderWrapper():
+    """
+    Provides the credential for CRT.
+    CRT will invoke get_credential method and expected a dictionary return value back.
+    """
 
     def __init__(self, session=None):
         self._session = session
@@ -194,7 +195,7 @@ class CRTExecutor(object):
             crt_request.headers.set(
                 "Content-Type", content_type)
             crt_request.body_stream = future.crt_body_stream
-        # Log the error
+        # TODO CRT logs, may need to expose an option for user to enable/disable it from CLI?
         log_name = "error_log.txt"
         if os.path.exists(log_name):
             os.remove(log_name)

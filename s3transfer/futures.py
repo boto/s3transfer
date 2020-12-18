@@ -71,11 +71,19 @@ class BaseTransferMeta(object):
 
 
 class CrtLazyReadStream(object):
-    def __init__(self, filename, pattern, subscriber_manager, statics, length=0):
+    """
+    A wrapper around Python file stream.
+
+    For:
+    1. Only open the file when the request needs to read form it.
+        To avoid too many files opened at the same time. Close
+        the stream when everthing has been read form the file
+    2. Report the progress to subscriber
+    """
+    def __init__(self, filename, pattern, subscriber_manager, length=0):
         self._filename = filename
         self.length = length
         self._stream = None
-        self._statics = statics
         self._pattern = pattern
         self._subscriber_manager = subscriber_manager
 
@@ -83,7 +91,7 @@ class CrtLazyReadStream(object):
         if self._stream is None:
             self._stream = open(self._filename, self._pattern)
             return
-
+        # TODO it may keep the file open all the time, need to dig into the detail later
         if self._stream.closed:
             self._stream = open(self._filename, self._pattern)
 
@@ -92,16 +100,14 @@ class CrtLazyReadStream(object):
         data = self._stream.read(length)
         read_len = len(data)
         self._subscriber_manager.on_progress(read_len)
-        self._statics.record_read(read_len)
         if read_len is 0:
             self._stream.close()
         return data
 
     def readinto1(self, m):
-        # Read into memoryview m.
+        # Read into memoryview m, which has better performance than read
         self._available_stream()
         len = self._stream.readinto1(m)
-        self._statics.record_read(len)
         self._subscriber_manager.on_progress(len)
         if len is 0:
             self._stream.close()
@@ -115,8 +121,10 @@ class CrtLazyReadStream(object):
         pass
 
 
-# Instead of using cordinators, we use a simpler one to handle the callbacks
 class CrtSubscribersManager(object):
+    """
+    A simple wrapper to handle the subscriber for CRT
+    """
 
     def __init__(self, subscribers=None, future=None):
         self._subscribers = subscribers
@@ -152,15 +160,13 @@ class CRTTransferFuture(BaseTransferFuture):
         """The future associated to a submitted transfer request via CRT S3 client
 
         :type s3_request: S3Request
-        :param s3_request: The s3_request, that will
+        :param s3_request: The s3_request, the CRT s3 request handles cancel and the finish future.
 
-        :type coordinator: TransferCoordinator
-        :param coordinator: The coordinator associated to the request. This
-            object is not visible to the requester.
+        :type meta: TransferMeta
+        :param meta: The metadata associated to the request. This object
+            is visible to the requester.
         """
         self._s3_request = s3_request
-        # We just need to keep the crt_request alive. It will not keep the file open,
-        # until the native client reads from the file
         self._crt_future = None
         if s3_request:
             self._crt_future = self._s3_request.finished_future
@@ -173,7 +179,7 @@ class CRTTransferFuture(BaseTransferFuture):
         self.crt_body_stream = None
         if meta.call_args.request_type == 'put_object':
             self.crt_body_stream = CrtLazyReadStream(
-                meta.call_args.fileobj, "r+b", self.subscriber_manager, self._statistics)
+                meta.call_args.fileobj, "r+b", self.subscriber_manager)
         elif meta.call_args.request_type == 'get_object':
             self._file_stream = DeferredOpenFile(
                 meta.call_args.fileobj, mode='wb')
@@ -183,7 +189,6 @@ class CRTTransferFuture(BaseTransferFuture):
         return self._meta
 
     def on_response_body(self, offset, chunk, **kwargs):
-        self._statistics.record_read(len(chunk))
         # if the file does not exist, create one? The subscriber will only create the directory?? Anybetter way?
         self.subscriber_manager.on_progress(len(chunk))
         if not os.path.exists(self.meta.call_args.fileobj):
@@ -212,7 +217,7 @@ class CRTTransferFuture(BaseTransferFuture):
             raise e
 
     def cancel(self):
-        # TODO support cancel corrently for error handling
+        # TODO support cancel correctly for error handling
         raise NotImplementedError('cancel')
 
 

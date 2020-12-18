@@ -104,6 +104,7 @@ class Summarizer(object):
         'time': 0,
         'memory': 1,
         'cpu': 2,
+        'sent_throughput': 3,
         'recv_throughput': 4,
     }
 
@@ -116,20 +117,24 @@ class Summarizer(object):
             'time': [],
             'average_memory': [],
             'average_cpu': [],
+            'average_sent_throughput': [],
             'average_recv_throughput': [],
             'max_memory': [],
             'max_cpu': [],
+            'max_sent_throughput': [],
             'max_recv_throughput': [],
         }
         self._averages = {
             'memory': 0.0,
             'cpu': 0.0,
+            'sent_throughput': 0.0,
             'recv_throughput': 0.0,
 
         }
         self._maximums = {
             'memory': 0.0,
             'cpu': 0.0,
+            'sent_throughput': 0.0,
             'recv_throughput': 0.0,
         }
 
@@ -146,6 +151,10 @@ class Summarizer(object):
         return self._average_across_all_files('max_memory')
 
     @property
+    def max_sent_throughput(self):
+        return self._average_across_all_files('max_sent_throughput')
+
+    @property
     def max_recv_throughput(self):
         return self._average_across_all_files('max_recv_throughput')
 
@@ -156,6 +165,10 @@ class Summarizer(object):
     @property
     def average_memory(self):
         return self._average_across_all_files('average_memory')
+
+    @property
+    def average_sent_throughput(self):
+        return self._average_across_all_files('average_sent_throughput')
 
     @property
     def average_recv_throughput(self):
@@ -174,6 +187,10 @@ class Summarizer(object):
         return self._standard_deviation_across_all_files('max_memory')
 
     @property
+    def std_dev_max_sent_throughput(self):
+        return self._standard_deviation_across_all_files('max_sent_throughput')
+
+    @property
     def std_dev_max_recv_throughput(self):
         return self._standard_deviation_across_all_files('max_recv_throughput')
 
@@ -184,6 +201,11 @@ class Summarizer(object):
     @property
     def std_dev_average_memory(self):
         return self._standard_deviation_across_all_files('average_memory')
+
+    @property
+    def std_dev_average_sent_throughput(self):
+        return self._standard_deviation_across_all_files(
+            'average_sent_throughput')
 
     @property
     def std_dev_average_recv_throughput(self):
@@ -212,12 +234,17 @@ class Summarizer(object):
             ['Maximum Memory', h(self.max_memory), h(self.std_dev_max_memory)],
             ['Maximum CPU (percent)',  '%.1f' % self.max_cpu,
              self.std_dev_max_cpu],
+            ['Maximum Sent Throughput', h_throughput(self.max_sent_throughput),
+             h_throughput(self.max_sent_throughput)],
             ['Maximum Recv Throughput', h_throughput(self.max_recv_throughput),
              h_throughput(self.max_recv_throughput)],
             ['Average Memory', h(self.average_memory),
              h(self.std_dev_average_memory)],
             ['Average CPU (percent)', '%.1f' % self.average_cpu,
              self.std_dev_average_cpu],
+            ['Average Sent Throughput',
+             h_throughput(self.average_sent_throughput),
+             h_throughput(self.average_sent_throughput)],
             ['Average Recv Throughput',
              h_throughput(self.average_recv_throughput),
              h_throughput(self.average_recv_throughput)],
@@ -279,6 +306,7 @@ class Summarizer(object):
         self._num_rows += 1
         self.process_data_point(row, 'memory')
         self.process_data_point(row, 'cpu')
+        self.process_data_point(row, 'sent_throughput')
         self.process_data_point(row, 'recv_throughput')
 
     def process_data_point(self, row, name):
@@ -295,6 +323,9 @@ class Summarizer(object):
         self._totals['time'].append(self._end_time - self._start_time)
         self._totals['max_cpu'].append(self._maximums['cpu'])
         self._totals['max_memory'].append(self._maximums['memory'])
+        self._totals['max_sent_throughput'].append(
+            self._maximums['sent_throughput']
+        )
         self._totals['max_recv_throughput'].append(
             self._maximums['recv_throughput']
         )
@@ -302,6 +333,8 @@ class Summarizer(object):
                 self._averages['cpu']/self._num_rows)
         self._totals['average_memory'].append(
             self._averages['memory']/self._num_rows)
+        self._totals['average_sent_throughput'].append(
+            self._averages['sent_throughput']/self._num_rows)
         self._totals['average_recv_throughput'].append(
             self._averages['recv_throughput']/self._num_rows)
         # Reset some of the data needed to be tracked for each specific

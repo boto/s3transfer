@@ -16,13 +16,10 @@ import copy
 import logging
 import sys
 import threading
-import time
 
-from s3transfer.compat import MAXINT
-from s3transfer.compat import six
+from s3transfer.compat import MAXINT, six
 from s3transfer.exceptions import CancelledError, TransferNotDoneError
-from s3transfer.utils import FunctionContainer
-from s3transfer.utils import TaskSemaphore
+from s3transfer.utils import TaskSemaphore, DeferredOpenFile, FunctionContainer
 
 import os
 
@@ -150,41 +147,8 @@ class CrtSubscribersManager(object):
             callback(self._future)
 
 
-class Statistics(object):
-
-    def __init__(self):
-        self.end_time = 0
-        self._GBPS = 1000 * 1000 * 1000
-        self._bytes_peak = 0
-        self._bytes_avg = 0
-        self._bytes_read = 0
-        self._bytes_sampled = 0
-        self.sec_first_byte = 0
-        self.star_time = time.time()
-        self.last_sample_time = time.time()
-
-    def record_read(self, size):
-        self._bytes_read+=size
-        if self.sec_first_byte == 0:
-            self.sec_first_byte = time.time() - self.star_time
-        time_now = time.time()
-        if time_now - self.last_sample_time > 1:
-            bytes_this_second = (self._bytes_read-self._bytes_sampled)/(time_now - self.last_sample_time)
-            self._bytes_sampled = self._bytes_read
-            self._bytes_avg = (self._bytes_avg+bytes_this_second)*0.5
-            if self._bytes_peak < bytes_this_second:
-                self._bytes_peak = bytes_this_second
-            self.last_sample_time = time_now
-
-    def bytes_peak(self):
-        return (self._bytes_peak*8)/self._GBPS
-
-    def bytes_avg(self):
-        return (self._bytes_avg*8)/self._GBPS
-
-
 class CRTTransferFuture(BaseTransferFuture):
-    def __init__(self, s3_request=None, crt_request=None, meta=None):
+    def __init__(self, s3_request=None, meta=None):
         """The future associated to a submitted transfer request via CRT S3 client
 
         :type s3_request: S3Request
@@ -197,9 +161,7 @@ class CRTTransferFuture(BaseTransferFuture):
         self._s3_request = s3_request
         # We just need to keep the crt_request alive. It will not keep the file open,
         # until the native client reads from the file
-        self._crt_request = crt_request
         self._crt_future = None
-        self._statistics = Statistics()
         if s3_request:
             self._crt_future = self._s3_request.finished_future
         self._meta = meta
@@ -209,37 +171,29 @@ class CRTTransferFuture(BaseTransferFuture):
             meta.call_args.subscribers, self)
 
         self.crt_body_stream = None
-        if meta.call_args.download_type == 'put_object':
+        if meta.call_args.request_type == 'put_object':
             self.crt_body_stream = CrtLazyReadStream(
                 meta.call_args.fileobj, "r+b", self.subscriber_manager, self._statistics)
+        elif meta.call_args.request_type == 'get_object':
+            self._file_stream = DeferredOpenFile(
+                meta.call_args.fileobj, mode='wb')
 
     @property
     def meta(self):
         return self._meta
-
-    def on_response_headers(self, status_code, headers, **kwargs):
-        pass
-        # print(status_code)
-        # print(dict(headers))
 
     def on_response_body(self, offset, chunk, **kwargs):
         self._statistics.record_read(len(chunk))
         # if the file does not exist, create one? The subscriber will only create the directory?? Anybetter way?
         self.subscriber_manager.on_progress(len(chunk))
         if not os.path.exists(self.meta.call_args.fileobj):
+            # TODO error handling, and probably has a better way
             open(self.meta.call_args.fileobj, 'a').close()
         with open(self.meta.call_args.fileobj, 'rb+') as f:
-            # seems like the seek here may srew up the file.
             f.seek(offset)
             f.write(chunk)
 
     def on_done(self, **kwargs):
-        end_time = time.time()
-        # print("Gbps peak:", self._statistics.bytes_peak())
-        # print("Gbps avg:", self._statistics.bytes_avg())
-        # print("lentency:", self._statistics.sec_first_byte)
-        # print("start time", self._statistics.star_time, "end time", end_time)
-        # print("total time used", end_time-self._statistics.star_time)
         self.subscriber_manager.on_done()
 
     def set_s3_request(self, s3_request):
@@ -251,16 +205,15 @@ class CRTTransferFuture(BaseTransferFuture):
 
     def result(self):
         try:
-            result = self._crt_future.result(1000)
-            return result
+            self._s3_request = None
+            return self._crt_future.result()
         except KeyboardInterrupt as e:
             self.cancel()
             raise e
 
     def cancel(self):
-        # Not supported yet.
+        # TODO support cancel corrently for error handling
         raise NotImplementedError('cancel')
-        self._s3_request.cancel()
 
 
 class TransferFuture(BaseTransferFuture):

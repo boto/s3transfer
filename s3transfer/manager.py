@@ -177,6 +177,7 @@ class TransferManager(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'SSEKMSEncryptionContext',
         'Tagging',
         'WebsiteRedirectLocation'
     ]

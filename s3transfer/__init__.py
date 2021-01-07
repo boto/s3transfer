@@ -609,6 +609,7 @@ class S3Transfer(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'SSEKMSEncryptionContext',
         'Tagging',
     ]
 

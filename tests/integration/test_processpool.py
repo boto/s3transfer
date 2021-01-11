@@ -69,7 +69,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         self.upload_file(filename, '60mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '60mb.txt')
-        sleep_time = 0.5
+        sleep_time = 0.2
         try:
             with downloader:
                 downloader.download_file(

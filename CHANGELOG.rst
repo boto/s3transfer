@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.4
+=====
+
+* enhancement:s3: Add server side encryption context into allowed list
+
+
 0.3.3
 =====
 

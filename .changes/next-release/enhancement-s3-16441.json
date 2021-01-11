@@ -1,5 +1,0 @@
-{
-  "category": "s3", 
-  "type": "enhancement", 
-  "description": "Add server side encryption context into allowed list"
-}

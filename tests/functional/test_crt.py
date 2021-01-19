@@ -1,31 +1,49 @@
 import mock
 import unittest
-import tempfile
-import os
+import threading
+import time
+import re
+from concurrent.futures import Future
 
-from awscrt.s3 import S3Client, S3RequestType
+from awscrt.s3 import S3Client, S3RequestType, S3Request
 from botocore.session import Session
 
-from s3transfer.crt import CRTTransferManager
+from s3transfer.crt import CRTTransferManager, CRTTransferConfig
 
 from tests import FileCreator
 
 
+class submitThread(threading.Thread):
+    def __init__(self, transfer_manager, futures, callargs):
+        threading.Thread.__init__(self)
+        self._transfer_manager = transfer_manager
+        self._futures = futures
+        self._callargs = callargs
+
+    def run(self):
+        self._futures.append(self._transfer_manager.download(*self._callargs))
+
+
 class TestCRTTransferManager(unittest.TestCase):
     def setUp(self):
-        self.s3_crt_client = mock.Mock(S3Client)
-        self.session = Session()
-        self.transfer_manager = CRTTransferManager(
-            crt_s3_client=self.s3_crt_client, session=self.session)
+        self.max_request_processes = 2
         self.region = 'us-west-2'
-        self.session = Session()
-        self.session.set_config_variable('region', self.region)
         self.bucket = "test_bucket"
         self.key = "test_key"
         self.files = FileCreator()
         self.filename = self.files.create_file('myfile', 'my content')
         self.expected_path = "/" + self.bucket + "/" + self.key
         self.expected_host = "s3.%s.amazonaws.com" % (self.region)
+        self.s3_request = mock.Mock(S3Request)
+        self.s3_crt_client = mock.Mock(S3Client)
+        self.s3_crt_client.make_request.return_value = self.s3_request
+        self.session = Session()
+        config = CRTTransferConfig(self.max_request_processes)
+        self.transfer_manager = CRTTransferManager(
+            crt_s3_client=self.s3_crt_client, session=self.session,
+            config=config)
+        self.session = Session()
+        self.session.set_config_variable('region', self.region)
 
     def tearDown(self):
         self.files.remove_all()
@@ -52,7 +70,9 @@ class TestCRTTransferManager(unittest.TestCase):
 
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
-        self.assertEqual(callargs_kwargs["recv_filepath"], self.filename)
+        # the recv_filepath will be set to a temporary file path with some random suffix
+        self.assertTrue(re.match(self.filename+".*",
+                                 callargs_kwargs["recv_filepath"]))
         self.assertIsNone(callargs_kwargs["send_filepath"])
         self.assertEqual(callargs_kwargs["type"], S3RequestType.GET_OBJECT)
         crt_request = callargs_kwargs["request"]
@@ -74,3 +94,43 @@ class TestCRTTransferManager(unittest.TestCase):
         self.assertEqual("DELETE", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)
         self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+
+    def test_blocks_when_max_requests_processes_reached(self):
+        futures = []
+        callargs = (self.bucket, self.key, self.filename, {}, [])
+        all_concurrent = 3
+        threads = []
+        for i in range(0, all_concurrent):
+            thread = submitThread(self.transfer_manager, futures, callargs)
+            thread.start()
+            threads.append(thread)
+        self.assertLessEqual(
+            self.s3_crt_client.make_request.call_count,
+            self.max_request_processes)
+        # Release lock
+        callargs = self.s3_crt_client.make_request.call_args
+        callargs_kwargs = callargs[1]
+        on_done = callargs_kwargs["on_done"]
+        on_done(error=None)
+        for thread in threads:
+            thread.join()
+        self.assertEqual(
+            self.s3_crt_client.make_request.call_count,
+            all_concurrent)
+
+    def _cancel_function(self):
+        self.cancel_called = True
+        self.s3_request.finished_future.set_result(None)
+
+    def test_cancel(self):
+        self.s3_request.finished_future = Future()
+        self.cancel_called = False
+        self.s3_request.cancel = self._cancel_function
+        try:
+            with self.transfer_manager:
+                future = self.transfer_manager.upload(
+                    self.bucket, self.key, self.filename, {}, [])
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+        self.assertTrue(self.cancel_called)

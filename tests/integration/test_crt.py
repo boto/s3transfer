@@ -11,22 +11,24 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
+import glob
 
 from tests.integration import BaseTransferManagerIntegTest
 from tests import assert_files_equal
 
 import s3transfer.crt as crt
+from awscrt.exceptions import AwsCrtError
 
 
 class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     """Tests for the high level s3transfer based on CRT implementation."""
 
-    def create_s3_transfer(self, config=None):
+    def _create_s3_transfer(self, config=None):
         return crt.CRTTransferManager(
             self.session, config=config
         )
 
-    def assert_has_public_read_acl(self, response):
+    def _assert_has_public_read_acl(self, response):
         grants = response['Grants']
         public_read = [g['Grantee'].get('URI', '') for g in grants
                        if g['Permission'] == 'READ']
@@ -35,7 +37,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     def test_upload_below_multipart_chunksize(self):
         config = crt.CRTTransferConfig(
             multipart_chunksize=5 * 1024 * 1024)
-        transfer = self.create_s3_transfer(config)
+        transfer = self._create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=1024 * 1024)
         self.addCleanup(self.delete_object, 'foo.txt')
@@ -50,7 +52,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     def test_upload_above_multipart_chunksize(self):
         config = crt.CRTTransferConfig(
             multipart_chunksize=5 * 1024 * 1024)
-        transfer = self.create_s3_transfer(config)
+        transfer = self._create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             '20mb.txt', filesize=20 * 1024 * 1024)
         self.addCleanup(self.delete_object, '20mb.txt')
@@ -64,7 +66,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     def test_upload_file_above_threshold_with_acl(self):
         config = crt.CRTTransferConfig(
             multipart_chunksize=5 * 1024 * 1024)
-        transfer = self.create_s3_transfer(config)
+        transfer = self._create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             '6mb.txt', filesize=6 * 1024 * 1024)
         extra_args = {'ACL': 'public-read'}
@@ -78,7 +80,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         self.assertTrue(self.object_exists('6mb.txt'))
         response = self.client.get_object_acl(
             Bucket=self.bucket_name, Key='6mb.txt')
-        self.assert_has_public_read_acl(response)
+        self._assert_has_public_read_acl(response)
 
     def test_upload_file_above_threshold_with_ssec(self):
         key_bytes = os.urandom(32)
@@ -88,7 +90,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         }
         config = crt.CRTTransferConfig(
             multipart_chunksize=5 * 1024 * 1024)
-        transfer = self.create_s3_transfer(config)
+        transfer = self._create_s3_transfer(config)
         filename = self.files.create_file_with_size(
             '6mb.txt', filesize=6 * 1024 * 1024)
         self.addCleanup(self.delete_object, '6mb.txt')
@@ -120,7 +122,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         }
         filename = self.files.create_file('foo.txt', 'hello world')
         self.upload_file(filename, 'foo.txt', extra_args)
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         with transfer:
@@ -131,7 +133,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             self.assertEqual(f.read(), b'hello world')
 
     def test_download_below_threshold(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=1024 * 1024)
         self.upload_file(filename, 'foo.txt')
@@ -144,7 +146,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         assert_files_equal(filename, download_path)
 
     def test_download_above_threshold(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=20 * 1024 * 1024)
         self.upload_file(filename, 'foo.txt')
@@ -157,7 +159,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         assert_files_equal(filename, download_path)
 
     def test_delete(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
         filename = self.files.create_file_with_size(
             'foo.txt', filesize=1024 * 1024)
         self.upload_file(filename, 'foo.txt')
@@ -168,7 +170,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         self.assertTrue(self.object_not_exists('foo.txt'))
 
     def test_many_files_download(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
 
         filename = self.files.create_file_with_size(
             '1mb.txt', filesize=1024 * 1024)
@@ -187,7 +189,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             assert_files_equal(filename, download_path)
 
     def test_many_files_upload(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
         keys = []
         filenames = []
         base_key = 'foo'
@@ -208,7 +210,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             self.assertTrue(self.object_exists(key))
 
     def test_many_files_delete(self):
-        transfer = self.create_s3_transfer()
+        transfer = self._create_s3_transfer()
         keys = []
         base_key = 'foo'
         sufix = '.txt'
@@ -224,3 +226,46 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
                 transfer.delete(self.bucket_name, key)
         for key in keys:
             self.assertTrue(self.object_not_exists(key))
+
+    def test_upload_cancel(self):
+        config = crt.CRTTransferConfig(
+            multipart_chunksize=5 * 1024 * 1024)
+        transfer = self._create_s3_transfer(config)
+        filename = self.files.create_file_with_size(
+            '20mb.txt', filesize=20 * 1024 * 1024)
+        future = None
+        try:
+            with transfer:
+                future = transfer.upload(self.bucket_name,
+                                         '20mb.txt', filename)
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+
+        with self.assertRaises(AwsCrtError) as cm:
+            future.result()
+            self.assertEqual(cm.name, 'AWS_ERROR_S3_CANCELED')
+        self.assertTrue(self.object_not_exists('20mb.txt'))
+
+    def test_download_cancel(self):
+        transfer = self._create_s3_transfer()
+        filename = self.files.create_file_with_size(
+            'foo.txt', filesize=20 * 1024 * 1024)
+        self.upload_file(filename, 'foo.txt')
+
+        download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
+        future = None
+        try:
+            with transfer:
+                future = transfer.download(self.bucket_name, 'foo.txt',
+                                           download_path)
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+
+        with self.assertRaises(AwsCrtError) as cm:
+            future.result()
+            self.assertEqual(cm.name, 'AWS_ERROR_S3_CANCELED')
+
+        possible_matches = glob.glob('%s*' % download_path)
+        self.assertEqual(possible_matches, [])

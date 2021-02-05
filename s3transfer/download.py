@@ -13,7 +13,7 @@
 import logging
 import threading
 import heapq
-
+import sys
 
 from botocore.compat import six
 
@@ -598,6 +598,12 @@ class IORenameFileTask(Task):
     """
     def _main(self, fileobj, final_filename, osutil):
         fileobj.close()
+        # if the platform is linux, and object name is . then we get
+        # an -EBUSY error from performing the rename(2) system call.
+        # Therefore, fix the by replacing the . with a different name.
+        if (sys.platform.startswith("linux") and final_filename.endswith("/.")):
+            sys.stderr.write("\nfound . as the filename, replacing . with filename " + fileobj.name.split('/')[-1] + "\n")
+            final_filename = fileobj.name
         osutil.rename_file(fileobj.name, final_filename)
 
 

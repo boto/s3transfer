@@ -1,14 +1,15 @@
 import mock
 import unittest
 import threading
-import time
 import re
 from concurrent.futures import Future
 
 from awscrt.s3 import S3Client, S3RequestType, S3Request
+import awscrt.exceptions as crtException
 from botocore.session import Session
 
-from s3transfer.crt import CRTTransferManager, CRTTransferConfig
+from s3transfer.crt import CRTTransferManager, BotocoreCRTRequestSerializer
+from s3transfer.crt import BaseCRTRequestSerializer
 
 from tests import FileCreator
 
@@ -26,7 +27,6 @@ class submitThread(threading.Thread):
 
 class TestCRTTransferManager(unittest.TestCase):
     def setUp(self):
-        self.max_request_processes = 2
         self.region = 'us-west-2'
         self.bucket = "test_bucket"
         self.key = "test_key"
@@ -38,19 +38,18 @@ class TestCRTTransferManager(unittest.TestCase):
         self.s3_crt_client = mock.Mock(S3Client)
         self.s3_crt_client.make_request.return_value = self.s3_request
         self.session = Session()
-        config = CRTTransferConfig(self.max_request_processes)
-        self.transfer_manager = CRTTransferManager(
-            crt_s3_client=self.s3_crt_client, session=self.session,
-            config=config)
-        self.session = Session()
         self.session.set_config_variable('region', self.region)
+        self.request_serializer = BotocoreCRTRequestSerializer(self.session)
+        self.transfer_manager = CRTTransferManager(
+            crt_s3_client=self.s3_crt_client,
+            crt_request_serializer=self.request_serializer)
 
     def tearDown(self):
         self.files.remove_all()
 
     def test_upload(self):
         future = self.transfer_manager.upload(
-            self.bucket, self.key, self.filename, {}, [])
+            self.filename, self.bucket, self.key, {}, [])
         future.result()
 
         callargs = self.s3_crt_client.make_request.call_args
@@ -70,8 +69,9 @@ class TestCRTTransferManager(unittest.TestCase):
 
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
-        # the recv_filepath will be set to a temporary file path with some random suffix
-        self.assertTrue(re.match(self.filename+".*",
+        # the recv_filepath will be set to a temporary file path with some
+        # random suffix
+        self.assertTrue(re.match(self.filename + ".*",
                                  callargs_kwargs["recv_filepath"]))
         self.assertIsNone(callargs_kwargs["send_filepath"])
         self.assertEqual(callargs_kwargs["type"], S3RequestType.GET_OBJECT)
@@ -98,7 +98,8 @@ class TestCRTTransferManager(unittest.TestCase):
     def test_blocks_when_max_requests_processes_reached(self):
         futures = []
         callargs = (self.bucket, self.key, self.filename, {}, [])
-        all_concurrent = 3
+        all_concurrent = 33
+        max_request_processes = 32  # the hard coded max processes
         threads = []
         for i in range(0, all_concurrent):
             thread = submitThread(self.transfer_manager, futures, callargs)
@@ -106,7 +107,7 @@ class TestCRTTransferManager(unittest.TestCase):
             threads.append(thread)
         self.assertLessEqual(
             self.s3_crt_client.make_request.call_count,
-            self.max_request_processes)
+            max_request_processes)
         # Release lock
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
@@ -120,7 +121,12 @@ class TestCRTTransferManager(unittest.TestCase):
 
     def _cancel_function(self):
         self.cancel_called = True
-        self.s3_request.finished_future.set_result(None)
+        self.s3_request.finished_future.set_exception(
+            crtException.from_code(0))
+        callargs = self.s3_crt_client.make_request.call_args
+        callargs_kwargs = callargs[1]
+        on_done = callargs_kwargs["on_done"]
+        on_done(error=None)
 
     def test_cancel(self):
         self.s3_request.finished_future = Future()
@@ -129,8 +135,11 @@ class TestCRTTransferManager(unittest.TestCase):
         try:
             with self.transfer_manager:
                 future = self.transfer_manager.upload(
-                    self.bucket, self.key, self.filename, {}, [])
+                    self.filename, self.bucket, self.key, {}, [])
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
+
+        with self.assertRaises(crtException.AwsCrtError):
+            future.result()
         self.assertTrue(self.cancel_called)

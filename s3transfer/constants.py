@@ -15,6 +15,7 @@ import s3transfer
 
 KB = 1024
 MB = KB * KB
+GB = MB * KB
 
 ALLOWED_DOWNLOAD_ARGS = [
     'VersionId',

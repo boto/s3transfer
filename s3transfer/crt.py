@@ -1,12 +1,14 @@
 import logging
 from io import BytesIO
 import threading
+from concurrent.futures import Future
 
 import botocore.awsrequest
 import botocore.session
 from botocore import UNSIGNED
 from botocore.config import Config
 from botocore.compat import urlsplit
+
 import awscrt.http
 from awscrt.s3 import S3Client, S3RequestType
 from awscrt.io import ClientBootstrap, DefaultHostResolver, EventLoopGroup
@@ -14,48 +16,83 @@ from awscrt.auth import AwsCredentialsProvider, AwsCredentials
 
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
 from s3transfer.utils import CallArgs, OSUtils, get_callbacks
+from s3transfer.constants import GB, MB
 
 logger = logging.getLogger(__name__)
 
 
-class CRTTransferConfig(object):
-    def __init__(self,
-                 max_request_queue_size=32,
-                 max_bandwidth=None,
-                 multipart_chunksize=None,
-                 max_request_processes=None):
-        # TODO rename max_bandwidth and max_request_processes for more
-        # appropriate description
-        self.max_bandwidth = max_bandwidth
-        if multipart_chunksize is None:
-            multipart_chunksize = 0
-        self.multipart_chunksize = multipart_chunksize
-        if max_request_processes is None:
-            max_request_processes = 0
-        self.max_request_processes = max_request_processes
-        self.max_request_queue_size = max_request_queue_size
+def create_s3_crt_client(region,
+                         botocore_credential_provider=None,
+                         num_threads=None,
+                         target_throughput=5 * GB / 8,
+                         part_size=5 * MB):
+    """
+    :type region: str
+    :param region: The region used for signing
+
+    :type botocore_credential_provider: Optional[botocore.credentials.CredentialResolver]
+    :param botocore_credential_provider: Provide credentials for CRT to sign the request
+        if not set, the request will not be signed
+
+    :type num_threads: Optional[int]
+    :param num_threads: Number of worker threads generated. Default is the number of
+        processors in the machine.
+
+    :type target_throughput: Optional[int]
+    :param target_throughput: Throughput target in Bytes.
+        Default is 0.625 GB/s (which translates to 5 Gb/s).
+
+    :type part_size: Optional[int]
+    :param part_size: Size, in Bytes, of parts that files will be downloaded or uploaded in.
+    """
+
+    event_loop_group = EventLoopGroup(num_threads)
+    host_resolver = DefaultHostResolver(event_loop_group)
+    bootstrap = ClientBootstrap(event_loop_group, host_resolver)
+    provider = None
+    if botocore_credential_provider:
+
+        def provider_adaptor():
+            credentials = botocore_credential_provider\
+                .load_credentials().get_frozen_credentials()
+            return AwsCredentials(credentials.access_key,
+                                  credentials.secret_key, credentials.token)
+
+        provider = AwsCredentialsProvider.new_delegate(provider_adaptor)
+    target_gbps = target_throughput * 8 / GB
+    return S3Client(
+        bootstrap=bootstrap,
+        region=region,
+        credential_provider=provider,
+        part_size=part_size,
+        throughput_target_gbps=target_gbps)
 
 
 class CRTTransferManager(object):
-    """
-    Transfer manager based on CRT s3 client.
-    """
 
-    def __init__(self, session, config=None, osutil=None, crt_s3_client=None):
-        self._crt_credential_provider = \
-            self._botocore_credential_provider_adaptor(session)
-        if config is None:
-            config = CRTTransferConfig()
-        self._owns_crt_client = False
-        if crt_s3_client is None:
-            self._owns_crt_client = True
-            crt_s3_client = self._create_crt_s3_client(session, config)
+    def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
+        """A transfer manager interface for Amazon S3 on CRT s3 client.
+
+        :type crt_s3_client: awscrt.s3.S3Client
+        :param crt_s3_client: The CRT s3 client, handling all the
+            HTTP requests and functions under then hood
+
+        :type crt_request_serializer: s3transfer.crt.BaseCRTRequestSerializer
+        :param crt_request_serializer: Serializer, generates unsigned crt HTTP request.
+
+        :type osutil: s3transfer.utils.OSUtils
+        :param osutil: OSUtils object to use for os-related behavior when
+            using with transfer manager.
+        """
         if osutil is None:
             self._osutil = OSUtils()
         self._crt_s3_client = crt_s3_client
-        self._s3_args_creator = S3ClientArgsCreator(session, self._osutil)
-        self._futures = []
-        self._semaphore = threading.Semaphore(config.max_request_queue_size)
+        self._s3_args_creator = S3ClientArgsCreator(
+            crt_request_serializer, self._osutil)
+        self._future_coordinators = []
+        self._semaphore = threading.Semaphore(32)  # not configurable
+        # A counter to create unique id's for each transfer submitted.
+        self._id_counter = 0
 
     def __enter__(self):
         return self
@@ -72,12 +109,11 @@ class CRTTransferManager(object):
             extra_args = {}
         if subscribers is None:
             subscribers = {}
-        callargs = CallArgs(
-            bucket=bucket, key=key, fileobj=fileobj,
-            extra_args=extra_args, subscribers=subscribers)
+        callargs = CallArgs(bucket=bucket, key=key, fileobj=fileobj,
+                            extra_args=extra_args, subscribers=subscribers)
         return self._submit_transfer("get_object", callargs)
 
-    def upload(self, bucket, key, fileobj, extra_args=None,
+    def upload(self, fileobj, bucket, key, extra_args=None,
                subscribers=None):
         if extra_args is None:
             extra_args = {}
@@ -99,72 +135,56 @@ class CRTTransferManager(object):
             subscribers=subscribers)
         return self._submit_transfer("delete_object", callargs)
 
-    def _cancel_futures(self):
-        for future in self._futures:
-            if not future.done():
-                future.cancel()
+    def shutdown(self, cancel=False):
+        self._shutdown(cancel)
 
-    def _finish_futures(self):
-        for future in self._futures:
-            future.result()
+    def _cancel_transfers(self):
+        for coordinator in self._future_coordinators:
+            if not coordinator.done():
+                coordinator.cancel()
+
+    def _finish_transfers(self):
+        for coordinator in self._future_coordinators:
+            coordinator.result()
+
+    def _wait_transfers_done(self):
+        for coordinator in self._future_coordinators:
+            coordinator.wait_until_on_done_callbacks_complete()
 
     def _shutdown(self, cancel=False):
         if cancel:
-            self._cancel_futures()
+            self._cancel_transfers()
         try:
-            self._finish_futures()
+            self._finish_transfers()
 
         except KeyboardInterrupt:
-            self._cancel_futures()
+            self._cancel_transfers()
         except Exception:
             pass
         finally:
-            self._shutdown_crt_client()
-
-    def _shutdown_crt_client(self):
-        shutdown_event = self._crt_s3_client.shutdown_event
-        self._crt_s3_client = None
-        if self._owns_crt_client:
-            shutdown_event.wait()
-
-    def _botocore_credential_provider_adaptor(self, session):
-
-        def provider():
-            credentials = session.get_credentials().get_frozen_credentials()
-            return AwsCredentials(credentials.access_key,
-                                  credentials.secret_key, credentials.token)
-
-        return provider
-
-    def _create_crt_s3_client(self, session, transfer_config):
-        client_factory = CRTS3ClientFactory()
-        return client_factory.create_client(
-            region=session.get_config_variable("region"),
-            client_config=session.get_default_client_config(),
-            transfer_config=transfer_config,
-            credential_provider=self._crt_credential_provider
-        )
+            self._wait_transfers_done()
 
     def _release_semaphore(self, **kwargs):
         self._semaphore.release()
 
     def _submit_transfer(self, request_type, call_args):
-        # TODO unique id may be needed for the future.
         on_done_after_calls = [self._release_semaphore]
-        coordinator = CRTTransferCoordinator()
-        future = CRTTransferFuture(CRTTransferMeta(
-            call_args=call_args), coordinator)
-
-        # TODO get_make_request_args and on_queue can fail from botocore.
-        # Handle the error properly
-        on_queued = self._s3_args_creator.get_crt_callback(future, 'queued')
-        on_queued()
-        crt_callargs = self._s3_args_creator.get_make_request_args(
-            request_type, call_args, coordinator, future,
-            self._osutil, on_done_after_calls)
+        coordinator = CRTTransferCoordinator(transfer_id=self._id_counter)
+        components = {
+            'meta': CRTTransferMeta(self._id_counter, call_args),
+            'coordinator': coordinator
+        }
+        future = CRTTransferFuture(**components)
+        afterdone = AfterDoneHandler(coordinator)
+        on_done_after_calls.append(afterdone)
 
         try:
             self._semaphore.acquire()
+            on_queued = self._s3_args_creator.get_crt_callback(
+                future, 'queued')
+            on_queued()
+            crt_callargs = self._s3_args_creator.get_make_request_args(
+                request_type, call_args, coordinator, future, on_done_after_calls)
             crt_s3_request = self._crt_s3_client.make_request(**crt_callargs)
         except Exception as e:
             coordinator.set_exception(e, True)
@@ -173,15 +193,119 @@ class CRTTransferManager(object):
             on_done(error=e)
         else:
             coordinator.set_s3_request(crt_s3_request)
-        self._futures.append(future)
+        self._future_coordinators.append(coordinator)
+
+        self._id_counter += 1
         return future
 
 
-class CRTUtil(object):
-    '''
-    Utilities related to CRT.
-    '''
-    def crt_request_from_aws_request(aws_request):
+class CRTTransferMeta(BaseTransferMeta):
+    """Holds metadata about the CRTTransferFuture"""
+
+    def __init__(self, transfer_id=None, call_args=None):
+        self._transfer_id = transfer_id
+        self._call_args = call_args
+        self._user_context = {}
+
+    @property
+    def call_args(self):
+        return self._call_args
+
+    @property
+    def transfer_id(self):
+        return self._transfer_id
+
+    @property
+    def user_context(self):
+        return self._user_context
+
+
+class CRTTransferFuture(BaseTransferFuture):
+    def __init__(self, meta=None, coordinator=None):
+        """The future associated to a submitted transfer request via CRT S3 client
+
+        :type meta: s3transfer.crt.CRTTransferMeta
+        :param meta: The metadata associated to the transfer future.
+
+        :type coordinator: s3transfer.crt.CRTTransferCoordinator
+        :param coordinator: The coordinator associated to the transfer future.
+        """
+        self._meta = meta
+        if meta is None:
+            self._meta = CRTTransferMeta()
+        self._coordinator = coordinator
+
+    @property
+    def meta(self):
+        return self._meta
+
+    def done(self):
+        return self._coordinator.done()
+
+    def result(self, timeout=None):
+        self._coordinator.result(timeout)
+
+    def cancel(self):
+        self._coordinator.cancel()
+
+
+class BaseCRTRequestSerializer:
+    def serialize_http_request(self, transfer_type, future):
+        """Serialize CRT HTTP requests.
+
+        :type transfer_type: string
+        :param transfer_type: the type of transfer made,
+            e.g 'put_object', 'get_object', 'delete_object'
+
+        :type future: s3transfer.crt.CRTTransferFuture
+
+        :rtype: awscrt.http.HttpRequest
+        :returns: An unsigned HTTP request to be used for the CRT S3 client
+        """
+        raise NotImplementedError('serialize_http_request()')
+
+
+class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
+    def __init__(self, session, client_kwargs=None):
+        """Serialize CRT HTTP request using botocore logic
+        It also takes into account configuration from both the session
+        and any keyword arguments that could be passed to
+        `Session.create_client()` when serializing the request.
+
+        :type session: botocore.session.Session
+
+        :type client_kwargs: Optional[Dict[str, str]])
+        :param client_kwargs: The kwargs for the botocore
+            s3 client initialization.
+        """
+        self._session = session
+        if client_kwargs is None:
+            client_kwargs = {}
+        self._resolve_client_config(session, client_kwargs)
+        self._client = session.create_client(**client_kwargs)
+        self._client.meta.events.register(
+            'request-created.s3.*', self._capture_http_request)
+        self._client.meta.events.register(
+            'after-call.s3.*',
+            self._change_response_to_serialized_http_request)
+        self._client.meta.events.register(
+            'before-send.s3.*', self._make_fake_http_response)
+
+    def _resolve_client_config(self, session, client_kwargs):
+        user_provided_config = None
+        if session.get_default_client_config():
+            user_provided_config = session.get_default_client_config()
+        if 'config' in client_kwargs:
+            user_provided_config = client_kwargs['config']
+
+        client_config = Config()
+        if user_provided_config:
+            client_config.merge(user_provided_config)
+        client_config.signature_version = UNSIGNED
+        client_kwargs['config'] = client_config
+        client_kwargs["service_name"] = "s3"
+
+    def _crt_request_from_aws_request(self, aws_request):
         url_parts = urlsplit(aws_request.url)
         crt_path = url_parts.path
         if url_parts.query:
@@ -209,47 +333,75 @@ class CRTUtil(object):
             body_stream=crt_body_stream)
         return crt_request
 
+    def _convert_to_crt_http_request(self, botocore_http_request):
+        # Logic that does CRTUtils.crt_request_from_aws_request
+        crt_request = self._crt_request_from_aws_request(
+            botocore_http_request)
+        if crt_request.headers.get("host") is None:
+            # If host is not set, set it for the request before using CRT s3
+            url_parts = urlsplit(botocore_http_request.url)
+            crt_request.headers.set("host", url_parts.netloc)
+        if crt_request.headers.get('Content-MD5') is not None:
+            crt_request.headers.remove("Content-MD5")
+        return crt_request
 
-class CRTTransferMeta(BaseTransferMeta):
-    """Holds metadata about the CRTTransferFuture"""
+    def _capture_http_request(self, request, **kwargs):
+        request.context['http_request'] = request
 
-    def __init__(self, transfer_id=None, call_args=None):
-        self._transfer_id = transfer_id
-        self._call_args = call_args
-        self._user_context = {}
-        self._size = 0
+    def _change_response_to_serialized_http_request(
+            self, context, parsed, **kwargs):
+        request = context['http_request']
+        parsed['HTTPRequest'] = request.prepare()
 
-    @property
-    def call_args(self):
-        return self._call_args
+    def _make_fake_http_response(self, request, **kwargs):
+        return botocore.awsrequest.AWSResponse(
+            None,
+            200,
+            {},
+            FakeRawResponse(b""),
+        )
 
-    @property
-    def transfer_id(self):
-        return self._transfer_id
+    def _get_botocore_http_request(self, client_method, call_args):
+        return getattr(self._client, client_method)(
+            Bucket=call_args.bucket, Key=call_args.key,
+            **call_args.extra_args)['HTTPRequest']
 
-    @property
-    def user_context(self):
-        return self._user_context
+    def serialize_http_request(self, transfer_type, future):
+        botocore_http_request = self._get_botocore_http_request(
+            transfer_type, future.meta.call_args)
+        crt_request = self._convert_to_crt_http_request(botocore_http_request)
+        return crt_request
 
-    @property
-    def size(self):
-        return self._size
 
-    def provide_transfer_size(self, size):
-        # TODO the size is not related to CRT, move this to CLI
-        self._size = size
+class FakeRawResponse(BytesIO):
+    def stream(self, amt=1024, decode_content=None):
+        while True:
+            chunk = self.read(amt)
+            if not chunk:
+                break
+            yield chunk
 
 
 class CRTTransferCoordinator:
-    def __init__(self, s3_request=None):
+    """A helper class for managing CRTTransferFuture"""
+
+    def __init__(self, transfer_id=None, s3_request=None):
+        self.transfer_id = transfer_id
         self._s3_request = s3_request
         self._lock = threading.Lock()
         self._exception = None
         self._crt_future = None
+        self._done_event = threading.Event()
 
     @property
     def s3_request(self):
         return self._s3_request
+
+    def set_done_callbacks_complete(self):
+        self._done_event.set()
+
+    def wait_until_on_done_callbacks_complete(self, timeout=None):
+        self._done_event.wait(timeout)
 
     def set_exception(self, exception, override=False):
         with self._lock:
@@ -283,87 +435,14 @@ class CRTTransferCoordinator:
         self._crt_future = self._s3_request.finished_future
 
 
-class CRTTransferFuture(BaseTransferFuture):
-    def __init__(self, meta=None, coordinator=None):
-        """The future associated to a submitted transfer request via CRT S3 client
-
-        :type meta: CRTTransferMeta
-        :param meta: The metadata associated to the request. This object
-            is visible to the requester.
-        """
-        self._meta = meta
-        if meta is None:
-            self._meta = CRTTransferMeta()
-        self._coordinator = coordinator
-
-    @property
-    def meta(self):
-        return self._meta
-
-    def done(self):
-        return self._coordinator.done()
-
-    def result(self, timeout=None):
-        self._coordinator.result(timeout)
-
-    def cancel(self):
-        self._coordinator.cancel()
-
-
-class CRTS3ClientFactory:
-    def create_client(self, region, transfer_config=None,
-                      client_config=None,
-                      credential_provider=None):
-        # TODO client config is not resolved correctly.
-        event_loop_group = EventLoopGroup(
-            transfer_config.max_request_processes)
-        host_resolver = DefaultHostResolver(event_loop_group)
-        bootstrap = ClientBootstrap(
-            event_loop_group, host_resolver)
-        provider = AwsCredentialsProvider.new_delegate(
-            credential_provider)
-        target_gbps = 0
-        if transfer_config.max_bandwidth:
-            # Translate bytes to gigabits
-            target_gbps = transfer_config.max_bandwidth * \
-                8 / (1000 * 1000 * 1000)
-
-        return S3Client(
-            bootstrap=bootstrap,
-            region=region,
-            credential_provider=provider,
-            part_size=transfer_config.multipart_chunksize,
-            throughput_target_gbps=target_gbps)
-
-
-class FakeRawResponse(BytesIO):
-    def stream(self, amt=1024, decode_content=None):
-        while True:
-            chunk = self.read(amt)
-            if not chunk:
-                break
-            yield chunk
-
-
 class S3ClientArgsCreator:
-    def __init__(self, session, os_utils):
-        # Turn off the signing process and depends on the crt client to sign
-        # the request
-        client_config = Config(signature_version=UNSIGNED)
-        self._client = session.create_client(
-            's3', config=client_config)
+    def __init__(self, crt_request_serializer, os_utils):
+        self._request_serializer = crt_request_serializer
         self._os_utils = os_utils
-        self._client.meta.events.register(
-            'request-created.s3.*', self._capture_http_request)
-        self._client.meta.events.register(
-            'after-call.s3.*',
-            self._change_response_to_serialized_http_request)
-        self._client.meta.events.register(
-            'before-send.s3.*', self._make_fake_http_response)
 
     def get_make_request_args(
             self, request_type, call_args, coordinator, future,
-            osutil, on_done_after_calls):
+            on_done_after_calls):
         recv_filepath = None
         send_filepath = None
         s3_meta_request_type = getattr(
@@ -373,18 +452,17 @@ class S3ClientArgsCreator:
         on_done_before_calls = []
         if s3_meta_request_type == S3RequestType.GET_OBJECT:
             final_filepath = call_args.fileobj
-            recv_filepath = osutil.get_temp_filename(final_filepath)
+            recv_filepath = self._os_utils.get_temp_filename(final_filepath)
             file_ondone_call = RenameTempFileHandler(
-                coordinator, final_filepath, recv_filepath, osutil)
+                coordinator, final_filepath, recv_filepath, self._os_utils)
             on_done_before_calls.append(file_ondone_call)
         elif s3_meta_request_type == S3RequestType.PUT_OBJECT:
             send_filepath = call_args.fileobj
             data_len = self._os_utils.get_file_size(send_filepath)
             call_args.extra_args["ContentLength"] = data_len
 
-        botocore_http_request = self._get_botocore_http_request(
-            request_type, call_args)
-        crt_request = self._convert_to_crt_http_request(botocore_http_request)
+        crt_request = self._request_serializer.serialize_http_request(
+            request_type, future)
 
         return {
             'request': crt_request,
@@ -401,9 +479,6 @@ class S3ClientArgsCreator:
                          before_subscribers=None, after_subscribers=None):
 
         def invoke_all_callbacks(*args, **kwargs):
-            # TODO The get_callbacks helper will set the first augment
-            # by keyword, the other augments need to be set by keyword
-            # as well. Consider removing the restriction later
             callbacks_list = []
             if before_subscribers is not None:
                 callbacks_list += before_subscribers
@@ -411,45 +486,15 @@ class S3ClientArgsCreator:
             if after_subscribers is not None:
                 callbacks_list += after_subscribers
             for callback in callbacks_list:
+                # The get_callbacks helper will set the first augment
+                # by keyword, the other augments need to be set by keyword
+                # as well
                 if callback_type == "progress":
                     callback(bytes_transferred=args[0])
                 else:
                     callback(*args, **kwargs)
 
         return invoke_all_callbacks
-
-    def _convert_to_crt_http_request(self, botocore_http_request):
-        # Logic that does CRTUtils.crt_request_from_aws_request
-        crt_request = CRTUtil.crt_request_from_aws_request(
-            botocore_http_request)
-        if crt_request.headers.get("host") is None:
-            # If host is not set, set it for the request before using CRT s3
-            url_parts = urlsplit(botocore_http_request.url)
-            crt_request.headers.set("host", url_parts.netloc)
-        if crt_request.headers.get('Content-MD5') is not None:
-            crt_request.headers.remove("Content-MD5")
-        return crt_request
-
-    def _capture_http_request(self, request, **kwargs):
-        request.context['http_request'] = request
-
-    def _change_response_to_serialized_http_request(
-            self, context, parsed, **kwargs):
-        request = context['http_request']
-        parsed['HTTPRequest'] = request.prepare()
-
-    def _make_fake_http_response(self, request, **kwargs):
-        return botocore.awsrequest.AWSResponse(
-            None,
-            200,
-            {},
-            FakeRawResponse(b""),
-        )
-
-    def _get_botocore_http_request(self, client_method, call_args):
-        return getattr(self._client, client_method)(
-            Bucket=call_args.bucket, Key=call_args.key,
-            **call_args.extra_args)['HTTPRequest']
 
 
 class RenameTempFileHandler:
@@ -471,3 +516,11 @@ class RenameTempFileHandler:
                 self._osutil.remove_file(self._temp_filename)
                 # the CRT future has done already at this point
                 self._coordinator.set_exception(e)
+
+
+class AfterDoneHandler:
+    def __init__(self, coordinator):
+        self._coordinator = coordinator
+
+    def __call__(self, **kwargs):
+        self._coordinator.set_done_callbacks_complete()

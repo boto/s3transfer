@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 import os
 import glob
+from s3transfer.utils import OSUtils
 
 from tests.integration import BaseTransferManagerIntegTest
 from tests import assert_files_equal
@@ -19,7 +20,24 @@ from tests import assert_files_equal
 from botocore.credentials import create_credential_resolver
 
 import s3transfer.crt as crt
+from s3transfer.subscribers import BaseSubscriber
 from awscrt.exceptions import AwsCrtError
+
+
+class RecordingSubscriber(BaseSubscriber):
+    def __init__(self):
+        self.on_queued_called = False
+        self.on_done_called = False
+        self.bytes_transferred = 0
+
+    def on_queued(self, **kwargs):
+        self.on_queued_called = True
+
+    def on_progress(self, future, bytes_transferred, **kwargs):
+        self.bytes_transferred += bytes_transferred
+
+    def on_done(self, **kwargs):
+        self.on_done_called = True
 
 
 class TestCRTS3Transfers(BaseTransferManagerIntegTest):
@@ -31,6 +49,8 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         credetial_resolver = self.session.get_component('credential_provider')
         self.s3_crt_client = crt.create_s3_crt_client(
             self.session.get_config_variable("region"), credetial_resolver)
+        self.record_subscriber = RecordingSubscriber()
+        self.osutil = OSUtils()
         return crt.CRTTransferManager(
             self.s3_crt_client, self.request_serializer)
 
@@ -40,47 +60,65 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
                        if g['Permission'] == 'READ']
         self.assertIn('groups/global/AllUsers', public_read[0])
 
+    def _assert_subscribers_called(self, expected_bytes_transferred=None):
+        self.assertTrue(self.record_subscriber.on_queued_called)
+        self.assertTrue(self.record_subscriber.on_done_called)
+        if expected_bytes_transferred:
+            self.assertEqual(
+                self.record_subscriber.bytes_transferred,
+                expected_bytes_transferred)
+
     def test_upload_below_multipart_chunksize(self):
         transfer = self._create_s3_transfer()
+        file_size = 1024 * 1024
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=file_size)
         self.addCleanup(self.delete_object, 'foo.txt')
 
         with transfer:
             future = transfer.upload(
-                filename, self.bucket_name, 'foo.txt')
+                filename, self.bucket_name, 'foo.txt',
+                subscribers=[self.record_subscriber])
             future.result()
 
         self.assertTrue(self.object_exists('foo.txt'))
+        self._assert_subscribers_called(file_size)
 
     def test_upload_above_multipart_chunksize(self):
         transfer = self._create_s3_transfer()
+        file_size = 20 * 1024 * 1024
         filename = self.files.create_file_with_size(
-            '20mb.txt', filesize=20 * 1024 * 1024)
+            '20mb.txt', filesize=file_size)
         self.addCleanup(self.delete_object, '20mb.txt')
 
         with transfer:
             future = transfer.upload(
-                filename, self.bucket_name, '20mb.txt')
+                filename, self.bucket_name, '20mb.txt',
+                subscribers=[self.record_subscriber])
             future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
+        self._assert_subscribers_called(file_size)
 
     def test_upload_file_above_threshold_with_acl(self):
         transfer = self._create_s3_transfer()
+        file_size = 6 * 1024 * 1024
         filename = self.files.create_file_with_size(
-            '6mb.txt', filesize=6 * 1024 * 1024)
+            '6mb.txt', filesize=file_size)
         extra_args = {'ACL': 'public-read'}
         self.addCleanup(self.delete_object, '6mb.txt')
 
         with transfer:
-            future = transfer.upload(filename, self.bucket_name,
-                                     '6mb.txt', extra_args=extra_args)
+            future = transfer.upload(
+                filename, self.bucket_name,
+                '6mb.txt', extra_args=extra_args,
+                subscribers=[self.record_subscriber])
             future.result()
 
         self.assertTrue(self.object_exists('6mb.txt'))
         response = self.client.get_object_acl(
             Bucket=self.bucket_name, Key='6mb.txt')
         self._assert_has_public_read_acl(response)
+        self._assert_subscribers_called(file_size)
 
     def test_upload_file_above_threshold_with_ssec(self):
         key_bytes = os.urandom(32)
@@ -88,13 +126,16 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             'SSECustomerKey': key_bytes,
             'SSECustomerAlgorithm': 'AES256',
         }
+        file_size = 6 * 1024 * 1024
         transfer = self._create_s3_transfer()
         filename = self.files.create_file_with_size(
-            '6mb.txt', filesize=6 * 1024 * 1024)
+            '6mb.txt', filesize=file_size)
         self.addCleanup(self.delete_object, '6mb.txt')
         with transfer:
-            future = transfer.upload(filename, self.bucket_name,
-                                     '6mb.txt', extra_args=extra_args)
+            future = transfer.upload(
+                filename, self.bucket_name,
+                '6mb.txt', extra_args=extra_args,
+                subscribers=[self.record_subscriber])
             future.result()
         # A head object will fail if it has a customer key
         # associated with it and it's not provided in the HeadObject
@@ -108,6 +149,7 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             Bucket=self.bucket_name,
             Key='6mb.txt', **oringal_extra_args)
         self.assertEqual(response['SSECustomerAlgorithm'], 'AES256')
+        self._assert_subscribers_called(file_size)
 
     def test_can_send_extra_params_on_download(self):
         # We're picking the customer provided sse feature
@@ -124,9 +166,13 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
 
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         with transfer:
-            future = transfer.download(self.bucket_name, 'foo.txt',
-                                       download_path, extra_args=extra_args)
+            future = transfer.download(
+                self.bucket_name, 'foo.txt',
+                download_path, extra_args=extra_args,
+                subscribers=[self.record_subscriber])
             future.result()
+        file_size = self.osutil.get_file_size(download_path)
+        self._assert_subscribers_called(file_size)
         with open(download_path, 'rb') as f:
             self.assertEqual(f.read(), b'hello world')
 
@@ -139,8 +185,11 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         with transfer:
             future = transfer.download(self.bucket_name, 'foo.txt',
-                                       download_path)
+                                       download_path,
+                                       subscribers=[self.record_subscriber])
             future.result()
+        file_size = self.osutil.get_file_size(download_path)
+        self._assert_subscribers_called(file_size)
         assert_files_equal(filename, download_path)
 
     def test_download_above_threshold(self):
@@ -152,9 +201,12 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         download_path = os.path.join(self.files.rootdir, 'downloaded.txt')
         with transfer:
             future = transfer.download(self.bucket_name, 'foo.txt',
-                                       download_path)
+                                       download_path,
+                                       subscribers=[self.record_subscriber])
             future.result()
         assert_files_equal(filename, download_path)
+        file_size = self.osutil.get_file_size(download_path)
+        self._assert_subscribers_called(file_size)
 
     def test_delete(self):
         transfer = self._create_s3_transfer()
@@ -254,14 +306,16 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         try:
             with transfer:
                 future = transfer.download(self.bucket_name, 'foo.txt',
-                                           download_path)
+                                           download_path,
+                                           subscribers=[self.record_subscriber])
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
 
-        with self.assertRaises(AwsCrtError) as cm:
+        with self.assertRaises(AwsCrtError) as err:
             future.result()
-            self.assertEqual(cm.name, 'AWS_ERROR_S3_CANCELED')
+            self.assertEqual(err.name, 'AWS_ERROR_S3_CANCELED')
 
         possible_matches = glob.glob('%s*' % download_path)
         self.assertEqual(possible_matches, [])
+        self._assert_subscribers_called()

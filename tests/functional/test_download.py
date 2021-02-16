@@ -338,6 +338,15 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             future.result()
             self.assertEqual(fifo.read(), self.content)
 
+    def test_raise_exception_on_s3_object_lambda_resource(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambdas:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        with self.assertRaisesRegexp(ValueError, 'methods do not support'):
+            self.manager.download(
+                s3_object_lambda_arn, self.key, self.filename, self.extra_args)
+
 
 class TestNonRangedDownload(BaseDownloadTest):
     # TODO: If you want to add tests outside of this test class and still

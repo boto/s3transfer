@@ -172,3 +172,13 @@ class TestTransferManager(StubbedClientTest):
         config = TransferConfig()
         manager = TransferManager(self.client, config)
         self.assertIs(manager.config, config)
+
+    def test_can_disable_bucket_validation(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambdas:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        config = TransferConfig()
+        manager = TransferManager(self.client, config)
+        manager.VALIDATE_SUPPORTED_BUCKET_VALUES = False
+        manager.delete(s3_object_lambda_arn, 'my-key')

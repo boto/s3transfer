@@ -10,8 +10,9 @@ from botocore.config import Config
 from botocore.compat import urlsplit
 
 import awscrt.http
-from awscrt.s3 import S3Client, S3RequestType
+from awscrt.s3 import S3Client, S3RequestType, S3RequestTlsMode
 from awscrt.io import ClientBootstrap, DefaultHostResolver, EventLoopGroup
+from awscrt.io import ClientTlsContext, TlsContextOptions
 from awscrt.auth import AwsCredentialsProvider, AwsCredentials
 
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
@@ -25,7 +26,9 @@ def create_s3_crt_client(region,
                          botocore_credential_provider=None,
                          num_threads=None,
                          target_throughput=5 * GB / 8,
-                         part_size=5 * MB):
+                         part_size=8 * MB,
+                         use_ssl=True,
+                         verify=None):
     """
     :type region: str
     :param region: The region used for signing
@@ -44,12 +47,40 @@ def create_s3_crt_client(region,
 
     :type part_size: Optional[int]
     :param part_size: Size, in Bytes, of parts that files will be downloaded or uploaded in.
+
+    :type use_ssl: boolean
+    :param use_ssl: Whether or not to use SSL.  By default, SSL is used.
+        Note that not all services support non-ssl connections.
+
+    :type verify: Optional[boolean/string]
+    :param verify: Whether or not to verify SSL certificates.
+        By default SSL certificates are verified.  You can provide the
+        following values:
+
+        * False - do not validate SSL certificates.  SSL will still be
+            used (unless use_ssl is False), but SSL certificates
+            will not be verified.
+        * path/to/cert/bundle.pem - A filename of the CA cert bundle to
+            use. Specify this argument if you want to use a custom CA cert
+            bundle instead of the default one on your system.
     """
 
     event_loop_group = EventLoopGroup(num_threads)
     host_resolver = DefaultHostResolver(event_loop_group)
     bootstrap = ClientBootstrap(event_loop_group, host_resolver)
     provider = None
+    tls_connection_options = None
+
+    tls_mode = S3RequestTlsMode.ENABLED if use_ssl else S3RequestTlsMode.DISABLED
+    if verify is not None:
+        tls_ctx_options = TlsContextOptions()
+        if verify:
+            tls_ctx_options.override_default_trust_store_from_path(
+                ca_filepath=verify)
+        else:
+            tls_ctx_options.verify_peer = False
+        client_tls_option = ClientTlsContext(tls_ctx_options)
+        tls_connection_options = client_tls_option.new_connection_options()
     if botocore_credential_provider:
 
         def provider_adaptor():
@@ -65,6 +96,8 @@ def create_s3_crt_client(region,
         region=region,
         credential_provider=provider,
         part_size=part_size,
+        tls_mode=tls_mode,
+        tls_connection_options=tls_connection_options,
         throughput_target_gbps=target_gbps)
 
 
@@ -90,7 +123,7 @@ class CRTTransferManager(object):
         self._s3_args_creator = S3ClientArgsCreator(
             crt_request_serializer, self._osutil)
         self._future_coordinators = []
-        self._semaphore = threading.Semaphore(32)  # not configurable
+        self._semaphore = threading.Semaphore(128)  # not configurable
         # A counter to create unique id's for each transfer submitted.
         self._id_counter = 0
 

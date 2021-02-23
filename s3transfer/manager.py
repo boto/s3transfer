@@ -204,7 +204,7 @@ class TransferManager(object):
 
     _UNSUPPORTED_BUCKET_PATTERNS = {
         'S3 Object Lambda': re.compile(
-            r'^arn:(aws).*:s3-object-lambdas:[a-z\-0-9]+:[0-9]{12}:'
+            r'^arn:(aws).*:s3-object-lambda:[a-z\-0-9]+:[0-9]{12}:'
             r'accesspoint[/:][a-zA-Z0-9\-]{1,63}'
         ),
     }

@@ -175,7 +175,7 @@ class TestTransferManager(StubbedClientTest):
 
     def test_can_disable_bucket_validation(self):
         s3_object_lambda_arn = (
-            'arn:aws:s3-object-lambdas:us-west-2:123456789012:'
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
             'accesspoint:my-accesspoint'
         )
         config = TransferConfig()

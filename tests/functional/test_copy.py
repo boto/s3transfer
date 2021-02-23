@@ -278,14 +278,14 @@ class TestNonMultipartCopy(BaseCopyTest):
 
     def test_raise_exception_on_s3_object_lambda_resource(self):
         s3_object_lambda_arn = (
-            'arn:aws:s3-object-lambdas:us-west-2:123456789012:'
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
             'accesspoint:my-accesspoint'
         )
         with self.assertRaisesRegexp(ValueError, 'methods do not support'):
             self.manager.copy(self.copy_source, s3_object_lambda_arn, self.key)
 
     def test_raise_exception_on_s3_object_lambda_resource_as_source(self):
-        source = {'Bucket': 'arn:aws:s3-object-lambdas:us-west-2:123456789012:'
+        source = {'Bucket': 'arn:aws:s3-object-lambda:us-west-2:123456789012:'
                             'accesspoint:my-accesspoint'}
         with self.assertRaisesRegexp(ValueError, 'methods do not support'):
             self.manager.copy(source, self.bucket, self.key)

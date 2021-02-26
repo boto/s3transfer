@@ -391,7 +391,7 @@ class MultipartUploader(object):
             raise S3UploadFailedError(
                 "Failed to upload %s to %s: %s" % (
                     filename, '/'.join([bucket, key]), e))
-        self._client.complete_multipart_upload(
+        return self._client.complete_multipart_upload(
             Bucket=bucket, Key=key, UploadId=upload_id,
             MultipartUpload={'Parts': parts})
 

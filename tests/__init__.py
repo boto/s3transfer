@@ -207,11 +207,15 @@ class RecordingOSUtils(OSUtils):
 class RecordingSubscriber(BaseSubscriber):
     def __init__(self):
         self.on_queued_calls = []
+        self.on_response_calls = []
         self.on_progress_calls = []
         self.on_done_calls = []
 
     def on_queued(self, **kwargs):
         self.on_queued_calls.append(kwargs)
+
+    def on_response(self, **kwargs):
+        self.on_response_calls.append(kwargs)
 
     def on_progress(self, **kwargs):
         self.on_progress_calls.append(kwargs)

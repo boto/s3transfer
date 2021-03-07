@@ -372,6 +372,7 @@ class DownloadSubmissionTask(SubmissionTask):
             transfer_future)
 
         # Get the needed callbacks for the task
+        response_callbacks = get_callbacks(transfer_future, 'response')
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
         # Get any associated tags for the get object task.
@@ -391,7 +392,8 @@ class DownloadSubmissionTask(SubmissionTask):
                     'key': call_args.key,
                     'fileobj': fileobj,
                     'extra_args': call_args.extra_args,
-                    'callbacks': progress_callbacks,
+                    'response_callbacks': response_callbacks,
+                    'progress_callbacks': progress_callbacks,
                     'max_attempts': config.num_download_attempts,
                     'download_output_manager': download_output_manager,
                     'io_chunksize': config.io_chunksize,
@@ -410,6 +412,7 @@ class DownloadSubmissionTask(SubmissionTask):
         call_args = transfer_future.meta.call_args
 
         # Get the needed progress callbacks for the task
+        response_callbacks = get_callbacks(transfer_future, 'response')
         progress_callbacks = get_callbacks(transfer_future, 'progress')
 
         # Get a handle to the file that will be used for writing downloaded
@@ -452,7 +455,8 @@ class DownloadSubmissionTask(SubmissionTask):
                         'key': call_args.key,
                         'fileobj': fileobj,
                         'extra_args': extra_args,
-                        'callbacks': progress_callbacks,
+                        'response_callbacks': response_callbacks,
+                        'progress_callbacks': progress_callbacks,
                         'max_attempts': config.num_download_attempts,
                         'start_index': i * part_size,
                         'download_output_manager': download_output_manager,
@@ -483,7 +487,8 @@ class DownloadSubmissionTask(SubmissionTask):
 
 
 class GetObjectTask(Task):
-    def _main(self, client, bucket, key, fileobj, extra_args, callbacks,
+    def _main(self, client, bucket, key, fileobj, extra_args,
+              response_callbacks, progress_callbacks,
               max_attempts, download_output_manager, io_chunksize,
               start_index=0, bandwidth_limiter=None):
         """Downloads an object and places content into io queue
@@ -493,7 +498,8 @@ class GetObjectTask(Task):
         :param key: The key to download from
         :param fileobj: The file handle to write content to
         :param exta_args: Any extra arguements to include in GetObject request
-        :param callbacks: List of progress callbacks to invoke on download
+        :param response_callbacks: List of response callbacks to invoke on download
+        :param progress_callbacks: List of progress callbacks to invoke on download
         :param max_attempts: The number of retries to do when downloading
         :param download_output_manager: The download output manager associated
             with the current download.
@@ -510,8 +516,10 @@ class GetObjectTask(Task):
                 current_index = start_index
                 response = client.get_object(
                     Bucket=bucket, Key=key, **extra_args)
+                for callback in response_callbacks:
+                    callback(response=response)
                 streaming_body = StreamReaderProgress(
-                    response['Body'], callbacks)
+                    response['Body'], progress_callbacks)
                 if bandwidth_limiter:
                     streaming_body = \
                         bandwidth_limiter.get_bandwith_limited_stream(
@@ -540,7 +548,7 @@ class GetObjectTask(Task):
                 # are trying to download the stream again and all progress
                 # for this GetObject has been lost.
                 invoke_progress_callbacks(
-                    callbacks, start_index - current_index)
+                    progress_callbacks, start_index - current_index)
                 continue
         raise RetriesExceededError(last_exception)
 

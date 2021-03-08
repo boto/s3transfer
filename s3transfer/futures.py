@@ -273,14 +273,10 @@ class TransferCoordinator(object):
         """
         with self._lock:
             if not self.done():
-                should_announce_done = False
                 logger.debug('%s cancel(%s) called', self, msg)
                 self._exception = exc_type(msg)
-                if self._status == 'not-started':
-                    should_announce_done = True
                 self._status = 'cancelled'
-                if should_announce_done:
-                    self.announce_done()
+                self.announce_done()
 
     def set_status_to_queued(self):
         """Sets the TransferFutrue's status to running"""

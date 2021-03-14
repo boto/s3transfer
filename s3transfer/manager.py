@@ -164,6 +164,7 @@ class TransferManager(object):
         'ContentEncoding',
         'ContentLanguage',
         'ContentType',
+        'ExpectedBucketOwner',
         'Expires',
         'GrantFullControl',
         'GrantRead',
@@ -179,8 +180,7 @@ class TransferManager(object):
         'SSEKMSKeyId',
         'SSEKMSEncryptionContext',
         'Tagging',
-        'WebsiteRedirectLocation',
-		'ExpectedBucketOwner'
+        'WebsiteRedirectLocation'
     ]
 
     ALLOWED_COPY_ARGS = ALLOWED_UPLOAD_ARGS + [

@@ -179,7 +179,8 @@ class TransferManager(object):
         'SSEKMSKeyId',
         'SSEKMSEncryptionContext',
         'Tagging',
-        'WebsiteRedirectLocation'
+        'WebsiteRedirectLocation',
+		'ExpectedBucketOwner'
     ]
 
     ALLOWED_COPY_ARGS = ALLOWED_UPLOAD_ARGS + [

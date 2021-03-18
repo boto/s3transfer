@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``s3``",
-  "description": "Block TransferManager methods for S3 Object Lambda resources"
-}

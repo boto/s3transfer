@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.6
+=====
+
+* bugfix:packaging: Fix setup.py metadata for `futures` on Python 2.7
+
+
 0.3.5
 =====
 

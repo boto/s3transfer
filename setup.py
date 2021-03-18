@@ -14,13 +14,6 @@ requires = [
     'botocore>=1.12.36,<2.0a.0',
 ]
 
-
-if sys.version_info[0] == 2:
-    # concurrent.futures is only in python3, so for
-    # python2 we need to install the backport.
-    requires.append('futures>=2.2.0,<4.0.0')
-
-
 def get_version():
     init = open(os.path.join(ROOT, 's3transfer', '__init__.py')).read()
     return VERSION_RE.search(init).group(1)

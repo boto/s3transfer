@@ -1,0 +1,7 @@
+[
+  {
+    "category": "packaging", 
+    "description": "Fix setup.py metadata for `futures` on Python 2.7", 
+    "type": "bugfix"
+  }
+]

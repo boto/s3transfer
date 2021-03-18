@@ -465,7 +465,7 @@ class TestMultipartDownloader(unittest.TestCase):
                 self.is_first = True
 
             def submit(self, function):
-                future = super(FailedDownloadParts, self).submit(function)
+                future = futures.Future()
                 if self.is_first:
                     # This is the download_parts_thread.
                     future.set_exception(

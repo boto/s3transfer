@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.5
+=====
+
+* enhancement:``s3``: Block TransferManager methods for S3 Object Lambda resources
+
+
 0.3.4
 =====
 

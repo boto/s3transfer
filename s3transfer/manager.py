@@ -164,6 +164,7 @@ class TransferManager(object):
         'ContentEncoding',
         'ContentLanguage',
         'ContentType',
+        'ExpectedBucketOwner',
         'Expires',
         'GrantFullControl',
         'GrantRead',

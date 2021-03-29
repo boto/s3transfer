@@ -32,7 +32,8 @@ setup(
     install_requires=requires,
     extras_require={
         ':python_version=="2.7"': [
-            'futures>=2.2.0,<4.0.0']
+            'futures>=2.2.0,<4.0.0'],
+        'crt': 'botocore[crt]>=1.20.29,<2.0a.0',
     },
     license="Apache License 2.0",
     classifiers=[

@@ -331,10 +331,9 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
         if 'config' in client_kwargs:
             user_provided_config = client_kwargs['config']
 
-        client_config = Config()
+        client_config = Config(signature_version=UNSIGNED)
         if user_provided_config:
-            client_config.merge(user_provided_config)
-        client_config.signature_version = UNSIGNED
+            client_config = user_provided_config.merge(client_config)
         client_kwargs['config'] = client_config
         client_kwargs["service_name"] = "s3"
 
@@ -445,7 +444,7 @@ class CRTTransferCoordinator:
         if self._s3_request:
             self._s3_request.cancel()
 
-    def result(self, timeout):
+    def result(self, timeout=None):
         if self._exception:
             raise self._exception
         try:

@@ -162,8 +162,8 @@ class TestCRTTransferManager(unittest.TestCase):
     def test_blocks_when_max_requests_processes_reached(self):
         futures = []
         callargs = (self.bucket, self.key, self.filename, {}, [])
-        all_concurrent = 33
-        max_request_processes = 32  # the hard coded max processes
+        max_request_processes = 128  # the hard coded max processes
+        all_concurrent = max_request_processes + 1
         threads = []
         for i in range(0, all_concurrent):
             thread = submitThread(self.transfer_manager, futures, callargs)

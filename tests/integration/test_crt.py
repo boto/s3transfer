@@ -17,11 +17,12 @@ from s3transfer.utils import OSUtils
 from tests.integration import BaseTransferManagerIntegTest
 from tests import assert_files_equal
 
-from botocore.credentials import create_credential_resolver
-
-import s3transfer.crt as crt
 from s3transfer.subscribers import BaseSubscriber
 from awscrt.exceptions import AwsCrtError
+from tests import requires_crt, HAS_CRT
+
+if HAS_CRT:
+    import s3transfer.crt
 
 
 class RecordingSubscriber(BaseSubscriber):
@@ -40,18 +41,19 @@ class RecordingSubscriber(BaseSubscriber):
         self.on_done_called = True
 
 
+@requires_crt
 class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     """Tests for the high level s3transfer based on CRT implementation."""
 
     def _create_s3_transfer(self):
-        self.request_serializer = crt.BotocoreCRTRequestSerializer(
+        self.request_serializer = s3transfer.crt.BotocoreCRTRequestSerializer(
             self.session)
         credetial_resolver = self.session.get_component('credential_provider')
-        self.s3_crt_client = crt.create_s3_crt_client(
+        self.s3_crt_client = s3transfer.crt.create_s3_crt_client(
             self.session.get_config_variable("region"), credetial_resolver)
         self.record_subscriber = RecordingSubscriber()
         self.osutil = OSUtils()
-        return crt.CRTTransferManager(
+        return s3transfer.crt.CRTTransferManager(
             self.s3_crt_client, self.request_serializer)
 
     def _assert_has_public_read_acl(self, response):

@@ -1,22 +1,24 @@
 
 import unittest
-import mock
 
 from botocore.session import Session
-from awscrt.s3 import S3Client
-from s3transfer.crt import BotocoreCRTRequestSerializer, create_s3_crt_client
-from s3transfer.crt import CRTTransferCoordinator, CRTTransferFuture, CRTTransferMeta
-from s3transfer.utils import CallArgs, OSUtils
+from s3transfer.utils import CallArgs
 
 from tests import FileCreator
+from tests import requires_crt, HAS_CRT
+
+if HAS_CRT:
+    import s3transfer.crt
 
 
+@requires_crt
 class TestBotocoreCRTRequestSerializer(unittest.TestCase):
     def setUp(self):
         self.region = 'us-west-2'
         self.session = Session()
         self.session.set_config_variable('region', self.region)
-        self.request_serializer = BotocoreCRTRequestSerializer(self.session)
+        self.request_serializer = s3transfer.crt.BotocoreCRTRequestSerializer(
+            self.session)
         self.bucket = "test_bucket"
         self.key = "test_key"
         self.files = FileCreator()
@@ -31,9 +33,9 @@ class TestBotocoreCRTRequestSerializer(unittest.TestCase):
         callargs = CallArgs(
             bucket=self.bucket, key=self.key, fileobj=self.filename,
             extra_args={}, subscribers=[])
-        coordinator = CRTTransferCoordinator()
-        future = CRTTransferFuture(
-            CRTTransferMeta(call_args=callargs),
+        coordinator = s3transfer.crt.CRTTransferCoordinator()
+        future = s3transfer.crt.CRTTransferFuture(
+            s3transfer.crt.CRTTransferMeta(call_args=callargs),
             coordinator)
         crt_request = self.request_serializer.serialize_http_request(
             "put_object", future)
@@ -46,9 +48,9 @@ class TestBotocoreCRTRequestSerializer(unittest.TestCase):
         callargs = CallArgs(
             bucket=self.bucket, key=self.key, fileobj=self.filename,
             extra_args={}, subscribers=[])
-        coordinator = CRTTransferCoordinator()
-        future = CRTTransferFuture(
-            CRTTransferMeta(call_args=callargs),
+        coordinator = s3transfer.crt.CRTTransferCoordinator()
+        future = s3transfer.crt.CRTTransferFuture(
+            s3transfer.crt.CRTTransferMeta(call_args=callargs),
             coordinator)
         crt_request = self.request_serializer.serialize_http_request(
             "get_object", future)
@@ -61,9 +63,9 @@ class TestBotocoreCRTRequestSerializer(unittest.TestCase):
         callargs = CallArgs(
             bucket=self.bucket, key=self.key,
             extra_args={}, subscribers=[])
-        coordinator = CRTTransferCoordinator()
-        future = CRTTransferFuture(
-            CRTTransferMeta(call_args=callargs),
+        coordinator = s3transfer.crt.CRTTransferCoordinator()
+        future = s3transfer.crt.CRTTransferFuture(
+            s3transfer.crt.CRTTransferMeta(call_args=callargs),
             coordinator)
         crt_request = self.request_serializer.serialize_http_request(
             "delete_object", future)

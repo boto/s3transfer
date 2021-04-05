@@ -500,6 +500,114 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(-1, whence=2)
         self.assertEqual(chunk.tell(), 2)
 
+    def test_tell_and_seek_boundaries(self):
+        # Test to ensure ReadFileChunk behaves the same as the
+        # Python standard library around seeking and reading out
+        # of bounds in a file object.
+        data = b'abcdefghij12345678klmnopqrst'
+        start_pos = 10
+        chunk_size = 8
+
+        # Create test file
+        filename = os.path.join(self.tempdir, 'foo')
+        with open(filename, 'wb') as f:
+            f.write(data)
+
+        # ReadFileChunk should be a substring of only numbers
+        file_objects = [
+            ReadFileChunk.from_filename(
+                filename, start_byte=start_pos, chunk_size=chunk_size
+            )]
+
+        # Uncomment next line to validate we match Python's io.BytesIO
+        # file_objects.append(io.BytesIO(data[start_pos:start_pos+chunk_size]))
+
+        for obj in file_objects:
+            self._assert_whence_start_behavior(obj)
+            self._assert_whence_end_behavior(obj)
+            self._assert_whence_relative_behavior(obj)
+            self._assert_boundary_behavior(obj)
+
+    def _assert_whence_start_behavior(self, file_obj):
+        self.assertEqual(file_obj.tell(), 0)
+
+        file_obj.seek(1, 0)
+        self.assertEqual(file_obj.tell(), 1)
+
+        file_obj.seek(1)
+        self.assertEqual(file_obj.tell(), 1)
+        self.assertEqual(file_obj.read(), b'2345678')
+
+        file_obj.seek(3, 0)
+        self.assertEqual(file_obj.tell(), 3)
+
+        file_obj.seek(0, 0)
+        self.assertEqual(file_obj.tell(), 0)
+
+    def _assert_whence_relative_behavior(self, file_obj):
+        self.assertEqual(file_obj.tell(), 0)
+
+        file_obj.seek(2, 1)
+        self.assertEqual(file_obj.tell(), 2)
+
+        file_obj.seek(1, 1)
+        self.assertEqual(file_obj.tell(), 3)
+        self.assertEqual(file_obj.read(), b'45678')
+
+        file_obj.seek(20, 1)
+        self.assertEqual(file_obj.tell(), 28)
+
+        file_obj.seek(-30, 1)
+        self.assertEqual(file_obj.tell(), 0)
+        self.assertEqual(file_obj.read(), b'12345678')
+
+        file_obj.seek(-8, 1)
+        self.assertEqual(file_obj.tell(), 0)
+
+    def _assert_whence_end_behavior(self, file_obj):
+        self.assertEqual(file_obj.tell(), 0)
+
+        file_obj.seek(-1, 2)
+        self.assertEqual(file_obj.tell(), 7)
+
+        file_obj.seek(1, 2)
+        self.assertEqual(file_obj.tell(), 9)
+
+        file_obj.seek(3, 2)
+        self.assertEqual(file_obj.tell(), 11)
+        self.assertEqual(file_obj.read(), b'')
+
+        file_obj.seek(-15, 2)
+        self.assertEqual(file_obj.tell(), 0)
+        self.assertEqual(file_obj.read(), b'12345678')
+
+        file_obj.seek(-8, 2)
+        self.assertEqual(file_obj.tell(), 0)
+
+    def _assert_boundary_behavior(self, file_obj):
+        # Verify we're at the start
+        self.assertEqual(file_obj.tell(), 0)
+
+        # Verify we can't move backwards beyond start of file
+        file_obj.seek(-10, 1)
+        self.assertEqual(file_obj.tell(), 0)
+
+        # Verify we *can* move after end of file, but return nothing
+        file_obj.seek(10, 2)
+        self.assertEqual(file_obj.tell(), 18)
+        self.assertEqual(file_obj.read(), b'')
+        self.assertEqual(file_obj.read(10), b'')
+
+        # Verify we can partially rewind
+        file_obj.seek(-12, 1)
+        self.assertEqual(file_obj.tell(), 6)
+        self.assertEqual(file_obj.read(), b'78')
+        self.assertEqual(file_obj.tell(), 8)
+
+        # Verify we can rewind to start
+        file_obj.seek(0)
+        self.assertEqual(file_obj.tell(), 0)
+
     def test_file_chunk_supports_context_manager(self):
         filename = os.path.join(self.tempdir, 'foo')
         with open(filename, 'wb') as f:
@@ -559,6 +667,91 @@ class TestReadFileChunk(BaseUtilsTest):
         chunk.seek(1)
         chunk.read(2)
         self.assertEqual(self.amounts_seen, [2, -2, 2, -1, 2])
+
+    def test_callback_triggered_by_out_of_bound_seeks(self):
+        data = b'abcdefghij1234567890klmnopqr'
+
+        # Create test file
+        filename = os.path.join(self.tempdir, 'foo')
+        with open(filename, 'wb') as f:
+            f.write(data)
+        chunk = ReadFileChunk.from_filename(
+            filename, start_byte=10, chunk_size=10,
+            callbacks=[self.callback])
+
+        # Seek calls that generate "0" progress are skipped by
+        # invoke_progress_callbacks and won't appear in the list.
+        expected_callback_prog = [10, -5, 5, -1, 1, -1, 1, -5, 5, -10]
+
+        self._assert_out_of_bound_start_seek(chunk, expected_callback_prog)
+        self._assert_out_of_bound_relative_seek(chunk, expected_callback_prog)
+        self._assert_out_of_bound_end_seek(chunk, expected_callback_prog)
+
+    def _assert_out_of_bound_start_seek(self, chunk, expected):
+        # clear amounts_seen
+        self.amounts_seen = []
+        self.assertEqual(self.amounts_seen, [])
+
+        # (position, change)
+        chunk.seek(20) # (20, 10)
+        chunk.seek(5) # (5, -5)
+        chunk.seek(20) # (20, 5)
+        chunk.seek(9) # (9, -1)
+        chunk.seek(20) # (20, 1)
+        chunk.seek(11) # (11, 0)
+        chunk.seek(20) # (20, 0)
+        chunk.seek(9) # (9, -1)
+        chunk.seek(20) # (20, 1)
+        chunk.seek(5) # (5, -5)
+        chunk.seek(20) # (20, 5)
+        chunk.seek(0) # (0, -10)
+        chunk.seek(0) # (0, 0)
+
+        self.assertEqual(self.amounts_seen, expected)
+
+    def _assert_out_of_bound_relative_seek(self, chunk, expected):
+        # clear amounts_seen
+        self.amounts_seen = []
+        self.assertEqual(self.amounts_seen, [])
+
+        # (position, change)
+        chunk.seek(20, 1) # (20, 10)
+        chunk.seek(-15, 1) # (5, -5)
+        chunk.seek(15, 1) # (20, 5)
+        chunk.seek(-11, 1) # (9, -1)
+        chunk.seek(11, 1) # (20, 1)
+        chunk.seek(-9, 1) # (11, 0)
+        chunk.seek(9, 1) # (20, 0)
+        chunk.seek(-11, 1) # (9, -1)
+        chunk.seek(11, 1) # (20, 1)
+        chunk.seek(-15, 1) # (5, -5)
+        chunk.seek(15, 1) # (20, 5)
+        chunk.seek(-20, 1) # (0, -10)
+        chunk.seek(-1000, 1) # (0, 0)
+
+        self.assertEqual(self.amounts_seen, expected)
+
+    def _assert_out_of_bound_end_seek(self, chunk, expected):
+        # clear amounts_seen
+        self.amounts_seen = []
+        self.assertEqual(self.amounts_seen, [])
+
+        # (position, change)
+        chunk.seek(10, 2) # (20, 10)
+        chunk.seek(-5, 2) # (5, -5)
+        chunk.seek(10, 2) # (20, 5)
+        chunk.seek(-1, 2) # (9, -1)
+        chunk.seek(10, 2) # (20, 1)
+        chunk.seek(1, 2) # (11, 0)
+        chunk.seek(10, 2) # (20, 0)
+        chunk.seek(-1, 2) # (9, -1)
+        chunk.seek(10, 2) # (20, 1)
+        chunk.seek(-5, 2) # (5, -5)
+        chunk.seek(10, 2) # (20, 5)
+        chunk.seek(-10, 2) # (0, -10)
+        chunk.seek(-1000, 2) # (0, 0)
+
+        self.assertEqual(self.amounts_seen, expected)
 
     def test_close_callbacks(self):
         with open(self.filename) as f:

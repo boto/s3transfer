@@ -425,6 +425,8 @@ class ReadFileChunk(object):
         self._size = self._calculate_file_size(
             self._fileobj, requested_size=chunk_size,
             start_byte=self._start_byte, actual_file_size=full_file_size)
+        # _amount_read represents the position in the chunk and may exceed
+        # the chunk size, but won't allow reads out of bounds.
         self._amount_read = 0
         self._callbacks = callbacks
         if callbacks is None:
@@ -473,10 +475,11 @@ class ReadFileChunk(object):
         return min(max_chunk_size, requested_size)
 
     def read(self, amount=None):
+        amount_left = max(self._size - self._amount_read, 0)
         if amount is None:
-            amount_to_read = self._size - self._amount_read
+            amount_to_read = amount_left
         else:
-            amount_to_read = min(self._size - self._amount_read, amount)
+            amount_to_read = min(amount_left, amount)
         data = self._fileobj.read(amount_to_read)
         self._amount_read += len(data)
         if self._callbacks is not None and self._callbacks_enabled:
@@ -513,13 +516,15 @@ class ReadFileChunk(object):
         elif whence == 2:
             where += self._size
 
-        self._fileobj.seek(where)
+        self._fileobj.seek(max(where, self._start_byte))
         if self._callbacks is not None and self._callbacks_enabled:
             # To also rewind the callback() for an accurate progress report
-            amount = where - self._start_byte - self._amount_read
+            bounded_where = max(min(where - self._start_byte, self._size), 0)
+            bounded_amount_read = min(self._amount_read, self._size)
+            amount = bounded_where - bounded_amount_read
             invoke_progress_callbacks(
                 self._callbacks, bytes_transferred=amount)
-        self._amount_read = where - self._start_byte
+        self._amount_read = max(where - self._start_byte, 0)
 
     def close(self):
         if self._close_callbacks is not None and self._callbacks_enabled:

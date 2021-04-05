@@ -10,7 +10,7 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from io import RawIOBase
+from io import BytesIO
 from botocore.awsrequest import create_request_object
 import mock
 
@@ -27,7 +27,7 @@ class ArbitraryException(Exception):
     pass
 
 
-class SignalTransferringBody(RawIOBase):
+class SignalTransferringBody(BytesIO):
     """A mocked body with the ability to signal when transfers occur"""
     def __init__(self):
         super(SignalTransferringBody, self).__init__()

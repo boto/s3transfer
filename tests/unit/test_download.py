@@ -58,7 +58,7 @@ class WriteCollector(object):
         self._pos = 0
         self.writes = []
 
-    def seek(self, pos):
+    def seek(self, pos, whence=0):
         self._pos = pos
 
     def write(self, data):

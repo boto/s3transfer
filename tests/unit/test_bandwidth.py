@@ -186,7 +186,7 @@ class TestBandwidthLimitedStream(BaseBandwidthLimitTest):
         stream.seek(1)
         self.assertEqual(
             mock_fileobj.seek.call_args_list,
-            [mock.call(1)]
+            [mock.call(1, 0)]
         )
 
     def test_tell(self):

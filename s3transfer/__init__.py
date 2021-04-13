@@ -143,7 +143,7 @@ from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 
 class NullHandler(logging.Handler):

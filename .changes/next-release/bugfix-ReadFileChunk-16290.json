@@ -1,5 +1,0 @@
-{
-  "type": "bugfix",
-  "category": "ReadFileChunk",
-  "description": "Fix seek behavior in ReadFileChunk class"
-}

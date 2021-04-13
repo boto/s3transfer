@@ -180,8 +180,8 @@ class BandwidthLimitedStream(object):
         """Signal that data being read is not being transferred to S3"""
         self.disable_bandwidth_limiting()
 
-    def seek(self, where):
-        self._fileobj.seek(where)
+    def seek(self, where, whence=0):
+        self._fileobj.seek(where, whence)
 
     def tell(self):
         return self._fileobj.tell()

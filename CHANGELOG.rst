@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.3.7
+=====
+
+* bugfix:ReadFileChunk: Fix seek behavior in ReadFileChunk class
+
+
 0.3.6
 =====
 

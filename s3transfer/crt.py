@@ -1,13 +1,13 @@
 import logging
 from io import BytesIO
 import threading
-from concurrent.futures import Future
 
 import botocore.awsrequest
 import botocore.session
 from botocore import UNSIGNED
 from botocore.config import Config
 from botocore.compat import urlsplit
+from botocore.exceptions import NoCredentialsError
 
 import awscrt.http
 from awscrt.s3 import S3Client, S3RequestType, S3RequestTlsMode
@@ -22,6 +22,28 @@ from s3transfer.constants import GB, MB
 logger = logging.getLogger(__name__)
 
 
+class CRTCredentialProviderAdapter:
+    def __init__(self, botocore_credential_provider):
+        self._botocore_credential_provider = botocore_credential_provider
+        self._loaded_credentials = None
+        self._lock = threading.Lock()
+
+    def __call__(self):
+        credentials = self._get_credentials().get_frozen_credentials()
+        return AwsCredentials(credentials.access_key,
+                              credentials.secret_key, credentials.token)
+
+    def _get_credentials(self):
+        with self._lock:
+            if self._loaded_credentials is None:
+                loaded_creds = self._botocore_credential_provider\
+                    .load_credentials()
+                if loaded_creds is None:
+                    raise NoCredentialsError()
+                self._loaded_credentials = loaded_creds
+            return self._loaded_credentials
+
+
 def create_s3_crt_client(region,
                          botocore_credential_provider=None,
                          num_threads=None,
@@ -33,20 +55,22 @@ def create_s3_crt_client(region,
     :type region: str
     :param region: The region used for signing
 
-    :type botocore_credential_provider: Optional[botocore.credentials.CredentialResolver]
-    :param botocore_credential_provider: Provide credentials for CRT to sign the request
-        if not set, the request will not be signed
+    :type botocore_credential_provider:
+        Optional[botocore.credentials.CredentialResolver]
+    :param botocore_credential_provider: Provide credentials for CRT
+        to sign the request if not set, the request will not be signed
 
     :type num_threads: Optional[int]
-    :param num_threads: Number of worker threads generated. Default is the number of
-        processors in the machine.
+    :param num_threads: Number of worker threads generated. Default
+        is the number of processors in the machine.
 
     :type target_throughput: Optional[int]
     :param target_throughput: Throughput target in Bytes.
         Default is 0.625 GB/s (which translates to 5 Gb/s).
 
     :type part_size: Optional[int]
-    :param part_size: Size, in Bytes, of parts that files will be downloaded or uploaded in.
+    :param part_size: Size, in Bytes, of parts that files will be downloaded
+        or uploaded in.
 
     :type use_ssl: boolean
     :param use_ssl: Whether or not to use SSL.  By default, SSL is used.
@@ -71,7 +95,8 @@ def create_s3_crt_client(region,
     provider = None
     tls_connection_options = None
 
-    tls_mode = S3RequestTlsMode.ENABLED if use_ssl else S3RequestTlsMode.DISABLED
+    tls_mode = S3RequestTlsMode.ENABLED if use_ssl \
+        else S3RequestTlsMode.DISABLED
     if verify is not None:
         tls_ctx_options = TlsContextOptions()
         if verify:
@@ -82,14 +107,11 @@ def create_s3_crt_client(region,
         client_tls_option = ClientTlsContext(tls_ctx_options)
         tls_connection_options = client_tls_option.new_connection_options()
     if botocore_credential_provider:
+        credentails_provider_adapter = CRTCredentialProviderAdapter(
+            botocore_credential_provider)
+        provider = AwsCredentialsProvider.new_delegate(
+            credentails_provider_adapter)
 
-        def provider_adaptor():
-            credentials = botocore_credential_provider\
-                .load_credentials().get_frozen_credentials()
-            return AwsCredentials(credentials.access_key,
-                                  credentials.secret_key, credentials.token)
-
-        provider = AwsCredentialsProvider.new_delegate(provider_adaptor)
     target_gbps = target_throughput * 8 / GB
     return S3Client(
         bootstrap=bootstrap,
@@ -111,7 +133,8 @@ class CRTTransferManager(object):
             HTTP requests and functions under then hood
 
         :type crt_request_serializer: s3transfer.crt.BaseCRTRequestSerializer
-        :param crt_request_serializer: Serializer, generates unsigned crt HTTP request.
+        :param crt_request_serializer: Serializer, generates unsigned crt HTTP
+            request.
 
         :type osutil: s3transfer.utils.OSUtils
         :param osutil: OSUtils object to use for os-related behavior when
@@ -217,7 +240,8 @@ class CRTTransferManager(object):
                 future, 'queued')
             on_queued()
             crt_callargs = self._s3_args_creator.get_make_request_args(
-                request_type, call_args, coordinator, future, on_done_after_calls)
+                request_type, call_args, coordinator,
+                future, on_done_after_calls)
             crt_s3_request = self._crt_s3_client.make_request(**crt_callargs)
         except Exception as e:
             coordinator.set_exception(e, True)

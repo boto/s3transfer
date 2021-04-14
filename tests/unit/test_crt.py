@@ -1,7 +1,9 @@
 
 import unittest
+import mock
 
 from botocore.session import Session
+from botocore.credentials import CredentialResolver, ReadOnlyCredentials
 from s3transfer.utils import CallArgs
 
 from tests import FileCreator
@@ -73,3 +75,40 @@ class TestBotocoreCRTRequestSerializer(unittest.TestCase):
         self.assertEqual(self.expected_path, crt_request.path)
         self.assertEqual(self.expected_host, crt_request.headers.get("host"))
         self.assertIsNone(crt_request.headers.get("Authorization"))
+
+
+@requires_crt
+class TestCRTCredentialProviderAdapter(unittest.TestCase):
+
+    def setUp(self):
+        self.botocore_credential_provider = mock.Mock(CredentialResolver)
+        self.access_key = "access_key"
+        self.secret_key = "secret_key"
+        self.token = "token"
+        self.botocore_credential_provider.load_credentials.return_value.\
+            get_frozen_credentials.return_value = ReadOnlyCredentials(
+                self.access_key, self.secret_key, self.token)
+
+    def _call_adapter_and_check(self, credentails_provider_adapter):
+        credentials = credentails_provider_adapter()
+        self.assertEqual(credentials.access_key_id, self.access_key)
+        self.assertEqual(credentials.secret_access_key, self.secret_key)
+        self.assertEqual(credentials.session_token, self.token)
+
+    def test_fetch_crt_credentials_successfully(self):
+        credentails_provider_adapter = \
+            s3transfer.crt.CRTCredentialProviderAdapter(
+                self.botocore_credential_provider)
+        self._call_adapter_and_check(credentails_provider_adapter)
+
+    def test_load_credentials_once(self):
+        credentails_provider_adapter = \
+            s3transfer.crt.CRTCredentialProviderAdapter(
+                self.botocore_credential_provider)
+        called_times = 5
+        for i in range(called_times):
+            self._call_adapter_and_check(credentails_provider_adapter)
+        # Assert that the load_credentails of botocore credential provider
+        # will only be called once
+        self.assertEqual(
+            self.botocore_credential_provider.load_credentials.call_count, 1)

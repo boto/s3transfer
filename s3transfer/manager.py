@@ -199,6 +199,7 @@ class TransferManager(object):
         'MFA',
         'VersionId',
         'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     def __init__(self, client, config=None, osutil=None, executor_cls=None):

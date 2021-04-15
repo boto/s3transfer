@@ -22,6 +22,7 @@ ALLOWED_DOWNLOAD_ARGS = [
     'SSECustomerKey',
     'SSECustomerKeyMD5',
     'RequestPayer',
+    'ExpectedBucketOwner',
 ]
 
 USER_AGENT = 's3transfer/%s' % s3transfer.__version__

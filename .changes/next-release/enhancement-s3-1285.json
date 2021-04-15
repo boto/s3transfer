@@ -1,5 +1,5 @@
 {
   "category": "s3", 
   "type": "enhancement", 
-  "description": "Adds `ExpectedBucketOwner` to the allowed `ExtraArgs` for uploads to protect against bucket sniping when uploading files. Fixes `#181 <https://github.com/boto/boto3/issues/181>`__."
+  "description": "Add support for ``ExpectedBucketOwner``. Fixes `#181 <https://github.com/boto/s3transfer/issues/181>`__."
 }

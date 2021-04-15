@@ -490,10 +490,12 @@ class UploadSubmissionTask(SubmissionTask):
         'SSECustomerAlgorithm',
         'SSECustomerKeyMD5',
         'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     COMPLETE_MULTIPART_ARGS = [
-        'RequestPayer'
+        'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     def _get_upload_input_manager_cls(self, transfer_future):

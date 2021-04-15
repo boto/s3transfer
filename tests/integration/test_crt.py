@@ -18,11 +18,11 @@ from tests.integration import BaseTransferManagerIntegTest
 from tests import assert_files_equal
 
 from s3transfer.subscribers import BaseSubscriber
-from awscrt.exceptions import AwsCrtError
 from tests import requires_crt, HAS_CRT
 
 if HAS_CRT:
     import s3transfer.crt
+    from awscrt.exceptions import AwsCrtError
 
 
 class RecordingSubscriber(BaseSubscriber):

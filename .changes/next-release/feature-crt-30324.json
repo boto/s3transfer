@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "category": "``crt``",
-  "description": "Add optional AWS Common Runtime (CRT) support. The AWS CRT provides a C-based S3 transfer client that can improve transfer throughput."
-}

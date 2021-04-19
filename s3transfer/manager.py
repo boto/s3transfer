@@ -71,7 +71,7 @@ class TransferConfig(object):
             processing a call to a TransferManager method. Processing a
             call usually entails determining which S3 API requests that need
             to be enqueued, but does **not** entail making any of the
-            S3 API data transfering requests needed to perform the transfer.
+            S3 API data transferring requests needed to perform the transfer.
             The threads controlled by ``max_request_concurrency`` is
             responsible for that.
 
@@ -99,7 +99,7 @@ class TransferConfig(object):
             will be tried upon errors with downloading an object in S3. Note
             that these retries account for errors that occur when streamming
             down the data from s3 (i.e. socket errors and read timeouts that
-            occur after recieving an OK response from s3).
+            occur after receiving an OK response from s3).
             Other retryable exceptions such as throttling errors and 5xx errors
             are already retried by botocore (this default is 5). The
             ``num_download_attempts`` does not take into account the
@@ -640,7 +640,7 @@ class TransferCoordinatorController(object):
             self._tracked_transfer_coordinators.add(transfer_coordinator)
 
     def remove_transfer_coordinator(self, transfer_coordinator):
-        """Remove a transfer coordinator from cancelation consideration
+        """Remove a transfer coordinator from cancellation consideration
 
         Typically, this method is invoked by the transfer coordinator itself
         to remove its self when it completes its transfer.

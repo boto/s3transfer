@@ -72,7 +72,7 @@ client operation.  Here are a few examples using ``upload_file``::
                          extra_args={'ContentType': "application/json"})
 
 
-The ``S3Transfer`` clas also supports progress callbacks so you can
+The ``S3Transfer`` class also supports progress callbacks so you can
 provide transfer progress to users.  Both the ``upload_file`` and
 ``download_file`` methods take an optional ``callback`` parameter.
 Here's an example of how to print a simple progress percentage

@@ -592,7 +592,7 @@ class TaskSemaphore(object):
             needed for API compatibility with the SlidingWindowSemaphore
             implementation.
         :param block: If True, block until it can be acquired. If False,
-            do not block and raise an exception if cannot be aquired.
+            do not block and raise an exception if cannot be acquired.
 
         :returns: A token (can be None) to use when releasing the semaphore
         """

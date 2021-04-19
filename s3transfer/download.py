@@ -492,7 +492,7 @@ class GetObjectTask(Task):
         :param bucket: The bucket to download from
         :param key: The key to download from
         :param fileobj: The file handle to write content to
-        :param exta_args: Any extra arguements to include in GetObject request
+        :param exta_args: Any extra arguments to include in GetObject request
         :param callbacks: List of progress callbacks to invoke on download
         :param max_attempts: The number of retries to do when downloading
         :param download_output_manager: The download output manager associated

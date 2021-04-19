@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.4.0
+=====
+
+* feature:``crt``: Add optional AWS Common Runtime (CRT) support. The AWS CRT provides a C-based S3 transfer client that can improve transfer throughput.
+
+
 0.3.7
 =====
 

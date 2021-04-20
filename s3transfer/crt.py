@@ -27,6 +27,7 @@ from awscrt.io import ClientBootstrap, DefaultHostResolver, EventLoopGroup
 from awscrt.io import ClientTlsContext, TlsContextOptions
 from awscrt.auth import AwsCredentialsProvider, AwsCredentials
 
+from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
 from s3transfer.utils import CallArgs, OSUtils, get_callbacks
 from s3transfer.constants import GB, MB
@@ -316,6 +317,14 @@ class CRTTransferFuture(BaseTransferFuture):
 
     def cancel(self):
         self._coordinator.cancel()
+
+    def set_exception(self, exception):
+        """Sets the exception on the future."""
+        if not self.done():
+            raise TransferNotDoneError(
+                'set_exception can only be called once the transfer is '
+                'complete.')
+        self._coordinator.set_exception(exception, override=True)
 
 
 class BaseCRTRequestSerializer:

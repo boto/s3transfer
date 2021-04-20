@@ -15,13 +15,19 @@ import mock
 
 from botocore.session import Session
 from botocore.credentials import CredentialResolver, ReadOnlyCredentials
+from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.utils import CallArgs
 
 from tests import FileCreator
 from tests import requires_crt, HAS_CRT
 
 if HAS_CRT:
+    import awscrt.s3
     import s3transfer.crt
+
+
+class CustomFutureException(Exception):
+    pass
 
 
 @requires_crt
@@ -123,3 +129,31 @@ class TestCRTCredentialProviderAdapter(unittest.TestCase):
         # will only be called once
         self.assertEqual(
             self.botocore_credential_provider.load_credentials.call_count, 1)
+
+
+@requires_crt
+class TestCRTTransferFuture(unittest.TestCase):
+    def setUp(self):
+        self.mock_s3_request = mock.Mock(awscrt.s3.S3RequestType)
+        self.mock_crt_future = mock.Mock(awscrt.s3.Future)
+        self.mock_s3_request.finished_future = self.mock_crt_future
+        self.coordinator = s3transfer.crt.CRTTransferCoordinator()
+        self.coordinator.set_s3_request(self.mock_s3_request)
+        self.future = s3transfer.crt.CRTTransferFuture(
+            coordinator=self.coordinator)
+
+    def test_set_exception(self):
+        self.future.set_exception(CustomFutureException())
+        with self.assertRaises(CustomFutureException):
+            self.future.result()
+
+    def test_set_exception_raises_error_when_not_done(self):
+        self.mock_crt_future.done.return_value = False
+        with self.assertRaises(TransferNotDoneError):
+            self.future.set_exception(CustomFutureException())
+
+    def test_set_exception_can_override_previous_exception(self):
+        self.future.set_exception(Exception())
+        self.future.set_exception(CustomFutureException())
+        with self.assertRaises(CustomFutureException):
+            self.future.result()

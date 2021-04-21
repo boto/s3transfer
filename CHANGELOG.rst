@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.4.1
+=====
+
+* enhancement:``crt``: Add ``set_exception`` to ``CRTTransferFuture`` to allow setting exceptions in subscribers.
+
+
 0.4.0
 =====
 

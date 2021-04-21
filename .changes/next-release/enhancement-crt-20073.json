@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``crt``",
-  "description": "Add ``set_exception`` to ``CRTTransferFuture`` to allow setting exceptions in subscribers."
-}

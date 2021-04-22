@@ -34,7 +34,8 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerKey': 'SSECustomerKey',
         'CopySourceSSECustomerAlgorithm': 'SSECustomerAlgorithm',
         'CopySourceSSECustomerKeyMD5': 'SSECustomerKeyMD5',
-        'RequestPayer': 'RequestPayer'
+        'RequestPayer': 'RequestPayer',
+        'ExpectedBucketOwner': 'ExpectedBucketOwner'
     }
 
     UPLOAD_PART_COPY_ARGS = [
@@ -49,6 +50,7 @@ class CopySubmissionTask(SubmissionTask):
         'SSECustomerAlgorithm',
         'SSECustomerKeyMD5',
         'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     CREATE_MULTIPART_ARGS_BLACKLIST = [
@@ -64,7 +66,8 @@ class CopySubmissionTask(SubmissionTask):
     ]
 
     COMPLETE_MULTIPART_ARGS = [
-        'RequestPayer'
+        'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     def _submit(self, client, config, osutil, request_executor,

@@ -165,6 +165,7 @@ class TransferManager(object):
         'ContentEncoding',
         'ContentLanguage',
         'ContentType',
+        'ExpectedBucketOwner',
         'Expires',
         'GrantFullControl',
         'GrantRead',
@@ -199,6 +200,7 @@ class TransferManager(object):
         'MFA',
         'VersionId',
         'RequestPayer',
+        'ExpectedBucketOwner'
     ]
 
     VALIDATE_SUPPORTED_BUCKET_VALUES = True

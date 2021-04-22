@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.4.2
+=====
+
+* enhancement:s3: Add support for ``ExpectedBucketOwner``. Fixes `#181 <https://github.com/boto/s3transfer/issues/181>`__.
+
+
 0.4.1
 =====
 

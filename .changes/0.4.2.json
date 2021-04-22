@@ -1,0 +1,7 @@
+[
+  {
+    "category": "s3", 
+    "description": "Add support for ``ExpectedBucketOwner``. Fixes `#181 <https://github.com/boto/s3transfer/issues/181>`__.", 
+    "type": "enhancement"
+  }
+]

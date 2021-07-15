@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.5.0
+=====
+
+* feature:Python: Dropped support for Python 2.7
+
+
 0.4.2
 =====
 

@@ -1,0 +1,7 @@
+[
+  {
+    "category": "Python",
+    "description": "Dropped support for Python 2.7",
+    "type": "feature"
+  }
+]

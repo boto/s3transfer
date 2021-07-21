@@ -476,7 +476,7 @@ class ProcessPoolTransferFuture(BaseTransferFuture):
         """The future associated to a submitted process pool transfer request
 
         :type monitor: TransferMonitor
-        :param monitor: The monitor associated to the proccess pool downloader
+        :param monitor: The monitor associated to the process pool downloader
 
         :type meta: ProcessPoolTransferMeta
         :param meta: The metadata associated to the request. This object
@@ -566,7 +566,7 @@ class ClientFactory(object):
 
 class TransferMonitor(object):
     def __init__(self):
-        """Monitors transfers for cross-proccess communication
+        """Monitors transfers for cross-process communication
 
         Notifications can be sent to the monitor and information can be
         retrieved from the monitor for a particular transfer. This abstraction

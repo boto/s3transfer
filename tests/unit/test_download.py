@@ -684,7 +684,7 @@ class TestGetObjectTask(BaseTaskTest):
 
         self.stubber.assert_no_pending_responses()
         expected_contents = []
-        # This is the content intially read in before the retry hit on the
+        # This is the content initially read in before the retry hit on the
         # second read()
         expected_contents.append((0, bytes(self.content[0:1])))
 

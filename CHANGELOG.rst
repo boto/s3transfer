@@ -78,7 +78,7 @@ CHANGELOG
 0.2.1
 =====
 
-* enhancment:ProcessPool: Adds user agent suffix.
+* enhancement:ProcessPool: Adds user agent suffix.
 
 
 0.2.0

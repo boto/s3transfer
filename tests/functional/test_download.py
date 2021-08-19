@@ -343,7 +343,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             'arn:aws:s3-object-lambda:us-west-2:123456789012:'
             'accesspoint:my-accesspoint'
         )
-        with self.assertRaisesRegexp(ValueError, 'methods do not support'):
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
             self.manager.download(
                 s3_object_lambda_arn, self.key, self.filename, self.extra_args)
 

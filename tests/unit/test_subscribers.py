@@ -78,11 +78,11 @@ class TestSubscribers(unittest.TestCase):
             OverrideConstructorSubscriber()
 
     def test_not_callable_in_subclass_subscriber_method(self):
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
                 InvalidSubscriberMethodError, 'must be callable'):
             NotCallableSubscriber()
 
     def test_no_kwargs_in_subclass_subscriber_method(self):
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
                 InvalidSubscriberMethodError, 'must accept keyword'):
             NoKwargsSubscriber()

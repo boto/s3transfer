@@ -78,7 +78,7 @@ CHANGELOG
 0.2.1
 =====
 
-* enhancement:ProcessPool: Adds user agent suffix.
+* enhancement:``ProcessPool``: Adds user agent suffix.
 
 
 0.2.0
@@ -96,7 +96,7 @@ CHANGELOG
 0.1.12
 ======
 
-* enhancement:``max_bandwidth``: Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads
+* enhancement:``max_bandwidth``: Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads.
 
 
 0.1.11

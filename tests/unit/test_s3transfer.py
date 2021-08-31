@@ -455,7 +455,7 @@ class TestMultipartDownloader(unittest.TestCase):
                                          os_layer, SequentialExecutor)
         # We're verifying that the exception raised from the IO future
         # propogates back up via download_file().
-        with self.assertRaisesRegexp(Exception, "fake IO error"):
+        with self.assertRaisesRegex(Exception, "fake IO error"):
             downloader.download_file('bucket', 'key', 'filename',
                                      len(response_body), {})
 
@@ -480,7 +480,7 @@ class TestMultipartDownloader(unittest.TestCase):
         downloader = MultipartDownloader(client, TransferConfig(),
                                          InMemoryOSLayer({}),
                                          FailedDownloadParts)
-        with self.assertRaisesRegexp(Exception, "fake download parts error"):
+        with self.assertRaisesRegex(Exception, "fake download parts error"):
             downloader.download_file('bucket', 'key', 'filename',
                                      len(response_body), {})
 

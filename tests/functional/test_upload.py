@@ -271,7 +271,7 @@ class TestNonMultipartUpload(BaseUploadTest):
             'arn:aws:s3-object-lambda:us-west-2:123456789012:'
             'accesspoint:my-accesspoint'
         )
-        with self.assertRaisesRegexp(ValueError, 'methods do not support'):
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
             self.manager.upload(self.filename, s3_object_lambda_arn, self.key)
 
 

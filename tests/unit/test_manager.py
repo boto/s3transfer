@@ -84,7 +84,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
             transfer_coordinator)
         self.coordinator_controller.cancel(message)
         transfer_coordinator.announce_done()
-        with self.assertRaisesRegexp(CancelledError, message):
+        with self.assertRaisesRegex(CancelledError, message):
             transfer_coordinator.result()
 
     def test_cancel_with_provided_exception(self):
@@ -94,7 +94,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
             transfer_coordinator)
         self.coordinator_controller.cancel(message, exc_type=FatalError)
         transfer_coordinator.announce_done()
-        with self.assertRaisesRegexp(FatalError, message):
+        with self.assertRaisesRegex(FatalError, message):
             transfer_coordinator.result()
 
     def test_wait_for_done_transfer_coordinators(self):

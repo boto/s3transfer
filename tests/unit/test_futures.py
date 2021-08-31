@@ -260,14 +260,14 @@ class TestTransferCoordinator(unittest.TestCase):
         message = 'my message'
         self.transfer_coordinator.cancel(message)
         self.transfer_coordinator.announce_done()
-        with self.assertRaisesRegexp(CancelledError, message):
+        with self.assertRaisesRegex(CancelledError, message):
             self.transfer_coordinator.result()
 
     def test_cancel_with_provided_exception(self):
         message = 'my message'
         self.transfer_coordinator.cancel(message, exc_type=FatalError)
         self.transfer_coordinator.announce_done()
-        with self.assertRaisesRegexp(FatalError, message):
+        with self.assertRaisesRegex(FatalError, message):
             self.transfer_coordinator.result()
 
     def test_cancel_cannot_override_done_state(self):
@@ -633,7 +633,7 @@ class TestNonThreadedExecutorFuture(unittest.TestCase):
     def test_exception_result(self):
         exception = ValueError('message')
         self.future.set_exception_info(exception, None)
-        with self.assertRaisesRegexp(ValueError, 'message'):
+        with self.assertRaisesRegex(ValueError, 'message'):
             self.future.result()
 
     def test_exception_result_doesnt_modify_last_frame(self):

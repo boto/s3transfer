@@ -85,7 +85,7 @@ class TestTransferManager(StubbedClientTest):
         except ArbitraryException:
             # At least one of the submitted futures should have been
             # cancelled.
-            with self.assertRaisesRegexp(FatalError, ref_exception_msg):
+            with self.assertRaisesRegex(FatalError, ref_exception_msg):
                 for future in futures:
                     future.result()
 
@@ -122,7 +122,7 @@ class TestTransferManager(StubbedClientTest):
         except KeyboardInterrupt:
             # At least one of the submitted futures should have been
             # cancelled.
-            with self.assertRaisesRegexp(
+            with self.assertRaisesRegex(
                     CancelledError, 'KeyboardInterrupt()'):
                 for future in futures:
                     future.result()

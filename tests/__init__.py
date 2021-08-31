@@ -451,7 +451,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         self.assertEqual(future.meta.transfer_id, 1)
 
     def test_invalid_extra_args(self):
-        with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):
+        with self.assertRaisesRegex(ValueError, 'Invalid extra_args'):
             self.method(
                 extra_args=self.create_invalid_extra_args(),
                 **self.create_call_kwargs()

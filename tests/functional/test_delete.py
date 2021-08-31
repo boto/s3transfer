@@ -63,3 +63,11 @@ class TestDeleteObject(BaseGeneralInterfaceTest):
             'DeleteObject')
         for allowed_arg in self.manager.ALLOWED_DELETE_ARGS:
             self.assertIn(allowed_arg, op_model.input_shape.members)
+
+    def test_raise_exception_on_s3_object_lambda_resource(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
+            self.manager.delete(s3_object_lambda_arn, self.key)

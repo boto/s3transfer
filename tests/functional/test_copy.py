@@ -257,6 +257,39 @@ class TestNonMultipartCopy(BaseCopyTest):
         for allowed_upload_arg in self._manager.ALLOWED_COPY_ARGS:
             self.assertIn(allowed_upload_arg, op_model.input_shape.members)
 
+    def test_copy_with_tagging(self):
+        extra_args = {
+            'Tagging': 'tag1=val1', 'TaggingDirective': 'REPLACE'
+        }
+        self.add_head_object_response()
+        self.add_successful_copy_responses(
+            expected_copy_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'CopySource': self.copy_source,
+                'Tagging': 'tag1=val1',
+                'TaggingDirective': 'REPLACE'
+            }
+        )
+        future = self.manager.copy(
+            self.copy_source, self.bucket, self.key, extra_args)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_raise_exception_on_s3_object_lambda_resource(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
+            self.manager.copy(self.copy_source, s3_object_lambda_arn, self.key)
+
+    def test_raise_exception_on_s3_object_lambda_resource_as_source(self):
+        source = {'Bucket': 'arn:aws:s3-object-lambda:us-west-2:123456789012:'
+                            'accesspoint:my-accesspoint'}
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
+            self.manager.copy(source, self.bucket, self.key)
+
 
 class TestMultipartCopy(BaseCopyTest):
     __test__ = True
@@ -507,6 +540,23 @@ class TestMultipartCopy(BaseCopyTest):
         )
 
         future = self.manager.copy(**self.create_call_kwargs())
-        with self.assertRaisesRegexp(ClientError, 'ArbitraryFailure'):
+        with self.assertRaisesRegex(ClientError, 'ArbitraryFailure'):
             future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_with_tagging_directive(self):
+        extra_args = {
+            'Tagging': 'tag1=val1', 'TaggingDirective': 'REPLACE'
+        }
+        self.add_head_object_response()
+        self.add_successful_copy_responses(
+            expected_create_mpu_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Tagging': 'tag1=val1',
+            }
+        )
+        future = self.manager.copy(
+            self.copy_source, self.bucket, self.key, extra_args)
+        future.result()
         self.stubber.assert_no_pending_responses()

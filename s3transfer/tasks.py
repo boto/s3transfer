@@ -186,7 +186,7 @@ class Task(object):
         #
         # concurrent.futures.wait() is not used instead because of this
         # reported issue: https://bugs.python.org/issue20319.
-        # The issue would occassionally cause multipart uploads to hang
+        # The issue would occasionally cause multipart uploads to hang
         # when wait() was called. With this approach, it avoids the
         # concurrency bug by removing any association with concurrent.futures
         # implementation of waiters.
@@ -324,7 +324,7 @@ class CreateMultipartUploadTask(Task):
         :param bucket: The name of the bucket to upload to
         :param key: The name of the key to upload to
         :param extra_args: A dictionary of any extra arguments that may be
-            used in the intialization.
+            used in the initialization.
 
         :returns: The upload id of the multipart upload
         """

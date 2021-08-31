@@ -15,6 +15,7 @@ import s3transfer
 
 KB = 1024
 MB = KB * KB
+GB = MB * KB
 
 ALLOWED_DOWNLOAD_ARGS = [
     'VersionId',
@@ -22,6 +23,7 @@ ALLOWED_DOWNLOAD_ARGS = [
     'SSECustomerKey',
     'SSECustomerKeyMD5',
     'RequestPayer',
+    'ExpectedBucketOwner',
 ]
 
 USER_AGENT = 's3transfer/%s' % s3transfer.__version__

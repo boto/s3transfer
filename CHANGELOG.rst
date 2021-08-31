@@ -2,6 +2,79 @@
 CHANGELOG
 =========
 
+0.5.0
+=====
+
+* feature:Python: Dropped support for Python 2.7
+
+
+0.4.2
+=====
+
+* enhancement:s3: Add support for ``ExpectedBucketOwner``. Fixes `#181 <https://github.com/boto/s3transfer/issues/181>`__.
+
+
+0.4.1
+=====
+
+* enhancement:``crt``: Add ``set_exception`` to ``CRTTransferFuture`` to allow setting exceptions in subscribers.
+
+
+0.4.0
+=====
+
+* feature:``crt``: Add optional AWS Common Runtime (CRT) support. The AWS CRT provides a C-based S3 transfer client that can improve transfer throughput.
+
+
+0.3.7
+=====
+
+* bugfix:ReadFileChunk: Fix seek behavior in ReadFileChunk class
+
+
+0.3.6
+=====
+
+* bugfix:packaging: Fix setup.py metadata for `futures` on Python 2.7
+
+
+0.3.5
+=====
+
+* enhancement:``s3``: Block TransferManager methods for S3 Object Lambda resources
+
+
+0.3.4
+=====
+
+* enhancement:s3: Add server side encryption context into allowed list
+
+
+0.3.3
+=====
+
+* bugfix:dependency: Updated botocore version range to allow for developmental installs.
+
+
+0.3.2
+=====
+
+* bugfix:s3: Fixes boto/botocore`#1916 <https://github.com/boto/botocore/issues/1916>`__
+
+
+0.3.1
+=====
+
+* enhancement:``TransferManager``: Expose ``client`` and ``config`` properties
+* enhancement:Tags: Add support for ``Tagging`` and ``TaggingDirective``
+
+
+0.3.0
+=====
+
+* feature:Python: Dropped support for Python 2.6 and 3.3.
+
+
 0.2.1
 =====
 

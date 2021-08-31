@@ -152,7 +152,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         )
 
         # Make sure at least one of the futures got cancelled
-        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
+        with self.assertRaisesRegex(CancelledError, 'KeyboardInterrupt()'):
             for future in futures:
                 future.result()
         # For the transfer that did get cancelled, make sure the object

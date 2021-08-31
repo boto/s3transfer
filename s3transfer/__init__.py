@@ -72,7 +72,7 @@ client operation.  Here are a few examples using ``upload_file``::
                          extra_args={'ContentType': "application/json"})
 
 
-The ``S3Transfer`` clas also supports progress callbacks so you can
+The ``S3Transfer`` class also supports progress callbacks so you can
 provide transfer progress to users.  Both the ``upload_file`` and
 ``download_file`` methods take an optional ``callback`` parameter.
 Here's an example of how to print a simple progress percentage
@@ -143,7 +143,7 @@ from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.2.1'
+__version__ = '0.5.0'
 
 
 class NullHandler(logging.Handler):
@@ -609,6 +609,8 @@ class S3Transfer(object):
         'SSECustomerKey',
         'SSECustomerKeyMD5',
         'SSEKMSKeyId',
+        'SSEKMSEncryptionContext',
+        'Tagging',
     ]
 
     def __init__(self, client, config=None, osutil=None):

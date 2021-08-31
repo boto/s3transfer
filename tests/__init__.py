@@ -43,6 +43,12 @@ from s3transfer.utils import SlidingWindowSemaphore
 
 
 ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
+# Detect if CRT is available for use
+try:
+    import awscrt.s3
+    HAS_CRT = True
+except ImportError:
+    HAS_CRT = False
 
 
 def setup_package():
@@ -107,6 +113,12 @@ def skip_if_using_serial_implementation(reason):
     return decorator
 
 
+def requires_crt(cls, reason=None):
+    if reason is None:
+        reason = "Test requires awscrt to be installed."
+    return unittest.skipIf(not HAS_CRT, reason)(cls)
+
+
 class StreamWithError(object):
     """A wrapper to simulate errors while reading from a stream
 
@@ -116,6 +128,7 @@ class StreamWithError(object):
         the exception. A value of zero indicates to raise the error on the
         first read.
     """
+
     def __init__(self, stream, exception_type, num_reads=0):
         self._stream = stream
         self._exception_type = exception_type
@@ -189,6 +202,7 @@ class FileCreator(object):
 
 class RecordingOSUtils(OSUtils):
     """An OSUtil abstraction that records openings and renamings"""
+
     def __init__(self):
         super(RecordingOSUtils, self).__init__()
         self.open_records = []
@@ -228,6 +242,7 @@ class RecordingSubscriber(BaseSubscriber):
 
 class TransferCoordinatorWithInterrupt(TransferCoordinator):
     """Used to inject keyboard interrupts"""
+
     def result(self):
         raise KeyboardInterrupt()
 
@@ -244,6 +259,7 @@ class RecordingExecutor(object):
             'kwargs': keyword args (as dict)
         }
     """
+
     def __init__(self, executor):
         self._executor = executor
         self.submissions = []
@@ -435,7 +451,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         self.assertEqual(future.meta.transfer_id, 1)
 
     def test_invalid_extra_args(self):
-        with self.assertRaisesRegexp(ValueError, 'Invalid extra_args'):
+        with self.assertRaisesRegex(ValueError, 'Invalid extra_args'):
             self.method(
                 extra_args=self.create_invalid_extra_args(),
                 **self.create_call_kwargs()

@@ -11,15 +11,8 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
 requires = [
-    'botocore>=1.12.36,<2.0.0',
+    'botocore>=1.12.36,<2.0a.0',
 ]
-
-
-if sys.version_info[0] == 2:
-    # concurrent.futures is only in python3, so for
-    # python2 we need to install the backport.
-    requires.append('futures>=2.2.0,<4.0.0')
-
 
 def get_version():
     init = open(os.path.join(ROOT, 's3transfer', '__init__.py')).read()
@@ -38,23 +31,19 @@ setup(
     include_package_data=True,
     install_requires=requires,
     extras_require={
-        ':python_version=="2.6" or python_version=="2.7"': [
-            'futures>=2.2.0,<4.0.0']
+        'crt': 'botocore[crt]>=1.20.29,<2.0a.0',
     },
     license="Apache License 2.0",
-    classifiers=(
+    python_requires=">= 3.6",
+    classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
-    ),
+        'Programming Language :: Python :: 3.8',
+    ],
 )

@@ -266,6 +266,14 @@ class TestNonMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
 
+    def test_raise_exception_on_s3_object_lambda_resource(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
+            self.manager.upload(self.filename, s3_object_lambda_arn, self.key)
+
 
 class TestMultipartUpload(BaseUploadTest):
     __test__ = True

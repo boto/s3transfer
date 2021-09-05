@@ -29,7 +29,7 @@ def run(command, env=None):
 
 
 try:
-    import awscrt
+    import awscrt  # noqa: F401
 except ImportError:
     print("MISSING DEPENDENCY: awscrt must be installed to run the crt tests.")
     sys.exit(1)
@@ -37,4 +37,4 @@ except ImportError:
 
 if __name__ == "__main__":
     with cd(os.path.join(REPO_ROOT, "tests")):
-       run(f"{REPO_ROOT}/scripts/ci/run-tests unit/ functional/")
+        run(f"{REPO_ROOT}/scripts/ci/run-tests unit/ functional/")

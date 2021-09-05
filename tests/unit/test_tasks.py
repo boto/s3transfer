@@ -684,8 +684,9 @@ class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
             method='create_multipart_upload',
             service_response=response,
             expected_params={
-              'Bucket': self.bucket, 'Key': self.key,
-              'Metadata': {'foo': 'bar'}
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Metadata': {'foo': 'bar'}
             }
         )
         result_id = task()

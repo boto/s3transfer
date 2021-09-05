@@ -25,7 +25,6 @@ from tests import NonSeekableWriter
 from tests.integration import BaseTransferManagerIntegTest
 from tests.integration import WaitForTransferStart
 from s3transfer.manager import TransferConfig
-from s3transfer.subscribers import BaseSubscriber
 
 
 class TestDownload(BaseTransferManagerIntegTest):

@@ -49,7 +49,7 @@ def raise_exception(exception):
 def get_exc_info(exception):
     try:
         raise_exception(exception)
-    except:
+    except Exception:
         return sys.exc_info()
 
 
@@ -136,7 +136,7 @@ class TestTransferFuture(unittest.TestCase):
         self.future.set_exception(ValueError())
         with self.assertRaises(ValueError):
             self.future.result()
-        
+
 
 class TestTransferMeta(unittest.TestCase):
     def setUp(self):

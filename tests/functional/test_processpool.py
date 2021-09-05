@@ -25,7 +25,6 @@ from s3transfer.compat import six
 from s3transfer.exceptions import CancelledError
 from s3transfer.processpool import ProcessTransferConfig
 from s3transfer.processpool import ProcessPoolDownloader
-from s3transfer.processpool import ClientFactory
 
 
 class StubbedClient(object):

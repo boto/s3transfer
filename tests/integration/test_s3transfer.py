@@ -18,9 +18,7 @@ import shutil
 import hashlib
 import string
 
-from tests import unittest
 from tests.integration import BaseTransferManagerIntegTest
-import botocore.session
 from botocore.compat import six
 from botocore.client import Config
 

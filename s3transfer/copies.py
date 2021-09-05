@@ -193,7 +193,8 @@ class CopySubmissionTask(SubmissionTask):
             # range parameter starts at zero, so just subtract 1 off of
             # the part number
             extra_part_args['CopySourceRange'] = calculate_range_parameter(
-                part_size, part_number-1, num_parts, transfer_future.meta.size)
+                part_size, part_number-1, num_parts, transfer_future.meta.size
+            )
             # Get the size of the part copy as well for the progress
             # callbacks.
             size = self._get_transfer_size(

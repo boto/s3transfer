@@ -274,7 +274,7 @@ class LeakyBucket(object):
         return self._release_requested_amt(amt, time_now)
 
     def _raise_request_exceeded_exception(self, amt, request_token, time_now):
-        allocated_time = amt/float(self._max_rate)
+        allocated_time = amt / float(self._max_rate)
         retry_time = self._consumption_scheduler.schedule_consumption(
             amt, request_token, allocated_time)
         raise RequestExceededException(

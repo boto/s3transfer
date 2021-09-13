@@ -10,11 +10,12 @@ from subprocess import check_call
 _dname = os.path.dirname
 
 REPO_ROOT = _dname(_dname(_dname(os.path.abspath(__file__))))
-os.chdir(os.path.join(REPO_ROOT, 'tests'))
+os.chdir(os.path.join(REPO_ROOT, "tests"))
 
 
 def run(command, env=None):
     return check_call(command, shell=True, env=env)
+
 
 try:
     import awscrt
@@ -22,8 +23,4 @@ except ImportError:
     print("MISSING DEPENDENCY: awscrt must be installed to run the crt tests.")
     sys.exit(1)
 
-run('nosetests s3transfer --with-xunit unit/ functional/')
-
-# Run the serial implementation of s3transfer
-os.environ['USE_SERIAL_EXECUTOR'] = 'True'
-run('nosetests -v functional/', env=os.environ)
+run(f"{REPO_ROOT}/scripts/ci/run-tests unit/ functional/")

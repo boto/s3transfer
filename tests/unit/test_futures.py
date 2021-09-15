@@ -10,6 +10,7 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import os
 import sys
 import time
 import traceback
@@ -490,6 +491,10 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure the callable got executed.
         self.assertEqual(future.result(), 'foo')
 
+    @unittest.skipIf(
+        os.environ.get('USE_SERIAL_EXECUTOR'),
+        "Not supported with serial executor tests"
+    )
     def test_executor_blocks_on_full_capacity(self):
         first_task = self.get_sleep_task()
         second_task = self.get_sleep_task()
@@ -516,6 +521,10 @@ class TestBoundedExecutor(unittest.TestCase):
         # Wait for it to complete.
         self.executor.shutdown()
 
+    @unittest.skipIf(
+        os.environ.get('USE_SERIAL_EXECUTOR'),
+        "Not supported with serial executor tests"
+    )
     def test_would_not_block_when_full_capacity_in_other_semaphore(self):
         first_task = self.get_sleep_task()
 
@@ -544,6 +553,10 @@ class TestBoundedExecutor(unittest.TestCase):
         # Ensure that the shutdown waits until the task is done
         self.assertTrue(future.done())
 
+    @unittest.skipIf(
+        os.environ.get('USE_SERIAL_EXECUTOR'),
+        "Not supported with serial executor tests"
+    )
     def test_shutdown_no_wait(self):
         slow_task = self.get_sleep_task()
         future = self.executor.submit(slow_task)

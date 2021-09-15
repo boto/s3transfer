@@ -28,12 +28,7 @@ def process_args(args):
         )
     dirs = " ".join(args.test_dirs)
 
-    # Unit tests cannot be run with Serial Executor
-    # TODO: We should add appropriate skips with pytest and remove this
-    serial_dir_list = [d for d in args.test_dirs if d.lower() not in ("unit", "unit/")]
-    serial_dirs = " ".join(serial_dir_list)
-
-    return runner, test_args, dirs, serial_dirs
+    return runner, test_args, dirs
 
 
 if __name__ == "__main__":
@@ -58,7 +53,7 @@ if __name__ == "__main__":
         help="Run default test-runner with code coverage enabled.",
     )
     raw_args = parser.parse_args()
-    test_runner, test_args, test_dirs, serial_dirs = process_args(raw_args)
+    test_runner, test_args, test_dirs = process_args(raw_args)
 
     cmd = f"{test_runner} {test_args}{test_dirs}"
     print(f"Running {cmd}...")
@@ -66,6 +61,5 @@ if __name__ == "__main__":
 
     # Run the serial implementation of s3transfer
     os.environ["USE_SERIAL_EXECUTOR"] = "True"
-    cmd = f"{test_runner} {test_args}{serial_dirs}"
     print(f"Running serial execution for {cmd}...")
     run(cmd, env=os.environ)

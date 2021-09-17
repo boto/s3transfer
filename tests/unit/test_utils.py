@@ -300,7 +300,7 @@ class TestOSUtils(BaseUtilsTest):
         filename = 'myfile'
         self.assertIsNotNone(
             re.match(
-                r'%s\.[0-9A-Fa-f]{8}$' % filename,
+                '%s\.[0-9A-Fa-f]{8}$' % filename,
                 OSUtils().get_temp_filename(filename)
             )
         )

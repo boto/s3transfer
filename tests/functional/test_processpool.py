@@ -14,11 +14,11 @@ import glob
 import os
 from multiprocessing.managers import BaseManager
 
-import mock
 import botocore.exceptions
 import botocore.session
 from botocore.stub import Stubber
 
+from tests import mock
 from tests import unittest
 from tests import FileCreator
 from s3transfer.compat import six

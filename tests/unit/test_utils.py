@@ -19,11 +19,8 @@ import re
 import time
 import io
 
-import mock
 
-from tests import unittest
-from tests import RecordingSubscriber
-from tests import NonSeekableWriter
+from tests import mock, unittest, RecordingSubscriber, NonSeekableWriter
 from s3transfer.compat import six
 from s3transfer.futures import TransferFuture
 from s3transfer.futures import TransferMeta

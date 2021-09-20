@@ -15,10 +15,10 @@ import sys
 import time
 import traceback
 
-import mock
 from concurrent.futures import ThreadPoolExecutor
 
 from tests import unittest
+from tests import mock
 from tests import RecordingExecutor
 from tests import TransferCoordinatorWithInterrupt
 from s3transfer.exceptions import CancelledError

@@ -15,7 +15,6 @@ import signal
 import time
 import threading
 
-import mock
 from six.moves import queue
 from botocore.exceptions import ClientError
 from botocore.exceptions import ReadTimeoutError
@@ -23,6 +22,7 @@ from botocore.client import BaseClient
 from botocore.config import Config
 
 from tests import unittest
+from tests import mock
 from tests import skip_if_windows
 from tests import FileCreator
 from tests import StreamWithError

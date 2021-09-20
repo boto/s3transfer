@@ -12,8 +12,8 @@
 # language governing permissions and limitations under the License.
 from io import BytesIO
 from botocore.awsrequest import create_request_object
-import mock
 
+from tests import mock
 from tests import skip_if_using_serial_implementation
 from tests import StubbedClientTest
 from s3transfer.exceptions import CancelledError

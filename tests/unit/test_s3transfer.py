@@ -14,10 +14,9 @@ import os
 import tempfile
 import shutil
 import socket
-from tests import unittest
+from tests import mock, unittest
 from contextlib import closing
 
-import mock
 from botocore.vendored import six
 from concurrent import futures
 

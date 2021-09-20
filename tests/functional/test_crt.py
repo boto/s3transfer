@@ -10,8 +10,6 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import mock
-import unittest
 import threading
 import re
 from concurrent.futures import Future
@@ -20,8 +18,9 @@ from botocore.session import Session
 
 from s3transfer.subscribers import BaseSubscriber
 
-from tests import FileCreator
-from tests import requires_crt, HAS_CRT
+from tests import (
+    FileCreator, requires_crt, HAS_CRT, unittest, mock
+)
 
 if HAS_CRT:
     import s3transfer.crt

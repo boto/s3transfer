@@ -18,11 +18,9 @@ import platform
 import shutil
 import string
 import tempfile
+import unittest
+from unittest import mock
 
-try:
-    import unittest2 as unittest
-except ImportError:
-    import unittest
 import botocore.session
 from botocore.stub import Stubber
 from botocore.compat import six

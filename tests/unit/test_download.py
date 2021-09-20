@@ -15,12 +15,12 @@ import os
 import shutil
 import tempfile
 import socket
-import mock
 
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest
 from tests import StreamWithError
 from tests import FileCreator
+from tests import mock
 from tests import unittest
 from tests import RecordingExecutor
 from tests import NonSeekableWriter

@@ -15,7 +15,6 @@ import time
 import tempfile
 import shutil
 
-import mock
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from botocore.awsrequest import AWSRequest
@@ -25,6 +24,7 @@ from tests import BaseGeneralInterfaceTest
 from tests import RecordingSubscriber
 from tests import RecordingOSUtils
 from tests import NonSeekableReader
+from tests import mock
 from s3transfer.compat import six
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig

@@ -1,8 +1,4 @@
 #!/usr/bin/env python
-# Don't run tests from the root repo dir.
-# We want to ensure we're importing from the installed
-# binary package not from the CWD.
-
 import os
 from contextlib import contextmanager
 from subprocess import check_call
@@ -23,10 +19,10 @@ def cd(path):
         os.chdir(cwd)
 
 
-def run(command, env=None):
-    return check_call(command, shell=True, env=env)
+def run(command):
+    return check_call(command, shell=True)
 
 
 if __name__ == "__main__":
-    with cd(os.path.join(REPO_ROOT, "tests")):
-        run(f"{REPO_ROOT}/scripts/ci/run-tests --with-cov integration")
+    with cd(REPO_ROOT):
+        run("pip install -r requirements-dev-lock.txt")

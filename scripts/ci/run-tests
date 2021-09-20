@@ -5,13 +5,24 @@
 
 import argparse
 import os
+from contextlib import contextmanager
 from subprocess import check_call
 
 _dname = os.path.dirname
 
 REPO_ROOT = _dname(_dname(_dname(os.path.abspath(__file__))))
 PACKAGE = "s3transfer"
-os.chdir(os.path.join(REPO_ROOT, "tests"))
+
+
+@contextmanager
+def cd(path):
+    """Change directory while inside context manager."""
+    cwd = os.getcwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(cwd)
 
 
 def run(command, env=None):
@@ -55,11 +66,12 @@ if __name__ == "__main__":
     raw_args = parser.parse_args()
     test_runner, test_args, test_dirs = process_args(raw_args)
 
-    cmd = f"{test_runner} {test_args}{test_dirs}"
-    print(f"Running {cmd}...")
-    run(cmd)
+    with cd(os.path.join(REPO_ROOT, "tests")):
+        cmd = f"{test_runner} {test_args}{test_dirs}"
+        print(f"Running {cmd}...")
+        run(cmd)
 
-    # Run the serial implementation of s3transfer
-    os.environ["USE_SERIAL_EXECUTOR"] = "True"
-    print(f"Running serial execution for {cmd}...")
-    run(cmd, env=os.environ)
+        # Run the serial implementation of s3transfer
+        os.environ["USE_SERIAL_EXECUTOR"] = "True"
+        print(f"Running serial execution for {cmd}...")
+        run(cmd, env=os.environ)

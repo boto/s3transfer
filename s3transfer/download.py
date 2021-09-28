@@ -578,7 +578,7 @@ class IOStreamingWriteTask(Task):
     def _main(self, fileobj, data):
         """Write data to a fileobj.
 
-        Data will be written directly to the fileboj without
+        Data will be written directly to the fileobj without
         any prior seeking.
 
         :param fileobj: The fileobj to write content to

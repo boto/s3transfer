@@ -37,7 +37,7 @@ def recursive_delete(client, bucket_name):
             break
         except client.exceptions.NoSuchBucket:
             exists_waiter.wait(Bucket=bucket_name)
-        except Exception as e:
+        except Exception:
             # We can sometimes get exceptions when trying to
             # delete a bucket.  We'll let the waiter make
             # the final call as to whether the bucket was able

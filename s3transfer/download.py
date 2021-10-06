@@ -259,8 +259,10 @@ class DownloadSpecialFilenameOutputManager(DownloadNonSeekableOutputManager):
 
     @classmethod
     def is_compatible(cls, download_target, osutil):
-        return isinstance(download_target, six.string_types) and \
-               osutil.is_special_file(download_target)
+        return (
+            isinstance(download_target, six.string_types)
+            and osutil.is_special_file(download_target)
+        )
 
     def get_fileobj_for_io_writes(self, transfer_future):
         filename = transfer_future.meta.call_args.fileobj

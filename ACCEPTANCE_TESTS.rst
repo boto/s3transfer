@@ -95,7 +95,7 @@ Retry Logic
 ~~~~~~~~~~~
 * [x] Retry on connection related errors when downloading data
 * [ ] Compare MD5 to ``ETag`` and retry for mismatches if all following scenarios are met:
-      
+
   * If MD5 is available
   * Response does not have a ``ServerSideEncryption`` header equal to ``aws:kms``
   * Response does not have ``SSECustomerAlgorithm``
@@ -148,7 +148,7 @@ Validation
 Extra Parameters
 ~~~~~~~~~~~~~~~~
 * [ ] Copy multipart and nonmultipart file with any of the following properties:
-  
+
   * [x] ACL's
   * [x] CacheControl
   * [x] ContentDisposition

@@ -11,7 +11,6 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import random
-import time
 import functools
 import math
 import os
@@ -20,7 +19,6 @@ import stat
 import string
 import logging
 import threading
-import io
 from collections import defaultdict
 
 from botocore.exceptions import IncompleteReadError
@@ -28,7 +26,6 @@ from botocore.exceptions import ReadTimeoutError
 
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.compat import rename_file
-from s3transfer.compat import seekable
 from s3transfer.compat import fallocate
 
 
@@ -305,7 +302,7 @@ class OSUtils(object):
         suffix = os.extsep + random_file_extension()
         path = os.path.dirname(filename)
         name = os.path.basename(filename)
-        temp_filename = name[:self._MAX_FILENAME_LEN - len(suffix)] + suffix 
+        temp_filename = name[:self._MAX_FILENAME_LEN - len(suffix)] + suffix
         return os.path.join(path, temp_filename)
 
     def allocate(self, filename, size):

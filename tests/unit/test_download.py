@@ -14,7 +14,6 @@ import copy
 import os
 import shutil
 import tempfile
-import socket
 
 from tests import BaseTaskTest
 from tests import BaseSubmissionTaskTest

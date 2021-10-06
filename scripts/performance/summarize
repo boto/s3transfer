@@ -176,7 +176,7 @@ class Summarizer(object):
             ['Total Time (seconds)', '%.3f' % self.total_time,
              self.std_dev_total_time],
             ['Maximum Memory', h(self.max_memory), h(self.std_dev_max_memory)],
-            ['Maximum CPU (percent)',  '%.1f' % self.max_cpu,
+            ['Maximum CPU (percent)', '%.1f' % self.max_cpu,
              self.std_dev_max_cpu],
             ['Average Memory', h(self.average_memory),
              h(self.std_dev_average_memory)],
@@ -256,7 +256,7 @@ class Summarizer(object):
         self._totals['max_cpu'].append(self._maximums['cpu'])
         self._totals['max_memory'].append(self._maximums['memory'])
         self._totals['average_cpu'].append(
-                self._averages['cpu']/self._num_rows)
+            self._averages['cpu']/self._num_rows)
         self._totals['average_memory'].append(
             self._averages['memory']/self._num_rows)
 

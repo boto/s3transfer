@@ -353,10 +353,10 @@ class ProcessPoolDownloader(object):
         self._validate_all_known_args(extra_args)
         transfer_id = self._transfer_monitor.notify_new_transfer()
         download_file_request = DownloadFileRequest(
-                transfer_id=transfer_id, bucket=bucket, key=key,
-                filename=filename, extra_args=extra_args,
-                expected_size=expected_size,
-            )
+            transfer_id=transfer_id, bucket=bucket, key=key,
+            filename=filename, extra_args=extra_args,
+            expected_size=expected_size,
+        )
         logger.debug(
             'Submitting download file request: %s.', download_file_request)
         self._download_request_queue.put(download_file_request)
@@ -927,9 +927,10 @@ class GetObjectWorker(BaseS3TransferProcess):
                 self._write_to_file(temp_filename, offset, response['Body'])
                 return
             except S3_RETRYABLE_DOWNLOAD_ERRORS as e:
-                logger.debug('Retrying exception caught (%s), '
-                             'retrying request, (attempt %s / %s)', e, i+1,
-                             self._MAX_ATTEMPTS, exc_info=True)
+                logger.debug(
+                    'Retrying exception caught (%s), '
+                    'retrying request, (attempt %s / %s)', e, i+1,
+                    self._MAX_ATTEMPTS, exc_info=True)
                 last_exception = e
         raise RetriesExceededError(last_exception)
 

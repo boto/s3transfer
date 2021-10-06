@@ -19,7 +19,7 @@ import shutil
 import string
 import tempfile
 import unittest
-from unittest import mock
+from unittest import mock  # noqa: F401
 
 import botocore.session
 from botocore.stub import Stubber
@@ -43,7 +43,7 @@ from s3transfer.utils import SlidingWindowSemaphore
 ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
 # Detect if CRT is available for use
 try:
-    import awscrt.s3
+    import awscrt.s3  # noqa: F401
     HAS_CRT = True
 except ImportError:
     HAS_CRT = False

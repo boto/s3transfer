@@ -32,7 +32,6 @@ from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.manager import TransferManager
 from s3transfer.manager import TransferConfig
-from s3transfer.download import GetObjectTask
 
 
 class BaseDownloadTest(BaseGeneralInterfaceTest):

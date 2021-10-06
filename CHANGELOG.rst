@@ -182,4 +182,3 @@ CHANGELOG
 =====
 
 * feature:manager: Add boto3 s3 transfer logic to package. (`issue 2 <https://github.com/boto/s3transfer/pull/2>`__)
-

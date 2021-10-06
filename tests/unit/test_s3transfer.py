@@ -686,45 +686,37 @@ class TestCallbackHandlers(unittest.TestCase):
         self.request = mock.Mock()
 
     def test_disable_request_on_put_object(self):
-        disable_upload_callbacks(self.request,
-                                 'PutObject')
+        disable_upload_callbacks(self.request, 'PutObject')
         self.request.body.disable_callback.assert_called_with()
 
     def test_disable_request_on_upload_part(self):
-        disable_upload_callbacks(self.request,
-                                 'UploadPart')
+        disable_upload_callbacks(self.request, 'UploadPart')
         self.request.body.disable_callback.assert_called_with()
 
     def test_enable_object_on_put_object(self):
-        enable_upload_callbacks(self.request,
-                                 'PutObject')
+        enable_upload_callbacks(self.request, 'PutObject')
         self.request.body.enable_callback.assert_called_with()
 
     def test_enable_object_on_upload_part(self):
-        enable_upload_callbacks(self.request,
-                                 'UploadPart')
+        enable_upload_callbacks(self.request, 'UploadPart')
         self.request.body.enable_callback.assert_called_with()
 
     def test_dont_disable_if_missing_interface(self):
         del self.request.body.disable_callback
-        disable_upload_callbacks(self.request,
-                                 'PutObject')
+        disable_upload_callbacks(self.request, 'PutObject')
         self.assertEqual(self.request.body.method_calls, [])
 
     def test_dont_enable_if_missing_interface(self):
         del self.request.body.enable_callback
-        enable_upload_callbacks(self.request,
-                                'PutObject')
+        enable_upload_callbacks(self.request, 'PutObject')
         self.assertEqual(self.request.body.method_calls, [])
 
     def test_dont_disable_if_wrong_operation(self):
-        disable_upload_callbacks(self.request,
-                                 'OtherOperation')
+        disable_upload_callbacks(self.request, 'OtherOperation')
         self.assertFalse(
             self.request.body.disable_callback.called)
 
     def test_dont_enable_if_wrong_operation(self):
-        enable_upload_callbacks(self.request,
-                                'OtherOperation')
+        enable_upload_callbacks(self.request, 'OtherOperation')
         self.assertFalse(
             self.request.body.enable_callback.called)

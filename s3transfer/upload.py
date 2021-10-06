@@ -146,7 +146,7 @@ class UploadInputManager(object):
             memory. False if the manager will not directly store the body in
             memory.
         """
-        raise NotImplemented('must implement store_body_in_memory()')
+        raise NotImplementedError('must implement store_body_in_memory()')
 
     def provide_transfer_size(self, transfer_future):
         """Provides the transfer size of an upload

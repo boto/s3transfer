@@ -98,4 +98,5 @@ def fallocate(fileobj, size):
         fileobj.truncate(size)
 
 
-from multiprocessing.managers import BaseManager
+# Import at end of file to avoid circular dependencies
+from multiprocessing.managers import BaseManager  # noqa: F401,E402

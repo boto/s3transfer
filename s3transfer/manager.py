@@ -79,17 +79,14 @@ class TransferConfig(object):
             becomes a multipart transfer.
 
         :param max_request_queue_size: The maximum amount of S3 API requests
-            that can be queued at a time. A value of zero means that there
-            is no maximum.
+            that can be queued at a time.
 
         :param max_submission_queue_size: The maximum amount of
-            TransferManager method calls that can be queued at a time. A value
-            of zero means that there is no maximum.
+            TransferManager method calls that can be queued at a time.
 
         :param max_io_queue_size: The maximum amount of read parts that
-            can be queued to be written to disk per download. A value of zero
-            means that there is no maximum. The default size for each element
-            in this queue is 8 KB.
+            can be queued to be written to disk per download. The default
+            size for each elementin this queue is 8 KB.
 
         :param io_chunksize: The max size of each chunk in the io queue.
             Currently, this is size used when reading from the downloaded

@@ -1,4 +1,4 @@
-exclude: ^(.changes/|CHANGELOG.rst)
+exclude: ^(.changes/|CHANGELOG.rst|s3transfer/compat.py)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.0.1
@@ -6,6 +6,12 @@ repos:
     - id: check-yaml
     - id: end-of-file-fixer
     - id: trailing-whitespace
+  - repo: 'https://github.com/asottile/pyupgrade'
+    rev: v2.29.0
+    hooks:
+      - id: pyupgrade
+        args:
+          - '--py36-plus'
   - repo: 'https://github.com/PyCQA/isort'
     rev: 5.9.3
     hooks:

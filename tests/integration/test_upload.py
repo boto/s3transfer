@@ -13,8 +13,7 @@
 import threading
 import time
 from concurrent.futures import CancelledError
-
-from botocore.compat import six
+from io import BytesIO
 
 from s3transfer.manager import TransferConfig
 from tests import (
@@ -30,7 +29,7 @@ from tests.integration import (
 
 class TestUpload(BaseTransferManagerIntegTest):
     def setUp(self):
-        super(TestUpload, self).setUp()
+        super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = TransferConfig(
             multipart_threshold=self.multipart_threshold)
@@ -97,7 +96,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         actual_time_to_exit = end_time - start_time
         self.assertLess(
             actual_time_to_exit, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
+            "Failed to exit under {}. Instead exited in {}.".format(
                 max_allowed_exit_time, actual_time_to_exit)
         )
 
@@ -152,7 +151,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         max_allowed_exit_time = 5
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
+            "Failed to exit under {}. Instead exited in {}.".format(
                 max_allowed_exit_time, end_time - start_time)
         )
 
@@ -183,7 +182,7 @@ class TestUpload(BaseTransferManagerIntegTest):
 
 class TestUploadSeekableStream(TestUpload):
     def get_input_fileobj(self, size, name=''):
-        return six.BytesIO(b'0' * size)
+        return BytesIO(b'0' * size)
 
 
 class TestUploadNonSeekableStream(TestUpload):

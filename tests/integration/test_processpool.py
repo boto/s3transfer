@@ -21,7 +21,7 @@ from tests.integration import BaseTransferManagerIntegTest
 
 class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
     def setUp(self):
-        super(TestProcessPoolDownloader, self).setUp()
+        super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = ProcessTransferConfig(
             multipart_threshold=self.multipart_threshold
@@ -88,7 +88,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         max_allowed_exit_time = 5
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
+            "Failed to exit under {}. Instead exited in {}.".format(
                 max_allowed_exit_time, end_time - start_time)
         )
 
@@ -126,7 +126,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         max_allowed_exit_time = 5
         self.assertLess(
             end_time - start_time, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
+            "Failed to exit under {}. Instead exited in {}.".format(
                 max_allowed_exit_time, end_time - start_time)
         )
 

@@ -21,7 +21,7 @@ from botocore.session import get_session
 from s3transfer.manager import TransferManager
 
 
-class NonSeekableReader(object):
+class NonSeekableReader:
     """A wrapper to hide the ability to seek for a fileobj"""
     def __init__(self, fileobj):
         self._fileobj = fileobj
@@ -30,7 +30,7 @@ class NonSeekableReader(object):
         return self._fileobj.read(amt)
 
 
-class Uploader(object):
+class Uploader:
     def upload(self, args):
         session = get_session()
         client = session.create_client('s3')

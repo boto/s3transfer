@@ -16,8 +16,7 @@ import socket
 import tempfile
 from concurrent import futures
 from contextlib import closing
-
-from botocore.vendored import six
+from io import BytesIO, StringIO
 
 from s3transfer import (
     MultipartDownloader,
@@ -45,11 +44,11 @@ class InMemoryOSLayer(OSUtils):
         return len(self.filemap[filename])
 
     def open_file_chunk_reader(self, filename, start_byte, size, callback):
-        return closing(six.BytesIO(self.filemap[filename]))
+        return closing(BytesIO(self.filemap[filename]))
 
     def open(self, filename, mode):
         if 'wb' in mode:
-            fileobj = six.BytesIO()
+            fileobj = BytesIO()
             self.filemap[filename] = fileobj
             return closing(fileobj)
         else:
@@ -65,7 +64,7 @@ class InMemoryOSLayer(OSUtils):
                 current_filename)
 
 
-class SequentialExecutor(object):
+class SequentialExecutor:
     def __init__(self, max_workers):
         pass
 
@@ -210,7 +209,7 @@ class TestReadFileChunk(unittest.TestCase):
 
 class TestReadFileChunkWithCallback(TestReadFileChunk):
     def setUp(self):
-        super(TestReadFileChunkWithCallback, self).setUp()
+        super().setUp()
         self.filename = os.path.join(self.tempdir, 'foo')
         with open(self.filename, 'wb') as f:
             f.write(b'abc')
@@ -250,7 +249,7 @@ class TestReadFileChunkWithCallback(TestReadFileChunk):
 class TestStreamReaderProgress(unittest.TestCase):
 
     def test_proxies_to_wrapped_stream(self):
-        original_stream = six.StringIO('foobarbaz')
+        original_stream = StringIO('foobarbaz')
         wrapped = StreamReaderProgress(original_stream)
         self.assertEqual(wrapped.read(), 'foobarbaz')
 
@@ -260,7 +259,7 @@ class TestStreamReaderProgress(unittest.TestCase):
         def callback(amount):
             amounts_seen.append(amount)
 
-        original_stream = six.StringIO('foobarbaz')
+        original_stream = StringIO('foobarbaz')
         wrapped = StreamReaderProgress(original_stream, callback)
         self.assertEqual(wrapped.read(), 'foobarbaz')
         self.assertEqual(amounts_seen, [9])
@@ -353,7 +352,7 @@ class TestMultipartDownloader(unittest.TestCase):
     def test_multipart_download_uses_correct_client_calls(self):
         client = mock.Mock()
         response_body = b'foobarbaz'
-        client.get_object.return_value = {'Body': six.BytesIO(response_body)}
+        client.get_object.return_value = {'Body': BytesIO(response_body)}
 
         downloader = MultipartDownloader(client, TransferConfig(),
                                          InMemoryOSLayer({}),
@@ -370,7 +369,7 @@ class TestMultipartDownloader(unittest.TestCase):
     def test_multipart_download_with_multiple_parts(self):
         client = mock.Mock()
         response_body = b'foobarbaz'
-        client.get_object.return_value = {'Body': six.BytesIO(response_body)}
+        client.get_object.return_value = {'Body': BytesIO(response_body)}
         # For testing purposes, we're testing with a multipart threshold
         # of 4 bytes and a chunksize of 4 bytes.  Given b'foobarbaz',
         # this should result in 3 calls.  In python slices this would be:
@@ -448,7 +447,7 @@ class TestMultipartDownloader(unittest.TestCase):
     def test_io_thread_failure_triggers_shutdown(self):
         client = mock.Mock()
         response_body = b'foobarbaz'
-        client.get_object.return_value = {'Body': six.BytesIO(response_body)}
+        client.get_object.return_value = {'Body': BytesIO(response_body)}
         os_layer = mock.Mock()
         mock_fileobj = mock.MagicMock()
         mock_fileobj.__enter__.return_value = mock_fileobj
@@ -479,7 +478,7 @@ class TestMultipartDownloader(unittest.TestCase):
 
         client = mock.Mock()
         response_body = b'foobarbaz'
-        client.get_object.return_value = {'Body': six.BytesIO(response_body)}
+        client.get_object.return_value = {'Body': BytesIO(response_body)}
 
         downloader = MultipartDownloader(client, TransferConfig(),
                                          InMemoryOSLayer({}),
@@ -601,7 +600,7 @@ class TestS3Transfer(unittest.TestCase):
         self.client.head_object.return_value = {
             'ContentLength': below_threshold}
         self.client.get_object.return_value = {
-            'Body': six.BytesIO(b'foobar')
+            'Body': BytesIO(b'foobar')
         }
         transfer.download_file('bucket', 'key', '/tmp/smallfile',
                                extra_args=extra_args)
@@ -625,7 +624,7 @@ class TestS3Transfer(unittest.TestCase):
             # First request fails.
             socket.error("fake error"),
             # Second succeeds.
-            {'Body': six.BytesIO(b'foobar')}
+            {'Body': BytesIO(b'foobar')},
         ]
         transfer.download_file('bucket', 'key', '/tmp/smallfile')
 
@@ -656,7 +655,7 @@ class TestS3Transfer(unittest.TestCase):
         self.client.head_object.return_value = {
             'ContentLength': below_threshold}
         self.client.get_object.return_value = {
-            'Body': six.BytesIO(b'foobar')
+            'Body': BytesIO(b'foobar')
         }
         transfer.download_file('bucket', 'key', 'smallfile')
 

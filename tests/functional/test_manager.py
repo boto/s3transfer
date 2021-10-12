@@ -27,7 +27,7 @@ class ArbitraryException(Exception):
 class SignalTransferringBody(BytesIO):
     """A mocked body with the ability to signal when transfers occur"""
     def __init__(self):
-        super(SignalTransferringBody, self).__init__()
+        super().__init__()
         self.signal_transferring_call_count = 0
         self.signal_not_transferring_call_count = 0
 
@@ -159,7 +159,7 @@ class TestTransferManager(StubbedClientTest):
     def test_unicode_exception_in_context_manager(self):
         with self.assertRaises(ArbitraryException):
             with TransferManager(self.client):
-                raise ArbitraryException(u'\u2713')
+                raise ArbitraryException('\u2713')
 
     def test_client_property(self):
         manager = TransferManager(self.client)

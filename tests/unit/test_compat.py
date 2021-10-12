@@ -14,14 +14,13 @@ import os
 import shutil
 import signal
 import tempfile
-
-from botocore.compat import six
+from io import BytesIO
 
 from s3transfer.compat import BaseManager, readable, seekable
 from tests import skip_if_windows, unittest
 
 
-class ErrorRaisingSeekWrapper(object):
+class ErrorRaisingSeekWrapper:
     """An object wrapper that throws an error when seeked on
 
     :param fileobj: The fileobj that it wraps
@@ -71,7 +70,7 @@ class TestReadable(unittest.TestCase):
             self.assertTrue(readable(f))
 
     def test_readable_file_like_obj(self):
-        self.assertTrue(readable(six.BytesIO()))
+        self.assertTrue(readable(BytesIO()))
 
     def test_non_file_like_obj(self):
         self.assertFalse(readable(object()))

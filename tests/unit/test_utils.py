@@ -18,8 +18,8 @@ import shutil
 import tempfile
 import threading
 import time
+from io import BytesIO, StringIO
 
-from s3transfer.compat import six
 from s3transfer.futures import TransferFuture, TransferMeta
 from s3transfer.utils import (
     MAX_PARTS,
@@ -110,7 +110,7 @@ class TestFunctionContainer(unittest.TestCase):
         func_container = FunctionContainer(
             self.get_args_kwargs, 'foo', bar='baz')
         self.assertEqual(
-            str(func_container), 'Function: %s with args %s and kwargs %s' % (
+            str(func_container), 'Function: {} with args {} and kwargs {}'.format(
                 self.get_args_kwargs, ('foo',), {'bar': 'baz'}))
 
 
@@ -336,7 +336,7 @@ class TestOSUtils(BaseUtilsTest):
 
 class TestDeferredOpenFile(BaseUtilsTest):
     def setUp(self):
-        super(TestDeferredOpenFile, self).setUp()
+        super().setUp()
         self.filename = os.path.join(self.tempdir, 'foo')
         self.contents = b'my contents'
         with open(self.filename, 'wb') as f:
@@ -347,7 +347,7 @@ class TestDeferredOpenFile(BaseUtilsTest):
 
     def tearDown(self):
         self.deferred_open_file.close()
-        super(TestDeferredOpenFile, self).tearDown()
+        super().tearDown()
 
     def recording_open_function(self, filename, mode):
         self.open_call_args.append((filename, mode))
@@ -355,7 +355,7 @@ class TestDeferredOpenFile(BaseUtilsTest):
 
     def open_nonseekable(self, filename, mode):
         self.open_call_args.append((filename, mode))
-        return NonSeekableWriter(six.BytesIO(self.content))
+        return NonSeekableWriter(BytesIO(self.content))
 
     def test_instantiation_does_not_open_file(self):
         DeferredOpenFile(
@@ -825,12 +825,12 @@ class TestReadFileChunk(BaseUtilsTest):
 
 class TestStreamReaderProgress(BaseUtilsTest):
     def test_proxies_to_wrapped_stream(self):
-        original_stream = six.StringIO('foobarbaz')
+        original_stream = StringIO('foobarbaz')
         wrapped = StreamReaderProgress(original_stream)
         self.assertEqual(wrapped.read(), 'foobarbaz')
 
     def test_callback_invoked(self):
-        original_stream = six.StringIO('foobarbaz')
+        original_stream = StringIO('foobarbaz')
         wrapped = StreamReaderProgress(
             original_stream, [self.callback, self.callback])
         self.assertEqual(wrapped.read(), 'foobarbaz')

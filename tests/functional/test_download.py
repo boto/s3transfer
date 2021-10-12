@@ -16,10 +16,11 @@ import os
 import shutil
 import tempfile
 import time
+from io import BytesIO
 
 from botocore.exceptions import ClientError
 
-from s3transfer.compat import SOCKET_ERROR, six
+from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.manager import TransferConfig, TransferManager
 from tests import (
@@ -36,7 +37,7 @@ from tests import (
 
 class BaseDownloadTest(BaseGeneralInterfaceTest):
     def setUp(self):
-        super(BaseDownloadTest, self).setUp()
+        super().setUp()
         self.config = TransferConfig(max_request_concurrency=1)
         self._manager = TransferManager(self.client, self.config)
 
@@ -52,10 +53,10 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         # Create a stream to read from
         self.content = b'my content'
-        self.stream = six.BytesIO(self.content)
+        self.stream = BytesIO(self.content)
 
     def tearDown(self):
-        super(BaseDownloadTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
 
     @property
@@ -165,7 +166,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         # Create a file-like object to test. In this case, it is a BytesIO
         # object.
-        bytes_io = six.BytesIO()
+        bytes_io = BytesIO()
 
         future = self.manager.download(
             self.bucket, self.key, bytes_io, self.extra_args)
@@ -379,7 +380,7 @@ class TestNonRangedDownload(BaseDownloadTest):
 
     def test_download_empty_object(self):
         self.content = b''
-        self.stream = six.BytesIO(self.content)
+        self.stream = BytesIO(self.content)
         self.add_head_object_response()
         self.add_successful_get_object_responses()
         future = self.manager.download(
@@ -392,7 +393,7 @@ class TestNonRangedDownload(BaseDownloadTest):
 
     def test_uses_bandwidth_limiter(self):
         self.content = b'a' * 1024 * 1024
-        self.stream = six.BytesIO(self.content)
+        self.stream = BytesIO(self.content)
         self.config = TransferConfig(
             max_request_concurrency=1, max_bandwidth=len(self.content)/2)
         self._manager = TransferManager(self.client, self.config)
@@ -428,7 +429,7 @@ class TestRangedDownload(BaseDownloadTest):
     __test__ = True
 
     def setUp(self):
-        super(TestRangedDownload, self).setUp()
+        super().setUp()
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
             multipart_chunksize=4)
@@ -445,19 +446,19 @@ class TestRangedDownload(BaseDownloadTest):
             {
                 'method': 'get_object',
                 'service_response': {
-                    'Body': six.BytesIO(self.content[0:4])
+                    'Body': BytesIO(self.content[0:4])
                 }
             },
             {
                 'method': 'get_object',
                 'service_response': {
-                    'Body': six.BytesIO(self.content[4:8])
+                    'Body': BytesIO(self.content[4:8])
                 }
             },
             {
                 'method': 'get_object',
                 'service_response': {
-                    'Body': six.BytesIO(self.content[8:])
+                    'Body': BytesIO(self.content[8:])
                 }
             }
         ]

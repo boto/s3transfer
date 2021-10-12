@@ -22,7 +22,6 @@ import unittest
 from unittest import mock  # noqa: F401
 
 import botocore.session
-from botocore.compat import six
 from botocore.stub import Stubber
 
 from s3transfer.futures import (
@@ -67,12 +66,12 @@ def is_serial_implementation():
 
 def assert_files_equal(first, second):
     if os.path.getsize(first) != os.path.getsize(second):
-        raise AssertionError("Files are not equal: %s, %s" % (first, second))
+        raise AssertionError(f"Files are not equal: {first}, {second}")
     first_md5 = md5_checksum(first)
     second_md5 = md5_checksum(second)
     if first_md5 != second_md5:
         raise AssertionError(
-            "Files are not equal: %s(md5=%s) != %s(md5=%s)" % (
+            "Files are not equal: {}(md5={}) != {}(md5={})".format(
                 first, first_md5, second, second_md5))
 
 
@@ -120,7 +119,7 @@ def requires_crt(cls, reason=None):
     return unittest.skipIf(not HAS_CRT, reason)(cls)
 
 
-class StreamWithError(object):
+class StreamWithError:
     """A wrapper to simulate errors while reading from a stream
 
     :param stream: The underlying stream to read from
@@ -143,7 +142,7 @@ class StreamWithError(object):
         return self._stream.read(n)
 
 
-class FileSizeProvider(object):
+class FileSizeProvider:
     def __init__(self, file_size):
         self.file_size = file_size
 
@@ -151,7 +150,7 @@ class FileSizeProvider(object):
         future.meta.provide_transfer_size(self.file_size)
 
 
-class FileCreator(object):
+class FileCreator:
     def __init__(self):
         self.rootdir = tempfile.mkdtemp()
 
@@ -205,17 +204,17 @@ class RecordingOSUtils(OSUtils):
     """An OSUtil abstraction that records openings and renamings"""
 
     def __init__(self):
-        super(RecordingOSUtils, self).__init__()
+        super().__init__()
         self.open_records = []
         self.rename_records = []
 
     def open(self, filename, mode):
         self.open_records.append((filename, mode))
-        return super(RecordingOSUtils, self).open(filename, mode)
+        return super().open(filename, mode)
 
     def rename_file(self, current_filename, new_filename):
         self.rename_records.append((current_filename, new_filename))
-        super(RecordingOSUtils, self).rename_file(
+        super().rename_file(
             current_filename, new_filename)
 
 
@@ -248,7 +247,7 @@ class TransferCoordinatorWithInterrupt(TransferCoordinator):
         raise KeyboardInterrupt()
 
 
-class RecordingExecutor(object):
+class RecordingExecutor:
     """A wrapper on an executor to record calls made to submit()
 
     You can access the submissions property to receive a list of dictionaries
@@ -308,7 +307,7 @@ class StubbedClientTest(unittest.TestCase):
 
 class BaseTaskTest(StubbedClientTest):
     def setUp(self):
-        super(BaseTaskTest, self).setUp()
+        super().setUp()
         self.transfer_coordinator = TransferCoordinator()
 
     def get_task(self, task_cls, **kwargs):
@@ -325,7 +324,7 @@ class BaseTaskTest(StubbedClientTest):
 
 class BaseSubmissionTaskTest(BaseTaskTest):
     def setUp(self):
-        super(BaseSubmissionTaskTest, self).setUp()
+        super().setUp()
         self.config = TransferConfig()
         self.osutil = OSUtils()
         self.executor = BoundedExecutor(
@@ -338,7 +337,7 @@ class BaseSubmissionTaskTest(BaseTaskTest):
         )
 
     def tearDown(self):
-        super(BaseSubmissionTaskTest, self).tearDown()
+        super().tearDown()
         self.executor.shutdown()
 
 
@@ -483,8 +482,8 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
 
 class NonSeekableReader(io.RawIOBase):
     def __init__(self, b=b''):
-        super(NonSeekableReader, self).__init__()
-        self._data = six.BytesIO(b)
+        super().__init__()
+        self._data = io.BytesIO(b)
 
     def seekable(self):
         return False
@@ -506,7 +505,7 @@ class NonSeekableReader(io.RawIOBase):
 
 class NonSeekableWriter(io.RawIOBase):
     def __init__(self, fileobj):
-        super(NonSeekableWriter, self).__init__()
+        super().__init__()
         self._fileobj = fileobj
 
     def seekable(self):

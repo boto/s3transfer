@@ -14,9 +14,10 @@ import copy
 import os
 import shutil
 import tempfile
+from io import BytesIO
 
 from s3transfer.bandwidth import BandwidthLimiter
-from s3transfer.compat import SOCKET_ERROR, six
+from s3transfer.compat import SOCKET_ERROR
 from s3transfer.download import (
     CompleteDownloadNOOPTask,
     DeferQueue,
@@ -52,7 +53,7 @@ class DownloadException(Exception):
     pass
 
 
-class WriteCollector(object):
+class WriteCollector:
     """A utility to collect information about writes and seeks"""
     def __init__(self):
         self._pos = 0
@@ -72,7 +73,7 @@ class AlwaysIndicatesSpecialFileOSUtils(OSUtils):
         return True
 
 
-class CancelledStreamWrapper(object):
+class CancelledStreamWrapper:
     """A wrapper to trigger a cancellation while stream reading
 
     Forces the transfer coordinator to cancel after a certain amount of reads
@@ -96,7 +97,7 @@ class CancelledStreamWrapper(object):
 
 class BaseDownloadOutputManagerTest(BaseTaskTest):
     def setUp(self):
-        super(BaseDownloadOutputManagerTest, self).setUp()
+        super().setUp()
         self.osutil = OSUtils()
 
         # Create a file to write to
@@ -108,13 +109,13 @@ class BaseDownloadOutputManagerTest(BaseTaskTest):
         self.io_executor = BoundedExecutor(1000, 1)
 
     def tearDown(self):
-        super(BaseDownloadOutputManagerTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
 
 
 class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
-        super(TestDownloadFilenameOutputManager, self).setUp()
+        super().setUp()
         self.download_output_manager = DownloadFilenameOutputManager(
             self.osutil, self.transfer_coordinator,
             io_executor=self.io_executor)
@@ -178,7 +179,7 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
 
 class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
-        super(TestDownloadSpecialFilenameOutputManager, self).setUp()
+        super().setUp()
         self.osutil = AlwaysIndicatesSpecialFileOSUtils()
         self.download_output_manager = DownloadSpecialFilenameOutputManager(
             self.osutil, self.transfer_coordinator,
@@ -219,7 +220,7 @@ class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
 
 class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
-        super(TestDownloadSeekableOutputManager, self).setUp()
+        super().setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
             self.osutil, self.transfer_coordinator,
             io_executor=self.io_executor)
@@ -232,7 +233,7 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
 
     def tearDown(self):
         self.fileobj.close()
-        super(TestDownloadSeekableOutputManager, self).tearDown()
+        super().tearDown()
 
     def test_is_compatible(self):
         self.assertTrue(
@@ -243,7 +244,7 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_is_compatible_bytes_io(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                six.BytesIO(), self.osutil)
+                BytesIO(), self.osutil)
         )
 
     def test_not_compatible_for_non_filelike_obj(self):
@@ -288,7 +289,7 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
 
 class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
-        super(TestDownloadNonSeekableOutputManager, self).setUp()
+        super().setUp()
         self.download_output_manager = DownloadNonSeekableOutputManager(
             self.osutil, self.transfer_coordinator, io_executor=None)
 
@@ -303,7 +304,7 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
             self.filename, self.osutil))
 
     def test_compatible_with_non_seekable_stream(self):
-        class NonSeekable(object):
+        class NonSeekable:
             def write(self, data):
                 pass
 
@@ -315,7 +316,7 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_is_compatible_with_bytesio(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                six.BytesIO(), self.osutil)
+                BytesIO(), self.osutil)
         )
 
     def test_get_download_task_tag(self):
@@ -324,7 +325,7 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
             IN_MEMORY_DOWNLOAD_TAG)
 
     def test_submit_writes_from_internal_queue(self):
-        class FakeQueue(object):
+        class FakeQueue:
             def request_writes(self, offset, data):
                 return [
                     {'offset': 0, 'data': 'foo'},
@@ -354,7 +355,7 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
 
 class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
-        super(TestDownloadSubmissionTask, self).setUp()
+        super().setUp()
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
 
@@ -365,7 +366,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
         # Create a stream to read from
         self.content = b'my content'
-        self.stream = six.BytesIO(self.content)
+        self.stream = BytesIO(self.content)
 
         # A list to keep track of all of the bodies sent over the wire
         # and their order.
@@ -384,7 +385,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         self.submission_task = self.get_download_submission_task()
 
     def tearDown(self):
-        super(TestDownloadSubmissionTask, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
 
     def get_call_args(self, **kwargs):
@@ -422,10 +423,10 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         chunksize = self.config.multipart_chunksize
         for i in range(0, len(self.content), chunksize):
             if i + chunksize > len(self.content):
-                stream = six.BytesIO(self.content[i:])
+                stream = BytesIO(self.content[i:])
                 self.stubber.add_response('get_object', {'Body': stream})
             else:
-                stream = six.BytesIO(self.content[i:i+chunksize])
+                stream = BytesIO(self.content[i:i+chunksize])
                 self.stubber.add_response('get_object', {'Body': stream})
 
     def configure_for_ranged_get(self):
@@ -527,7 +528,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
 class TestGetObjectTask(BaseTaskTest):
     def setUp(self):
-        super(TestGetObjectTask, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'mykey'
         self.extra_args = {}
@@ -535,7 +536,7 @@ class TestGetObjectTask(BaseTaskTest):
         self.max_attempts = 5
         self.io_executor = BoundedExecutor(1000, 1)
         self.content = b'my content'
-        self.stream = six.BytesIO(self.content)
+        self.stream = BytesIO(self.content)
         self.fileobj = WriteCollector()
         self.osutil = OSUtils()
         self.io_chunksize = 64 * (1024 ** 2)
@@ -730,7 +731,7 @@ class TestGetObjectTask(BaseTaskTest):
 
 class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):
     def setUp(self):
-        super(TestImmediatelyWriteIOGetObjectTask, self).setUp()
+        super().setUp()
         self.task_cls = ImmediatelyWriteIOGetObjectTask
         # When data is written out, it should not use the io executor at all
         # if it does use the io executor that is a deviation from expected
@@ -746,14 +747,14 @@ class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):
 
 class BaseIOTaskTest(BaseTaskTest):
     def setUp(self):
-        super(BaseIOTaskTest, self).setUp()
+        super().setUp()
         self.files = FileCreator()
         self.osutil = OSUtils()
         self.temp_filename = os.path.join(self.files.rootdir, 'mytempfile')
         self.final_filename = os.path.join(self.files.rootdir, 'myfile')
 
     def tearDown(self):
-        super(BaseIOTaskTest, self).tearDown()
+        super().tearDown()
         self.files.remove_all()
 
 
@@ -838,7 +839,7 @@ class TestIOCloseTask(BaseIOTaskTest):
 class TestDownloadChunkIterator(unittest.TestCase):
     def test_iter(self):
         content = b'my content'
-        body = six.BytesIO(content)
+        body = BytesIO(content)
         ref_chunks = []
         for chunk in DownloadChunkIterator(body, len(content)):
             ref_chunks.append(chunk)
@@ -846,14 +847,14 @@ class TestDownloadChunkIterator(unittest.TestCase):
 
     def test_iter_chunksize(self):
         content = b'1234'
-        body = six.BytesIO(content)
+        body = BytesIO(content)
         ref_chunks = []
         for chunk in DownloadChunkIterator(body, 3):
             ref_chunks.append(chunk)
         self.assertEqual(ref_chunks, [b'123', b'4'])
 
     def test_empty_content(self):
-        body = six.BytesIO(b'')
+        body = BytesIO(b'')
         ref_chunks = []
         for chunk in DownloadChunkIterator(body, 3):
             ref_chunks.append(chunk)

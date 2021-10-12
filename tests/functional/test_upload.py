@@ -14,13 +14,13 @@ import os
 import shutil
 import tempfile
 import time
+from io import BytesIO
 
 from botocore.awsrequest import AWSRequest
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from botocore.stub import ANY
 
-from s3transfer.compat import six
 from s3transfer.manager import TransferConfig, TransferManager
 from s3transfer.utils import ChunksizeAdjuster
 from tests import (
@@ -34,7 +34,7 @@ from tests import (
 
 class BaseUploadTest(BaseGeneralInterfaceTest):
     def setUp(self):
-        super(BaseUploadTest, self).setUp()
+        super().setUp()
         # TODO: We do not want to use the real MIN_UPLOAD_CHUNKSIZE
         # when we're adjusting parts.
         # This is really wasteful and fails CI builds because self.contents
@@ -72,7 +72,7 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
             'before-parameter-build.s3.*', self.collect_body)
 
     def tearDown(self):
-        super(BaseUploadTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
         self.adjuster_patch.stop()
 
@@ -175,7 +175,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
     def test_upload_for_seekable_filelike_obj(self):
         self.add_put_object_response_with_default_expected_params()
-        bytes_io = six.BytesIO(self.content)
+        bytes_io = BytesIO(self.content)
         future = self.manager.upload(
             bytes_io, self.bucket, self.key, self.extra_args)
         future.result()
@@ -184,7 +184,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
     def test_upload_for_seekable_filelike_obj_that_has_been_seeked(self):
         self.add_put_object_response_with_default_expected_params()
-        bytes_io = six.BytesIO(self.content)
+        bytes_io = BytesIO(self.content)
         seek_pos = 5
         bytes_io.seek(seek_pos)
         future = self.manager.upload(
@@ -280,7 +280,7 @@ class TestMultipartUpload(BaseUploadTest):
     __test__ = True
 
     def setUp(self):
-        super(TestMultipartUpload, self).setUp()
+        super().setUp()
         self.chunksize = 4
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
@@ -395,7 +395,7 @@ class TestMultipartUpload(BaseUploadTest):
         self.add_create_multipart_response_with_default_expected_params()
         self.add_upload_part_responses_with_default_expected_params()
         self.add_complete_multipart_response_with_default_expected_params()
-        bytes_io = six.BytesIO(self.content)
+        bytes_io = BytesIO(self.content)
         future = self.manager.upload(
             bytes_io, self.bucket, self.key, self.extra_args)
         future.result()
@@ -406,7 +406,7 @@ class TestMultipartUpload(BaseUploadTest):
         self.add_create_multipart_response_with_default_expected_params()
         self.add_upload_part_responses_with_default_expected_params()
         self.add_complete_multipart_response_with_default_expected_params()
-        bytes_io = six.BytesIO(self.content)
+        bytes_io = BytesIO(self.content)
         seek_pos = 1
         bytes_io.seek(seek_pos)
         future = self.manager.upload(

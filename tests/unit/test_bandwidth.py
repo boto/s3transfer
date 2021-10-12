@@ -83,7 +83,7 @@ class BaseBandwidthLimitTest(unittest.TestCase):
 
 class TestBandwidthLimiter(BaseBandwidthLimitTest):
     def setUp(self):
-        super(TestBandwidthLimiter, self).setUp()
+        super().setUp()
         self.bandwidth_limiter = BandwidthLimiter(self.leaky_bucket)
 
     def test_get_bandwidth_limited_stream(self):
@@ -105,7 +105,7 @@ class TestBandwidthLimiter(BaseBandwidthLimitTest):
 
 class TestBandwidthLimitedStream(BaseBandwidthLimitTest):
     def setUp(self):
-        super(TestBandwidthLimitedStream, self).setUp()
+        super().setUp()
         self.bytes_threshold = 1
 
     def tearDown(self):
@@ -126,10 +126,10 @@ class TestBandwidthLimitedStream(BaseBandwidthLimitTest):
         )
 
     def get_unique_consume_request_tokens(self):
-        return set(
+        return {
             call_args[0][1] for call_args in
             self.leaky_bucket.consume.call_args_list
-        )
+        }
 
     def test_read(self):
         with open(self.filename, 'rb') as f:

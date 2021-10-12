@@ -21,7 +21,7 @@ from botocore.session import get_session
 from s3transfer.manager import TransferManager
 
 
-class NonSeekableWriter(object):
+class NonSeekableWriter:
     """A wrapper to hide the ability to seek for a fileobj"""
     def __init__(self, fileobj):
         self._fileobj = fileobj
@@ -30,7 +30,7 @@ class NonSeekableWriter(object):
         return self._fileobj.write(b)
 
 
-class Downloader(object):
+class Downloader:
     def download(self, args):
         session = get_session()
         client = session.create_client('s3')

@@ -63,11 +63,11 @@ def get_exc_info(exception):
 class RecordingTransferCoordinator(TransferCoordinator):
     def __init__(self):
         self.all_transfer_futures_ever_associated = set()
-        super(RecordingTransferCoordinator, self).__init__()
+        super().__init__()
 
     def add_associated_future(self, future):
         self.all_transfer_futures_ever_associated.add(future)
-        super(RecordingTransferCoordinator, self).add_associated_future(future)
+        super().add_associated_future(future)
 
 
 class ReturnFooTask(Task):
@@ -322,13 +322,13 @@ class TestTransferCoordinator(unittest.TestCase):
         # transfer future at some point.
         self.assertEqual(
             self.transfer_coordinator.all_transfer_futures_ever_associated,
-            set([future])
+            {future}
         )
 
         # Make sure the future got disassociated once the future is now done
         # by looking at the currently associated futures.
         self.assertEqual(
-            self.transfer_coordinator.associated_futures, set([]))
+            self.transfer_coordinator.associated_futures, set())
 
     def test_done(self):
         # These should result in not done state:
@@ -399,19 +399,19 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.add_associated_future(first_future)
         associated_futures = self.transfer_coordinator.associated_futures
         # The first future should be in the returned list of futures.
-        self.assertEqual(associated_futures, set([first_future]))
+        self.assertEqual(associated_futures, {first_future})
 
         second_future = object()
         # Associate another future to the transfer.
         self.transfer_coordinator.add_associated_future(second_future)
         # The association should not have mutated the returned list from
         # before.
-        self.assertEqual(associated_futures, set([first_future]))
+        self.assertEqual(associated_futures, {first_future})
 
         # Both futures should be in the returned list.
         self.assertEqual(
             self.transfer_coordinator.associated_futures,
-            set([first_future, second_future]))
+            {first_future, second_future})
 
     def test_done_callbacks_on_done(self):
         done_callback_invocations = []
@@ -479,7 +479,7 @@ class TestBoundedExecutor(unittest.TestCase):
             self.executor.submit(task, tag=tag, block=False)
         except NoResourcesAvailable:
             self.fail(
-                'Task %s should not have been blocked. Caused by:\n%s' % (
+                'Task {} should not have been blocked. Caused by:\n{}'.format(
                     task, traceback.format_exc()
                 )
             )

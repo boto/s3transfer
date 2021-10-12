@@ -82,15 +82,15 @@ class ExceptionSubmissionTask(SubmissionTask):
 
 class StatusRecordingTransferCoordinator(TransferCoordinator):
     def __init__(self, transfer_id=None):
-        super(StatusRecordingTransferCoordinator, self).__init__(transfer_id)
+        super().__init__(transfer_id)
         self.status_changes = [self._status]
 
     def set_status_to_queued(self):
-        super(StatusRecordingTransferCoordinator, self).set_status_to_queued()
+        super().set_status_to_queued()
         self._record_status_change()
 
     def set_status_to_running(self):
-        super(StatusRecordingTransferCoordinator, self).set_status_to_running()
+        super().set_status_to_running()
         self._record_status_change()
 
     def _record_status_change(self):
@@ -108,7 +108,7 @@ class RecordingStateSubscriber(BaseSubscriber):
 
 class TestSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
-        super(TestSubmissionTask, self).setUp()
+        super().setUp()
         self.executor = BoundedExecutor(1000, 5)
         self.call_args = CallArgs(subscribers=[])
         self.transfer_future = self.get_transfer_future(self.call_args)
@@ -386,7 +386,7 @@ class TestTask(unittest.TestCase):
         # a desired parameter to include.
         self.assertEqual(
             repr(task),
-            'ReturnKwargsTask(transfer_id=%s, %s)' % (
+            'ReturnKwargsTask(transfer_id={}, {})'.format(
                 self.transfer_id, {'bucket': 'mybucket'})
         )
 
@@ -662,7 +662,7 @@ class TestTask(unittest.TestCase):
 
 class BaseMultipartTaskTest(BaseTaskTest):
     def setUp(self):
-        super(BaseMultipartTaskTest, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'foo'
 

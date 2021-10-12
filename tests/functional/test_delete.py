@@ -19,7 +19,7 @@ class TestDeleteObject(BaseGeneralInterfaceTest):
     __test__ = True
 
     def setUp(self):
-        super(TestDeleteObject, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'mykey'
         self.manager = TransferManager(self.client)

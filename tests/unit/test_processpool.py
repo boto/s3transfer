@@ -11,16 +11,16 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
+import queue
 import signal
 import threading
 import time
+from io import BytesIO
 
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError, ReadTimeoutError
-from six.moves import queue
 
-from s3transfer.compat import six
 from s3transfer.constants import PROCESS_USER_AGENT
 from s3transfer.exceptions import CancelledError, RetriesExceededError
 from s3transfer.processpool import (
@@ -295,7 +295,7 @@ class TestTransferState(unittest.TestCase):
 
 class TestGetObjectSubmitter(StubbedClientTest):
     def setUp(self):
-        super(TestGetObjectSubmitter, self).setUp()
+        super().setUp()
         self.transfer_config = ProcessTransferConfig()
         self.client_factory = mock.Mock(ClientFactory)
         self.client_factory.create_client.return_value = self.client
@@ -482,7 +482,7 @@ class TestGetObjectSubmitter(StubbedClientTest):
 
 class TestGetObjectWorker(StubbedClientTest):
     def setUp(self):
-        super(TestGetObjectWorker, self).setUp()
+        super().setUp()
         self.files = FileCreator()
         self.queue = queue.Queue()
         self.client_factory = mock.Mock(ClientFactory)
@@ -503,12 +503,12 @@ class TestGetObjectWorker(StubbedClientTest):
         self.extra_args = {}
         self.offset = 0
         self.final_filename = self.files.full_path('final_filename')
-        self.stream = six.BytesIO(self.remote_contents)
+        self.stream = BytesIO(self.remote_contents)
         self.transfer_monitor.notify_expected_jobs_to_complete(
             self.transfer_id, 1000)
 
     def tearDown(self):
-        super(TestGetObjectWorker, self).tearDown()
+        super().tearDown()
         self.files.remove_all()
 
     def add_get_object_job(self, **override_kwargs):

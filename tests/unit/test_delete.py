@@ -16,7 +16,7 @@ from tests import BaseTaskTest
 
 class TestDeleteObjectTask(BaseTaskTest):
     def setUp(self):
-        super(TestDeleteObjectTask, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'mykey'
         self.extra_args = {}

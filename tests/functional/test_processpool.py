@@ -12,19 +12,19 @@
 # language governing permissions and limitations under the License.
 import glob
 import os
+from io import BytesIO
 from multiprocessing.managers import BaseManager
 
 import botocore.exceptions
 import botocore.session
 from botocore.stub import Stubber
 
-from s3transfer.compat import six
 from s3transfer.exceptions import CancelledError
 from s3transfer.processpool import ProcessPoolDownloader, ProcessTransferConfig
 from tests import FileCreator, mock, unittest
 
 
-class StubbedClient(object):
+class StubbedClient:
     def __init__(self):
         self._client = botocore.session.get_session().create_client(
             's3', 'us-west-2', aws_access_key_id='foo',
@@ -56,7 +56,7 @@ StubbedClientManager.register('StubbedClient', StubbedClient)
 # Ideally a Mock would be used here. However, they cannot be pickled
 # for Windows. So instead we define a factory class at the module level that
 # can return a stubbed client we initialized in the setUp.
-class StubbedClientFactory(object):
+class StubbedClientFactory:
     def __init__(self, stubbed_client):
         self._stubbed_client = stubbed_client
 
@@ -95,7 +95,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
         self.key = 'mykey'
         self.filename = self.files.full_path('filename')
         self.remote_contents = b'my content'
-        self.stream = six.BytesIO(self.remote_contents)
+        self.stream = BytesIO(self.remote_contents)
 
     def tearDown(self):
         self.manager.shutdown()
@@ -122,7 +122,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
             'get_object', {'Body': self.stream}
         )
         self.stubbed_client.add_response(
-            'get_object', {'Body': six.BytesIO(self.remote_contents)}
+            'get_object', {'Body': BytesIO(self.remote_contents)}
         )
         with self.downloader:
             self.downloader.download_file(
@@ -141,12 +141,12 @@ class TestProcessPoolDownloader(unittest.TestCase):
             'head_object', {'ContentLength': len(self.remote_contents)})
         self.stubbed_client.add_response(
             'get_object', {
-                'Body': six.BytesIO(
+                'Body': BytesIO(
                     self.remote_contents[:half_of_content_length])}
         )
         self.stubbed_client.add_response(
             'get_object', {
-                'Body': six.BytesIO(
+                'Body': BytesIO(
                     self.remote_contents[half_of_content_length:])}
         )
         downloader = ProcessPoolDownloader(

@@ -10,16 +10,15 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from __future__ import division
 
 import math
 import os
 import shutil
 import tempfile
+from io import BytesIO
 
 from botocore.stub import ANY
 
-from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import (
@@ -56,7 +55,7 @@ class OSUtilsExceptionOnFileSize(OSUtils):
 
 class BaseUploadTest(BaseTaskTest):
     def setUp(self):
-        super(BaseUploadTest, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'foo'
         self.osutil = OSUtils()
@@ -76,7 +75,7 @@ class BaseUploadTest(BaseTaskTest):
             'before-parameter-build.s3.*', self.collect_body)
 
     def tearDown(self):
-        super(BaseUploadTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
 
     def collect_body(self, params, **kwargs):
@@ -157,7 +156,7 @@ class TestInterruptReader(BaseUploadTest):
 
 class BaseUploadInputManagerTest(BaseUploadTest):
     def setUp(self):
-        super(BaseUploadInputManagerTest, self).setUp()
+        super().setUp()
         self.osutil = OSUtils()
         self.config = TransferConfig()
         self.recording_subscriber = RecordingSubscriber()
@@ -177,7 +176,7 @@ class BaseUploadInputManagerTest(BaseUploadTest):
 
 class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
     def setUp(self):
-        super(TestUploadFilenameInputManager, self).setUp()
+        super().setUp()
         self.upload_input_manager = UploadFilenameInputManager(
             self.osutil, self.transfer_coordinator)
         self.call_args = CallArgs(
@@ -294,7 +293,7 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
 
 class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def setUp(self):
-        super(TestUploadSeekableInputManager, self).setUp()
+        super().setUp()
         self.upload_input_manager = UploadSeekableInputManager(
             self.osutil, self.transfer_coordinator)
         self.fileobj = open(self.filename, 'rb')
@@ -304,11 +303,11 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
 
     def tearDown(self):
         self.fileobj.close()
-        super(TestUploadSeekableInputManager, self).tearDown()
+        super().tearDown()
 
     def test_is_compatible_bytes_io(self):
         self.assertTrue(
-            self.upload_input_manager.is_compatible(six.BytesIO()))
+            self.upload_input_manager.is_compatible(BytesIO()))
 
     def test_not_compatible_for_non_filelike_obj(self):
         self.assertFalse(self.upload_input_manager.is_compatible(object()))
@@ -337,7 +336,7 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
 
 class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
     def setUp(self):
-        super(TestUploadNonSeekableInputManager, self).setUp()
+        super().setUp()
         self.upload_input_manager = UploadNonSeekableInputManager(
             self.osutil, self.transfer_coordinator)
         self.fileobj = NonSeekableReader(self.content)
@@ -416,7 +415,7 @@ class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
 
 class TestUploadSubmissionTask(BaseSubmissionTaskTest):
     def setUp(self):
-        super(TestUploadSubmissionTask, self).setUp()
+        super().setUp()
         self.tempdir = tempfile.mkdtemp()
         self.filename = os.path.join(self.tempdir, 'myfile')
         self.content = b'0' * (MIN_UPLOAD_CHUNKSIZE * 3)
@@ -450,7 +449,7 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
             UploadSubmissionTask, main_kwargs=self.submission_main_kwargs)
 
     def tearDown(self):
-        super(TestUploadSubmissionTask, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.tempdir)
 
     def collect_body(self, params, **kwargs):

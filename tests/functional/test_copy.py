@@ -20,7 +20,7 @@ from tests import BaseGeneralInterfaceTest, FileSizeProvider
 
 class BaseCopyTest(BaseGeneralInterfaceTest):
     def setUp(self):
-        super(BaseCopyTest, self).setUp()
+        super().setUp()
         self.config = TransferConfig(
             max_request_concurrency=1,
             multipart_chunksize=MIN_UPLOAD_CHUNKSIZE,
@@ -293,7 +293,7 @@ class TestMultipartCopy(BaseCopyTest):
     __test__ = True
 
     def setUp(self):
-        super(TestMultipartCopy, self).setUp()
+        super().setUp()
         self.config = TransferConfig(
             max_request_concurrency=1, multipart_threshold=1,
             multipart_chunksize=4)

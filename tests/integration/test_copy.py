@@ -17,7 +17,7 @@ from tests.integration import BaseTransferManagerIntegTest
 
 class TestCopy(BaseTransferManagerIntegTest):
     def setUp(self):
-        super(TestCopy, self).setUp()
+        super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = TransferConfig(
             multipart_threshold=self.multipart_threshold)

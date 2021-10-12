@@ -16,7 +16,7 @@ from tests import BaseTaskTest, RecordingSubscriber
 
 class BaseCopyTaskTest(BaseTaskTest):
     def setUp(self):
-        super(BaseCopyTaskTest, self).setUp()
+        super().setUp()
         self.bucket = 'mybucket'
         self.key = 'mykey'
         self.copy_source = {
@@ -85,7 +85,7 @@ class TestCopyObjectTask(BaseCopyTaskTest):
 
 class TestCopyPartTask(BaseCopyTaskTest):
     def setUp(self):
-        super(TestCopyPartTask, self).setUp()
+        super().setUp()
         self.copy_source_range = 'bytes=5-9'
         self.extra_args['CopySourceRange'] = self.copy_source_range
         self.upload_id = 'myuploadid'

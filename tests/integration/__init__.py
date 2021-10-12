@@ -58,7 +58,8 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
         cls.bucket_name = random_bucket_name()
         cls.client.create_bucket(
             Bucket=cls.bucket_name,
-            CreateBucketConfiguration={'LocationConstraint': cls.region})
+            CreateBucketConfiguration={'LocationConstraint': cls.region},
+        )
 
     def setUp(self):
         self.files = FileCreator()
@@ -71,9 +72,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
         recursive_delete(cls.client, cls.bucket_name)
 
     def delete_object(self, key):
-        self.client.delete_object(
-            Bucket=self.bucket_name,
-            Key=key)
+        self.client.delete_object(Bucket=self.bucket_name, Key=key)
 
     def object_exists(self, key, extra_args=None):
         try:
@@ -87,9 +86,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             extra_args = {}
         try:
             self.client.get_waiter('object_not_exists').wait(
-                Bucket=self.bucket_name,
-                Key=key,
-                **extra_args
+                Bucket=self.bucket_name, Key=key, **extra_args
             )
             return True
         except WaiterError:
@@ -100,9 +97,7 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             extra_args = {}
         for _ in range(5):
             self.client.get_waiter('object_exists').wait(
-                Bucket=self.bucket_name,
-                Key=key,
-                **extra_args
+                Bucket=self.bucket_name, Key=key, **extra_args
             )
 
     def create_transfer_manager(self, config=None):

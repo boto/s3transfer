@@ -45,29 +45,35 @@ class TestTransferCoordinatorController(unittest.TestCase):
         transfer_coordinator = TransferCoordinator()
         # Add the transfer coordinator
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         # Ensure that is tracked.
         self.assertEqual(
             self.coordinator_controller.tracked_transfer_coordinators,
-            {transfer_coordinator})
+            {transfer_coordinator},
+        )
 
     def test_remove_transfer_coordinator(self):
         transfer_coordinator = TransferCoordinator()
         # Add the coordinator
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         # Now remove the coordinator
         self.coordinator_controller.remove_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         # Make sure that it is no longer getting tracked.
         self.assertEqual(
-            self.coordinator_controller.tracked_transfer_coordinators, set())
+            self.coordinator_controller.tracked_transfer_coordinators, set()
+        )
 
     def test_cancel(self):
         transfer_coordinator = TransferCoordinator()
         # Add the transfer coordinator
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         # Cancel with the canceler
         self.coordinator_controller.cancel()
         # Check that coordinator got canceled
@@ -77,7 +83,8 @@ class TestTransferCoordinatorController(unittest.TestCase):
         message = 'my cancel message'
         transfer_coordinator = TransferCoordinator()
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         self.coordinator_controller.cancel(message)
         transfer_coordinator.announce_done()
         with self.assertRaisesRegex(CancelledError, message):
@@ -87,7 +94,8 @@ class TestTransferCoordinatorController(unittest.TestCase):
         message = 'my cancel message'
         transfer_coordinator = TransferCoordinator()
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
         self.coordinator_controller.cancel(message, exc_type=FatalError)
         transfer_coordinator.announce_done()
         with self.assertRaisesRegex(FatalError, message):
@@ -97,7 +105,8 @@ class TestTransferCoordinatorController(unittest.TestCase):
         # Create a coordinator and add it to the canceler
         transfer_coordinator = TransferCoordinator()
         self.coordinator_controller.add_transfer_coordinator(
-            transfer_coordinator)
+            transfer_coordinator
+        )
 
         sleep_time = 0.02
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -105,8 +114,8 @@ class TestTransferCoordinatorController(unittest.TestCase):
             # to done after sleeping.
             start_time = time.time()
             executor.submit(
-                self.sleep_then_announce_done, transfer_coordinator,
-                sleep_time)
+                self.sleep_then_announce_done, transfer_coordinator, sleep_time
+            )
             # Now call wait to wait for the transfer coordinator to be done.
             self.coordinator_controller.wait()
             end_time = time.time()
@@ -128,6 +137,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
     def test_wait_can_be_interrupted(self):
         inject_interrupt_coordinator = TransferCoordinatorWithInterrupt()
         self.coordinator_controller.add_transfer_coordinator(
-            inject_interrupt_coordinator)
+            inject_interrupt_coordinator
+        )
         with self.assertRaises(KeyboardInterrupt):
             self.coordinator_controller.wait()

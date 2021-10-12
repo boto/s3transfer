@@ -20,21 +20,21 @@ class TestCopy(BaseTransferManagerIntegTest):
         super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = TransferConfig(
-            multipart_threshold=self.multipart_threshold)
+            multipart_threshold=self.multipart_threshold
+        )
 
     def test_copy_below_threshold(self):
         transfer_manager = self.create_transfer_manager(self.config)
         key = '1mb.txt'
         new_key = '1mb-copy.txt'
 
-        filename = self.files.create_file_with_size(
-            key, filesize=1024 * 1024)
+        filename = self.files.create_file_with_size(key, filesize=1024 * 1024)
         self.upload_file(filename, key)
 
         future = transfer_manager.copy(
             copy_source={'Bucket': self.bucket_name, 'Key': key},
             bucket=self.bucket_name,
-            key=new_key
+            key=new_key,
         )
 
         future.result()
@@ -46,13 +46,14 @@ class TestCopy(BaseTransferManagerIntegTest):
         new_key = '20mb-copy.txt'
 
         filename = self.files.create_file_with_size(
-            key, filesize=20 * 1024 * 1024)
+            key, filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, key)
 
         future = transfer_manager.copy(
             copy_source={'Bucket': self.bucket_name, 'Key': key},
             bucket=self.bucket_name,
-            key=new_key
+            key=new_key,
         )
 
         future.result()
@@ -65,14 +66,15 @@ class TestCopy(BaseTransferManagerIntegTest):
         new_key = '20mb-copy.txt'
 
         filename = self.files.create_file_with_size(
-            key, filesize=20 * 1024 * 1024)
+            key, filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, key)
 
         future = transfer_manager.copy(
             copy_source={'Bucket': self.bucket_name, 'Key': key},
             bucket=self.bucket_name,
             key=new_key,
-            subscribers=[subscriber]
+            subscribers=[subscriber],
         )
 
         future.result()

@@ -46,6 +46,7 @@ ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
 # Detect if CRT is available for use
 try:
     import awscrt.s3  # noqa: F401
+
     HAS_CRT = True
 except ImportError:
     HAS_CRT = False
@@ -72,7 +73,9 @@ def assert_files_equal(first, second):
     if first_md5 != second_md5:
         raise AssertionError(
             "Files are not equal: {}(md5={}) != {}(md5={})".format(
-                first, first_md5, second, second_md5))
+                first, first_md5, second, second_md5
+            )
+        )
 
 
 def md5_checksum(filename):
@@ -99,17 +102,21 @@ def skip_if_windows(reason):
             self.assertEqual(...)
 
     """
+
     def decorator(func):
         return unittest.skipIf(
-            platform.system() not in ['Darwin', 'Linux'], reason)(func)
+            platform.system() not in ['Darwin', 'Linux'], reason
+        )(func)
+
     return decorator
 
 
 def skip_if_using_serial_implementation(reason):
     """Decorator to skip tests when running as the serial implementation"""
+
     def decorator(func):
-        return unittest.skipIf(
-            is_serial_implementation(), reason)(func)
+        return unittest.skipIf(is_serial_implementation(), reason)(func)
+
     return decorator
 
 
@@ -214,8 +221,7 @@ class RecordingOSUtils(OSUtils):
 
     def rename_file(self, current_filename, new_filename):
         self.rename_records.append((current_filename, new_filename))
-        super().rename_file(
-            current_filename, new_filename)
+        super().rename_file(current_filename, new_filename)
 
 
 class RecordingSubscriber(BaseSubscriber):
@@ -266,13 +272,7 @@ class RecordingExecutor:
 
     def submit(self, task, tag=None, block=True):
         future = self._executor.submit(task, tag, block)
-        self.submissions.append(
-            {
-                'task': task,
-                'tag': tag,
-                'block': block
-            }
-        )
+        self.submissions.append({'task': task, 'tag': tag, 'block': block})
         return future
 
     def shutdown(self):
@@ -284,8 +284,11 @@ class StubbedClientTest(unittest.TestCase):
         self.session = botocore.session.get_session()
         self.region = 'us-west-2'
         self.client = self.session.create_client(
-            's3', self.region, aws_access_key_id='foo',
-            aws_secret_access_key='bar')
+            's3',
+            self.region,
+            aws_access_key_id='foo',
+            aws_secret_access_key='bar',
+        )
         self.stubber = Stubber(self.client)
         self.stubber.activate()
 
@@ -297,7 +300,7 @@ class StubbedClientTest(unittest.TestCase):
             'service_name': 's3',
             'region_name': self.region,
             'aws_access_key_id': 'foo',
-            'aws_secret_access_key': 'bar'
+            'aws_secret_access_key': 'bar',
         }
         client_kwargs.update(override_client_kwargs)
         self.client = self.session.create_client(**client_kwargs)
@@ -317,8 +320,7 @@ class BaseTaskTest(StubbedClientTest):
 
     def get_transfer_future(self, call_args=None):
         return TransferFuture(
-            meta=TransferMeta(call_args),
-            coordinator=self.transfer_coordinator
+            meta=TransferMeta(call_args), coordinator=self.transfer_coordinator
         )
 
 
@@ -332,8 +334,8 @@ class BaseSubmissionTaskTest(BaseTaskTest):
             1,
             {
                 IN_MEMORY_UPLOAD_TAG: TaskSemaphore(10),
-                IN_MEMORY_DOWNLOAD_TAG: SlidingWindowSemaphore(10)
-            }
+                IN_MEMORY_DOWNLOAD_TAG: SlidingWindowSemaphore(10),
+            },
         )
 
     def tearDown(self):
@@ -348,6 +350,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
     the various tests that all TransferManager method must pass from a
     functionality standpoint.
     """
+
     __test__ = False
 
     def manager(self):
@@ -366,7 +369,8 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
     def create_invalid_extra_args(self):
         """A value for extra_args that will cause validation errors"""
         raise NotImplementedError(
-            'create_invalid_extra_args is not implemented')
+            'create_invalid_extra_args is not implemented'
+        )
 
     def create_stubbed_responses(self):
         """A list of stubbed responses that will cause the request to succeed
@@ -377,7 +381,8 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
             [{'method': 'put_object', 'service_response': {}}]
         """
         raise NotImplementedError(
-            'create_stubbed_responses is not implemented')
+            'create_stubbed_responses is not implemented'
+        )
 
     def create_expected_progress_callback_info(self):
         """A list of kwargs expected to be passed to each progress callback
@@ -397,7 +402,8 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         values.
         """
         raise NotImplementedError(
-            'create_expected_progress_callback_info is not implemented')
+            'create_expected_progress_callback_info is not implemented'
+        )
 
     def _setup_default_stubbed_responses(self):
         for stubbed_response in self.create_stubbed_responses():
@@ -454,7 +460,7 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
         with self.assertRaisesRegex(ValueError, 'Invalid extra_args'):
             self.method(
                 extra_args=self.create_invalid_extra_args(),
-                **self.create_call_kwargs()
+                **self.create_call_kwargs(),
             )
 
     def test_for_callback_kwargs_correctness(self):
@@ -463,7 +469,8 @@ class BaseGeneralInterfaceTest(StubbedClientTest):
 
         subscriber = RecordingSubscriber()
         future = self.method(
-            subscribers=[subscriber], **self.create_call_kwargs())
+            subscribers=[subscriber], **self.create_call_kwargs()
+        )
         # We call shutdown instead of result on future because the future
         # could be finished but the done callback could still be going.
         # The manager's shutdown method ensures everything completes.

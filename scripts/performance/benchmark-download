@@ -57,8 +57,7 @@ def human_readable_to_bytes(value):
         suffix = value[-3:].lower()
     else:
         suffix = value[-2:].lower()
-    has_size_identifier = (
-        len(value) >= 2 and suffix in SIZE_SUFFIX)
+    has_size_identifier = len(value) >= 2 and suffix in SIZE_SUFFIX
     if not has_size_identifier:
         try:
             return int(value)
@@ -66,7 +65,7 @@ def human_readable_to_bytes(value):
             raise ValueError("Invalid size value: %s" % value)
     else:
         multiplier = SIZE_SUFFIX[suffix]
-        return int(value[:-len(suffix)]) * multiplier
+        return int(value[: -len(suffix)]) * multiplier
 
 
 def create_file(filename, file_size):
@@ -81,8 +80,7 @@ def benchmark_download(args):
     temp_file = os.path.join(tempdir, TEMP_FILE)
 
     if args.target_download:
-        temp_file = os.path.abspath(
-            os.path.expanduser(args.target_download))
+        temp_file = os.path.abspath(os.path.expanduser(args.target_download))
     session = get_session()
     client = session.create_client('s3')
     s3_key = args.existing_s3_key
@@ -99,8 +97,7 @@ def benchmark_download(args):
 
         download_file_script = (
             './download-file --file-name %s --file-type %s --s3-bucket %s '
-            '--s3-key %s' % (
-                temp_file, args.file_type, args.s3_bucket, s3_key)
+            '--s3-key %s' % (temp_file, args.file_type, args.s3_bucket, s3_key)
         )
         benchmark_args = ['./benchmark', download_file_script]
         if args.output_file:
@@ -121,39 +118,45 @@ def main():
     parser = argparse.ArgumentParser()
     file_group = parser.add_mutually_exclusive_group(required=True)
     file_group.add_argument(
-        '--file-size', type=human_readable_to_bytes,
+        '--file-size',
+        type=human_readable_to_bytes,
         help=(
             'The size of the temporary file to create and then upload to s3. '
             'You can also specify your own key with --existing-s3-key to '
             'avoid going through this setup step.'
-        )
+        ),
     )
     parser.add_argument(
-        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
-        required=True, help='The way to represent the file when downloading')
+        '--file-type',
+        choices=['filename', 'seekable', 'nonseekable'],
+        required=True,
+        help='The way to represent the file when downloading',
+    )
     parser.add_argument(
-        '--s3-bucket', required=True,
-        help='The S3 bucket to download the file to')
+        '--s3-bucket',
+        required=True,
+        help='The S3 bucket to download the file to',
+    )
     file_group.add_argument(
         '--existing-s3-key',
         help=(
             'The existing s3 key to download from. You can also use '
             '--file-size to create a temporary file and key to download from.'
-        )
+        ),
     )
     parser.add_argument(
         '--target-download',
         help=(
             'The filename to download to. Note that this file will '
             'always be cleaned up for you.'
-        )
+        ),
     )
     parser.add_argument(
         '--output-file',
         help=(
             'The file to output the data collected to. The default '
             'location performance.csv'
-        )
+        ),
     )
     args = parser.parse_args()
     benchmark_download(args)

@@ -71,13 +71,11 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         return {
             'bucket': self.bucket,
             'key': self.key,
-            'fileobj': self.filename
+            'fileobj': self.filename,
         }
 
     def create_invalid_extra_args(self):
-        return {
-            'Foo': 'bar'
-        }
+        return {'Foo': 'bar'}
 
     def create_stubbed_responses(self):
         # We want to make sure the beginning of the stream is always used
@@ -86,24 +84,18 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         return [
             {
                 'method': 'head_object',
-                'service_response': {
-                    'ContentLength': len(self.content)
-                }
+                'service_response': {'ContentLength': len(self.content)},
             },
             {
                 'method': 'get_object',
-                'service_response': {
-                    'Body': self.stream
-                }
-            }
+                'service_response': {'Body': self.stream},
+            },
         ]
 
     def create_expected_progress_callback_info(self):
         # Note that last read is from the empty sentinel indicating
         # that the stream is done.
-        return [
-            {'bytes_transferred': 10}
-        ]
+        return [{'bytes_transferred': 10}]
 
     def add_head_object_response(self, expected_params=None):
         head_response = self.create_stubbed_responses()[0]
@@ -112,17 +104,21 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         self.stubber.add_response(**head_response)
 
     def add_successful_get_object_responses(
-            self, expected_params=None, expected_ranges=None):
+        self, expected_params=None, expected_ranges=None
+    ):
         # Add all get_object responses needed to complete the download.
         # Should account for both ranged and nonranged downloads.
         for i, stubbed_response in enumerate(
-                self.create_stubbed_responses()[1:]):
+            self.create_stubbed_responses()[1:]
+        ):
             if expected_params:
                 stubbed_response['expected_params'] = copy.deepcopy(
-                    expected_params)
+                    expected_params
+                )
                 if expected_ranges:
                     stubbed_response['expected_params'][
-                        'Range'] = expected_ranges[i]
+                        'Range'
+                    ] = expected_ranges[i]
             self.stubber.add_response(**stubbed_response)
 
     def add_n_retryable_get_object_responses(self, n, num_reads=0):
@@ -131,8 +127,9 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
                 method='get_object',
                 service_response={
                     'Body': StreamWithError(
-                        copy.deepcopy(self.stream), SOCKET_ERROR, num_reads)
-                }
+                        copy.deepcopy(self.stream), SOCKET_ERROR, num_reads
+                    )
+                },
             )
 
     def test_download_temporary_file_does_not_exist(self):
@@ -153,7 +150,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         with open(self.filename, 'wb') as f:
             future = self.manager.download(
-                self.bucket, self.key, f, self.extra_args)
+                self.bucket, self.key, f, self.extra_args
+            )
             future.result()
 
         # Ensure that the contents are correct
@@ -169,7 +167,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         bytes_io = BytesIO()
 
         future = self.manager.download(
-            self.bucket, self.key, bytes_io, self.extra_args)
+            self.bucket, self.key, bytes_io, self.extra_args
+        )
         future.result()
 
         # Ensure that the contents are correct
@@ -182,7 +181,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         with open(self.filename, 'wb') as f:
             future = self.manager.download(
-                self.bucket, self.key, NonSeekableWriter(f), self.extra_args)
+                self.bucket, self.key, NonSeekableWriter(f), self.extra_args
+            )
             future.result()
 
         # Ensure that the contents are correct
@@ -210,7 +210,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         call_kwargs = self.create_call_kwargs()
         call_kwargs['fileobj'] = os.path.join(
-            self.tempdir, 'missing-directory', 'myfile')
+            self.tempdir, 'missing-directory', 'myfile'
+        )
         future = self.manager.download(**call_kwargs)
         with self.assertRaises(IOError):
             future.result()
@@ -264,7 +265,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # currently provide to it to simulate rewinds of callbacks.
         self.config.io_chunksize = 3
         future = self.manager.download(
-            subscribers=[recorder_subscriber], **self.create_call_kwargs())
+            subscribers=[recorder_subscriber], **self.create_call_kwargs()
+        )
         future.result()
 
         # Ensure that there is no more remaining responses and that contents
@@ -276,14 +278,15 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # Assert that the number of bytes seen is equal to the length of
         # downloaded content.
         self.assertEqual(
-            recorder_subscriber.calculate_bytes_seen(), len(self.content))
+            recorder_subscriber.calculate_bytes_seen(), len(self.content)
+        )
 
         # Also ensure that the second progress invocation was negative three
         # because a retry happened on the second read of the stream and we
         # know that the chunk size for each read is 3.
         progress_byte_amts = [
-            call['bytes_transferred'] for call in
-            recorder_subscriber.on_progress_calls
+            call['bytes_transferred']
+            for call in recorder_subscriber.on_progress_calls
         ]
         self.assertEqual(-3, progress_byte_amts[1])
 
@@ -320,7 +323,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
     @skip_if_windows('Windows does not support UNIX special files')
     @skip_if_using_serial_implementation(
-        'A separate thread is needed to read from the fifo')
+        'A separate thread is needed to read from the fifo'
+    )
     def test_download_for_fifo_file(self):
         self.add_head_object_response()
         self.add_successful_get_object_responses()
@@ -329,7 +333,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         os.mkfifo(self.filename)
 
         future = self.manager.download(
-            self.bucket, self.key, self.filename, self.extra_args)
+            self.bucket, self.key, self.filename, self.extra_args
+        )
 
         # The call to open a fifo will block until there is both a reader
         # and a writer, so we need to open it for reading after we've
@@ -345,7 +350,8 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         )
         with self.assertRaisesRegex(ValueError, 'methods do not support'):
             self.manager.download(
-                s3_object_lambda_arn, self.key, self.filename, self.extra_args)
+                s3_object_lambda_arn, self.key, self.filename, self.extra_args
+            )
 
 
 class TestNonRangedDownload(BaseDownloadTest):
@@ -361,12 +367,13 @@ class TestNonRangedDownload(BaseDownloadTest):
         expected_params = {
             'Bucket': self.bucket,
             'Key': self.key,
-            'RequestPayer': 'requester'
+            'RequestPayer': 'requester',
         }
         self.add_head_object_response(expected_params)
         self.add_successful_get_object_responses(expected_params)
         future = self.manager.download(
-            self.bucket, self.key, self.filename, self.extra_args)
+            self.bucket, self.key, self.filename, self.extra_args
+        )
         future.result()
 
         # Ensure that the contents are correct
@@ -384,7 +391,8 @@ class TestNonRangedDownload(BaseDownloadTest):
         self.add_head_object_response()
         self.add_successful_get_object_responses()
         future = self.manager.download(
-            self.bucket, self.key, self.filename, self.extra_args)
+            self.bucket, self.key, self.filename, self.extra_args
+        )
         future.result()
 
         # Ensure that the empty file exists
@@ -395,7 +403,8 @@ class TestNonRangedDownload(BaseDownloadTest):
         self.content = b'a' * 1024 * 1024
         self.stream = BytesIO(self.content)
         self.config = TransferConfig(
-            max_request_concurrency=1, max_bandwidth=len(self.content)/2)
+            max_request_concurrency=1, max_bandwidth=len(self.content) / 2
+        )
         self._manager = TransferManager(self.client, self.config)
 
         self.add_head_object_response()
@@ -403,7 +412,8 @@ class TestNonRangedDownload(BaseDownloadTest):
 
         start = time.time()
         future = self.manager.download(
-            self.bucket, self.key, self.filename, self.extra_args)
+            self.bucket, self.key, self.filename, self.extra_args
+        )
         future.result()
         # This is just a smoke test to make sure that the limiter is
         # being used and not necessary its exactness. So we set the maximum
@@ -431,36 +441,30 @@ class TestRangedDownload(BaseDownloadTest):
     def setUp(self):
         super().setUp()
         self.config = TransferConfig(
-            max_request_concurrency=1, multipart_threshold=1,
-            multipart_chunksize=4)
+            max_request_concurrency=1,
+            multipart_threshold=1,
+            multipart_chunksize=4,
+        )
         self._manager = TransferManager(self.client, self.config)
 
     def create_stubbed_responses(self):
         return [
             {
                 'method': 'head_object',
-                'service_response': {
-                    'ContentLength': len(self.content)
-                }
+                'service_response': {'ContentLength': len(self.content)},
             },
             {
                 'method': 'get_object',
-                'service_response': {
-                    'Body': BytesIO(self.content[0:4])
-                }
+                'service_response': {'Body': BytesIO(self.content[0:4])},
             },
             {
                 'method': 'get_object',
-                'service_response': {
-                    'Body': BytesIO(self.content[4:8])
-                }
+                'service_response': {'Body': BytesIO(self.content[4:8])},
             },
             {
                 'method': 'get_object',
-                'service_response': {
-                    'Body': BytesIO(self.content[8:])
-                }
-            }
+                'service_response': {'Body': BytesIO(self.content[8:])},
+            },
         ]
 
     def create_expected_progress_callback_info(self):
@@ -475,15 +479,17 @@ class TestRangedDownload(BaseDownloadTest):
         expected_params = {
             'Bucket': self.bucket,
             'Key': self.key,
-            'RequestPayer': 'requester'
+            'RequestPayer': 'requester',
         }
         expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
         self.add_head_object_response(expected_params)
         self.add_successful_get_object_responses(
-            expected_params, expected_ranges)
+            expected_params, expected_ranges
+        )
 
         future = self.manager.download(
-            self.bucket, self.key, self.filename, self.extra_args)
+            self.bucket, self.key, self.filename, self.extra_args
+        )
         future.result()
 
         # Ensure that the contents are correct

@@ -64,8 +64,10 @@ class TestIgnoreCtrlC(unittest.TestCase):
             try:
                 os.kill(os.getpid(), signal.SIGINT)
             except KeyboardInterrupt:
-                self.fail('The ignore_ctrl_c context manager should have '
-                          'ignored the KeyboardInterrupt exception')
+                self.fail(
+                    'The ignore_ctrl_c context manager should have '
+                    'ignored the KeyboardInterrupt exception'
+                )
 
 
 class TestProcessPoolDownloader(unittest.TestCase):
@@ -73,7 +75,8 @@ class TestProcessPoolDownloader(unittest.TestCase):
         with mock.patch('s3transfer.processpool.ClientFactory') as factory:
             ProcessPoolDownloader(client_kwargs={'region_name': 'myregion'})
             self.assertEqual(
-                factory.call_args[0][0], {'region_name': 'myregion'})
+                factory.call_args[0][0], {'region_name': 'myregion'}
+            )
 
 
 class TestProcessPoolTransferFuture(unittest.TestCase):
@@ -81,9 +84,11 @@ class TestProcessPoolTransferFuture(unittest.TestCase):
         self.monitor = TransferMonitor()
         self.transfer_id = self.monitor.notify_new_transfer()
         self.meta = ProcessPoolTransferMeta(
-            transfer_id=self.transfer_id, call_args=CallArgs())
+            transfer_id=self.transfer_id, call_args=CallArgs()
+        )
         self.future = ProcessPoolTransferFuture(
-            monitor=self.monitor, meta=self.meta)
+            monitor=self.monitor, meta=self.meta
+        )
 
     def test_meta(self):
         self.assertEqual(self.future.meta, self.meta)
@@ -108,7 +113,8 @@ class TestProcessPoolTransferFuture(unittest.TestCase):
         mock_monitor._connect = mock.Mock()
         mock_monitor.poll_for_result.side_effect = KeyboardInterrupt()
         future = ProcessPoolTransferFuture(
-            monitor=mock_monitor, meta=self.meta)
+            monitor=mock_monitor, meta=self.meta
+        )
         with self.assertRaises(KeyboardInterrupt):
             future.result()
         self.assertTrue(mock_monitor._connect.called)
@@ -187,7 +193,8 @@ class TestTransferMonitor(unittest.TestCase):
         exception = Exception()
         self.monitor.notify_exception(self.transfer_id, exception)
         self.assertEqual(
-            self.monitor.get_exception(self.transfer_id), exception)
+            self.monitor.get_exception(self.transfer_id), exception
+        )
 
     def test_get_no_exception(self):
         self.assertIsNone(self.monitor.get_exception(self.transfer_id))
@@ -203,7 +210,8 @@ class TestTransferMonitor(unittest.TestCase):
         self.monitor.notify_expected_jobs_to_complete(other_transfer_id, 2)
         self.assertEqual(self.monitor.notify_job_complete(self.transfer_id), 1)
         self.assertEqual(
-            self.monitor.notify_job_complete(other_transfer_id), 1)
+            self.monitor.notify_job_complete(other_transfer_id), 1
+        )
 
     def test_done(self):
         self.assertFalse(self.monitor.is_done(self.transfer_id))
@@ -243,7 +251,8 @@ class TestTransferMonitor(unittest.TestCase):
         monitor.notify_cancel_all_in_progress()
         for transfer_id in transfer_ids:
             self.assertIsInstance(
-                monitor.get_exception(transfer_id), CancelledError)
+                monitor.get_exception(transfer_id), CancelledError
+            )
             # Cancelling a transfer does not mean it is done as there may
             # be cleanup work left to do.
             self.assertFalse(monitor.is_done(transfer_id))
@@ -327,7 +336,7 @@ class TestGetObjectSubmitter(StubbedClientTest):
             'key': self.key,
             'filename': self.filename,
             'extra_args': self.extra_args,
-            'expected_size': self.expected_size
+            'expected_size': self.expected_size,
         }
         kwargs.update(override_kwargs)
         self.download_request_queue.put(DownloadFileRequest(**kwargs))
@@ -346,17 +355,19 @@ class TestGetObjectSubmitter(StubbedClientTest):
         self.add_shutdown()
         self.submitter.run()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
-        self.assert_submitted_get_object_jobs([
-            GetObjectJob(
-                transfer_id=self.transfer_id,
-                bucket=self.bucket,
-                key=self.key,
-                temp_filename=self.temp_filename,
-                offset=0,
-                extra_args={},
-                filename=self.filename,
-            )
-        ])
+        self.assert_submitted_get_object_jobs(
+            [
+                GetObjectJob(
+                    transfer_id=self.transfer_id,
+                    bucket=self.bucket,
+                    key=self.key,
+                    temp_filename=self.temp_filename,
+                    offset=0,
+                    extra_args={},
+                    filename=self.filename,
+                )
+            ]
+        )
 
     def test_run_for_ranged_download(self):
         self.transfer_config.multipart_chunksize = 2
@@ -365,80 +376,84 @@ class TestGetObjectSubmitter(StubbedClientTest):
         self.add_shutdown()
         self.submitter.run()
         self.osutil.allocate.assert_called_with(self.temp_filename, 4)
-        self.assert_submitted_get_object_jobs([
-            GetObjectJob(
-                transfer_id=self.transfer_id,
-                bucket=self.bucket,
-                key=self.key,
-                temp_filename=self.temp_filename,
-                offset=0,
-                extra_args={'Range': 'bytes=0-1'},
-                filename=self.filename,
-            ),
-            GetObjectJob(
-                transfer_id=self.transfer_id,
-                bucket=self.bucket,
-                key=self.key,
-                temp_filename=self.temp_filename,
-                offset=2,
-                extra_args={'Range': 'bytes=2-'},
-                filename=self.filename,
-            ),
-        ])
+        self.assert_submitted_get_object_jobs(
+            [
+                GetObjectJob(
+                    transfer_id=self.transfer_id,
+                    bucket=self.bucket,
+                    key=self.key,
+                    temp_filename=self.temp_filename,
+                    offset=0,
+                    extra_args={'Range': 'bytes=0-1'},
+                    filename=self.filename,
+                ),
+                GetObjectJob(
+                    transfer_id=self.transfer_id,
+                    bucket=self.bucket,
+                    key=self.key,
+                    temp_filename=self.temp_filename,
+                    offset=2,
+                    extra_args={'Range': 'bytes=2-'},
+                    filename=self.filename,
+                ),
+            ]
+        )
 
     def test_run_when_expected_size_not_provided(self):
         self.stubber.add_response(
-            'head_object', {'ContentLength': 1},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key
-            }
+            'head_object',
+            {'ContentLength': 1},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         self.add_download_file_request(expected_size=None)
         self.add_shutdown()
         self.submitter.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
-        self.assert_submitted_get_object_jobs([
-            GetObjectJob(
-                transfer_id=self.transfer_id,
-                bucket=self.bucket,
-                key=self.key,
-                temp_filename=self.temp_filename,
-                offset=0,
-                extra_args={},
-                filename=self.filename,
-            )
-        ])
+        self.assert_submitted_get_object_jobs(
+            [
+                GetObjectJob(
+                    transfer_id=self.transfer_id,
+                    bucket=self.bucket,
+                    key=self.key,
+                    temp_filename=self.temp_filename,
+                    offset=0,
+                    extra_args={},
+                    filename=self.filename,
+                )
+            ]
+        )
 
     def test_run_with_extra_args(self):
         self.stubber.add_response(
-            'head_object', {'ContentLength': 1},
+            'head_object',
+            {'ContentLength': 1},
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'VersionId': 'versionid'
-            }
+                'VersionId': 'versionid',
+            },
         )
         self.add_download_file_request(
-            extra_args={'VersionId': 'versionid'},
-            expected_size=None
+            extra_args={'VersionId': 'versionid'}, expected_size=None
         )
         self.add_shutdown()
         self.submitter.run()
         self.stubber.assert_no_pending_responses()
         self.osutil.allocate.assert_called_with(self.temp_filename, 1)
-        self.assert_submitted_get_object_jobs([
-            GetObjectJob(
-                transfer_id=self.transfer_id,
-                bucket=self.bucket,
-                key=self.key,
-                temp_filename=self.temp_filename,
-                offset=0,
-                extra_args={'VersionId': 'versionid'},
-                filename=self.filename,
-            )
-        ])
+        self.assert_submitted_get_object_jobs(
+            [
+                GetObjectJob(
+                    transfer_id=self.transfer_id,
+                    bucket=self.bucket,
+                    key=self.key,
+                    temp_filename=self.temp_filename,
+                    offset=0,
+                    extra_args={'VersionId': 'versionid'},
+                    filename=self.filename,
+                )
+            ]
+        )
 
     def test_run_with_exception(self):
         self.stubber.add_client_error('head_object', 'NoSuchKey', 404)
@@ -448,7 +463,8 @@ class TestGetObjectSubmitter(StubbedClientTest):
         self.stubber.assert_no_pending_responses()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(
-            self.transfer_monitor.get_exception(self.transfer_id), ClientError)
+            self.transfer_monitor.get_exception(self.transfer_id), ClientError
+        )
 
     def test_run_with_error_in_allocating_temp_file(self):
         self.osutil.allocate.side_effect = OSError()
@@ -457,7 +473,8 @@ class TestGetObjectSubmitter(StubbedClientTest):
         self.submitter.run()
         self.assert_submitted_get_object_jobs([])
         self.assertIsInstance(
-            self.transfer_monitor.get_exception(self.transfer_id), OSError)
+            self.transfer_monitor.get_exception(self.transfer_id), OSError
+        )
 
     @skip_if_windows('os.kill() with SIGINT not supported on Windows')
     def test_submitter_cannot_be_killed(self):
@@ -493,7 +510,7 @@ class TestGetObjectWorker(StubbedClientTest):
             queue=self.queue,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
-            osutil=self.osutil
+            osutil=self.osutil,
         )
         self.transfer_id = self.transfer_monitor.notify_new_transfer()
         self.bucket = 'bucket'
@@ -505,7 +522,8 @@ class TestGetObjectWorker(StubbedClientTest):
         self.final_filename = self.files.full_path('final_filename')
         self.stream = BytesIO(self.remote_contents)
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1000)
+            self.transfer_id, 1000
+        )
 
     def tearDown(self):
         super().tearDown()
@@ -519,7 +537,7 @@ class TestGetObjectWorker(StubbedClientTest):
             'temp_filename': self.temp_filename,
             'extra_args': self.extra_args,
             'offset': self.offset,
-            'filename': self.final_filename
+            'filename': self.final_filename,
         }
         kwargs.update(override_kwargs)
         self.queue.put(GetObjectJob(**kwargs))
@@ -533,13 +551,11 @@ class TestGetObjectWorker(StubbedClientTest):
         get_object_response = {'Body': body}
 
         if expected_params is None:
-            expected_params = {
-                'Bucket': self.bucket,
-                'Key': self.key
-            }
+            expected_params = {'Bucket': self.bucket, 'Key': self.key}
 
         self.stubber.add_response(
-            'get_object', get_object_response, expected_params)
+            'get_object', get_object_response, expected_params
+        )
 
     def assert_contents(self, filename, contents):
         self.assertTrue(os.path.exists(filename))
@@ -554,7 +570,8 @@ class TestGetObjectWorker(StubbedClientTest):
         self.add_shutdown()
         self.add_stubbed_get_object_response()
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1)
+            self.transfer_id, 1
+        )
 
         self.worker.run()
         self.stubber.assert_no_pending_responses()
@@ -566,7 +583,8 @@ class TestGetObjectWorker(StubbedClientTest):
         self.add_shutdown()
         self.add_stubbed_get_object_response()
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1000)
+            self.transfer_id, 1000
+        )
 
         self.worker.run()
         self.stubber.assert_no_pending_responses()
@@ -580,7 +598,7 @@ class TestGetObjectWorker(StubbedClientTest):
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'VersionId': 'versionid'
+                'VersionId': 'versionid',
             }
         )
 
@@ -606,14 +624,17 @@ class TestGetObjectWorker(StubbedClientTest):
 
         self.worker.run()
         self.assertIsInstance(
-            self.transfer_monitor.get_exception(self.transfer_id), ClientError)
+            self.transfer_monitor.get_exception(self.transfer_id), ClientError
+        )
 
     def test_run_does_retries_for_get_object(self):
         self.add_get_object_job()
         self.add_shutdown()
         self.add_stubbed_get_object_response(
             body=StreamWithError(
-                self.stream, ReadTimeoutError(endpoint_url='')))
+                self.stream, ReadTimeoutError(endpoint_url='')
+            )
+        )
         self.add_stubbed_get_object_response()
 
         self.worker.run()
@@ -627,13 +648,15 @@ class TestGetObjectWorker(StubbedClientTest):
         for _ in range(5):
             self.add_stubbed_get_object_response(
                 body=StreamWithError(
-                    self.stream, ReadTimeoutError(endpoint_url='')))
+                    self.stream, ReadTimeoutError(endpoint_url='')
+                )
+            )
 
         self.worker.run()
         self.stubber.assert_no_pending_responses()
         self.assertIsInstance(
             self.transfer_monitor.get_exception(self.transfer_id),
-            RetriesExceededError
+            RetriesExceededError,
         )
 
     def test_run_skips_get_object_on_previous_exception(self):
@@ -650,7 +673,8 @@ class TestGetObjectWorker(StubbedClientTest):
         self.add_shutdown()
         self.transfer_monitor.notify_exception(self.transfer_id, Exception())
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1)
+            self.transfer_id, 1
+        )
 
         self.worker.run()
         self.stubber.assert_no_pending_responses()
@@ -664,17 +688,19 @@ class TestGetObjectWorker(StubbedClientTest):
             queue=self.queue,
             client_factory=self.client_factory,
             transfer_monitor=self.transfer_monitor,
-            osutil=osutil
+            osutil=osutil,
         )
         self.add_get_object_job()
         self.add_shutdown()
         self.add_stubbed_get_object_response()
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1)
+            self.transfer_id, 1
+        )
 
         self.worker.run()
         self.assertEqual(
-            self.transfer_monitor.get_exception(self.transfer_id), exception)
+            self.transfer_monitor.get_exception(self.transfer_id), exception
+        )
         self.assert_does_not_exist(self.temp_filename)
         self.assert_does_not_exist(self.final_filename)
 
@@ -683,7 +709,8 @@ class TestGetObjectWorker(StubbedClientTest):
         self.add_get_object_job()
         self.add_shutdown()
         self.transfer_monitor.notify_expected_jobs_to_complete(
-            self.transfer_id, 1)
+            self.transfer_id, 1
+        )
 
         def raise_ctrl_c(**kwargs):
             os.kill(os.getpid(), signal.SIGINT)

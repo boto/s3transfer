@@ -54,7 +54,8 @@ class TestSubscribers(unittest.TestCase):
         except Exception as e:
             self.fail(
                 'Should be able to call base class subscriber method. '
-                'instead got: %s' % e)
+                'instead got: %s' % e
+            )
 
     def test_subclass_can_have_and_call_additional_methods(self):
         subscriber = ExtraMethodsSubscriber()
@@ -79,10 +80,12 @@ class TestSubscribers(unittest.TestCase):
 
     def test_not_callable_in_subclass_subscriber_method(self):
         with self.assertRaisesRegex(
-                InvalidSubscriberMethodError, 'must be callable'):
+            InvalidSubscriberMethodError, 'must be callable'
+        ):
             NotCallableSubscriber()
 
     def test_no_kwargs_in_subclass_subscriber_method(self):
         with self.assertRaisesRegex(
-                InvalidSubscriberMethodError, 'must accept keyword'):
+            InvalidSubscriberMethodError, 'must accept keyword'
+        ):
             NoKwargsSubscriber()

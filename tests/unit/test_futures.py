@@ -180,7 +180,8 @@ class TestTransferCoordinator(unittest.TestCase):
     def test_repr(self):
         transfer_coordinator = TransferCoordinator(transfer_id=1)
         self.assertEqual(
-            repr(transfer_coordinator), 'TransferCoordinator(transfer_id=1)')
+            repr(transfer_coordinator), 'TransferCoordinator(transfer_id=1)'
+        )
 
     def test_initial_status(self):
         # A TransferCoordinator with no progress should have the status
@@ -258,7 +259,8 @@ class TestTransferCoordinator(unittest.TestCase):
 
         self.assertEqual(self.transfer_coordinator.status, 'not-started')
         self.transfer_coordinator.add_done_callback(
-            capture_exception, self.transfer_coordinator, exceptions)
+            capture_exception, self.transfer_coordinator, exceptions
+        )
         self.transfer_coordinator.cancel()
 
         self.assertEqual(len(exceptions), 1)
@@ -297,7 +299,8 @@ class TestTransferCoordinator(unittest.TestCase):
         # Submit a callable to the transfer coordinator. It should submit it
         # to the executor.
         executor = RecordingExecutor(
-            BoundedExecutor(1, 1, {'my-tag': TaskSemaphore(1)}))
+            BoundedExecutor(1, 1, {'my-tag': TaskSemaphore(1)})
+        )
         task = ReturnFooTask(self.transfer_coordinator)
         future = self.transfer_coordinator.submit(executor, task, tag='my-tag')
         executor.shutdown()
@@ -305,7 +308,7 @@ class TestTransferCoordinator(unittest.TestCase):
         # result value which should include the provided future tag.
         self.assertEqual(
             executor.submissions,
-            [{'block': True, 'tag': 'my-tag', 'task': task}]
+            [{'block': True, 'tag': 'my-tag', 'task': task}],
         )
         self.assertEqual(future.result(), 'foo')
 
@@ -322,13 +325,12 @@ class TestTransferCoordinator(unittest.TestCase):
         # transfer future at some point.
         self.assertEqual(
             self.transfer_coordinator.all_transfer_futures_ever_associated,
-            {future}
+            {future},
         )
 
         # Make sure the future got disassociated once the future is now done
         # by looking at the currently associated futures.
-        self.assertEqual(
-            self.transfer_coordinator.associated_futures, set())
+        self.assertEqual(self.transfer_coordinator.associated_futures, set())
 
     def test_done(self):
         # These should result in not done state:
@@ -362,8 +364,10 @@ class TestTransferCoordinator(unittest.TestCase):
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             executor.submit(
-                sleep_then_set_result, self.transfer_coordinator,
-                execution_order)
+                sleep_then_set_result,
+                self.transfer_coordinator,
+                execution_order,
+            )
             self.transfer_coordinator.result()
             execution_order.append('after_result')
 
@@ -379,9 +383,11 @@ class TestTransferCoordinator(unittest.TestCase):
         second_kwargs = {'biz': 'baz'}
 
         self.transfer_coordinator.add_failure_cleanup(
-            return_call_args, *args, **kwargs)
+            return_call_args, *args, **kwargs
+        )
         self.transfer_coordinator.add_failure_cleanup(
-            return_call_args, *second_args, **second_kwargs)
+            return_call_args, *second_args, **second_kwargs
+        )
 
         # Ensure the callbacks got added.
         self.assertEqual(len(self.transfer_coordinator.failure_cleanups), 2)
@@ -391,7 +397,8 @@ class TestTransferCoordinator(unittest.TestCase):
         for cleanup in self.transfer_coordinator.failure_cleanups:
             result_list.append(cleanup())
         self.assertEqual(
-            result_list, [(args, kwargs), (second_args, second_kwargs)])
+            result_list, [(args, kwargs), (second_args, second_kwargs)]
+        )
 
     def test_associated_futures(self):
         first_future = object()
@@ -411,12 +418,14 @@ class TestTransferCoordinator(unittest.TestCase):
         # Both futures should be in the returned list.
         self.assertEqual(
             self.transfer_coordinator.associated_futures,
-            {first_future, second_future})
+            {first_future, second_future},
+        )
 
     def test_done_callbacks_on_done(self):
         done_callback_invocations = []
         callback = FunctionContainer(
-            done_callback_invocations.append, 'done callback called')
+            done_callback_invocations.append, 'done callback called'
+        )
 
         # Add the done callback to the transfer.
         self.transfer_coordinator.add_done_callback(callback)
@@ -435,7 +444,8 @@ class TestTransferCoordinator(unittest.TestCase):
     def test_failure_cleanups_on_done(self):
         cleanup_invocations = []
         callback = FunctionContainer(
-            cleanup_invocations.append, 'cleanup called')
+            cleanup_invocations.append, 'cleanup called'
+        )
 
         # Add the failure cleanup to the transfer.
         self.transfer_coordinator.add_failure_cleanup(callback)
@@ -500,7 +510,7 @@ class TestBoundedExecutor(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('USE_SERIAL_EXECUTOR'),
-        "Not supported with serial executor tests"
+        "Not supported with serial executor tests",
     )
     def test_executor_blocks_on_full_capacity(self):
         first_task = self.get_sleep_task()
@@ -523,14 +533,15 @@ class TestBoundedExecutor(unittest.TestCase):
         # blocked because the first task should have finished clearing up
         # capacity.
         self.add_done_callback_to_future(
-            future, self.assert_submit_would_not_block, second_task)
+            future, self.assert_submit_would_not_block, second_task
+        )
 
         # Wait for it to complete.
         self.executor.shutdown()
 
     @unittest.skipIf(
         os.environ.get('USE_SERIAL_EXECUTOR'),
-        "Not supported with serial executor tests"
+        "Not supported with serial executor tests",
     )
     def test_would_not_block_when_full_capacity_in_other_semaphore(self):
         first_task = self.get_sleep_task()
@@ -562,7 +573,7 @@ class TestBoundedExecutor(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('USE_SERIAL_EXECUTOR'),
-        "Not supported with serial executor tests"
+        "Not supported with serial executor tests",
     )
     def test_shutdown_no_wait(self):
         slow_task = self.get_sleep_task()
@@ -598,7 +609,8 @@ class TestExecutorFuture(unittest.TestCase):
             future = executor.submit(return_call_args, 'foo', biz='baz')
             wrapped_future = ExecutorFuture(future)
             wrapped_future.add_done_callback(
-                FunctionContainer(done_callbacks.append, 'called'))
+                FunctionContainer(done_callbacks.append, 'called')
+            )
         self.assertEqual(done_callbacks, ['called'])
 
 

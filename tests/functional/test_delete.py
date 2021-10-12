@@ -49,18 +49,21 @@ class TestDeleteObject(BaseGeneralInterfaceTest):
 
             [{'method': 'put_object', 'service_response': {}}]
         """
-        return [{
-            'method': 'delete_object',
-            'service_response': {},
-            'expected_params': {'Bucket': self.bucket, 'Key': self.key},
-        }]
+        return [
+            {
+                'method': 'delete_object',
+                'service_response': {},
+                'expected_params': {'Bucket': self.bucket, 'Key': self.key},
+            }
+        ]
 
     def create_expected_progress_callback_info(self):
         return []
 
     def test_known_allowed_args_in_input_shape(self):
         op_model = self.client.meta.service_model.operation_model(
-            'DeleteObject')
+            'DeleteObject'
+        )
         for allowed_arg in self.manager.ALLOWED_DELETE_ARGS:
             self.assertIn(allowed_arg, op_model.input_shape.members)
 

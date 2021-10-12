@@ -32,7 +32,8 @@ class TestUpload(BaseTransferManagerIntegTest):
         super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = TransferConfig(
-            multipart_threshold=self.multipart_threshold)
+            multipart_threshold=self.multipart_threshold
+        )
 
     def get_input_fileobj(self, size, name=''):
         return self.files.create_file_with_size(name, size)
@@ -49,8 +50,7 @@ class TestUpload(BaseTransferManagerIntegTest):
     def test_upload_above_threshold(self):
         transfer_manager = self.create_transfer_manager(self.config)
         file = self.get_input_fileobj(size=20 * 1024 * 1024, name='20mb.txt')
-        future = transfer_manager.upload(
-            file, self.bucket_name, '20mb.txt')
+        future = transfer_manager.upload(file, self.bucket_name, '20mb.txt')
         self.addCleanup(self.delete_object, '20mb.txt')
 
         future.result()
@@ -66,7 +66,8 @@ class TestUpload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.get_input_fileobj(
-            name='foo.txt', size=20 * 1024 * 1024)
+            name='foo.txt', size=20 * 1024 * 1024
+        )
 
         timeout = 10
         bytes_transferring = threading.Event()
@@ -74,14 +75,17 @@ class TestUpload(BaseTransferManagerIntegTest):
         try:
             with transfer_manager:
                 future = transfer_manager.upload(
-                    filename, self.bucket_name, '20mb.txt',
-                    subscribers=[subscriber]
+                    filename,
+                    self.bucket_name,
+                    '20mb.txt',
+                    subscribers=[subscriber],
                 )
                 if not bytes_transferring.wait(timeout):
                     future.cancel()
                     raise RuntimeError(
                         "Download transfer did not start after waiting for "
-                        "%s seconds." % timeout)
+                        "%s seconds." % timeout
+                    )
                 # Raise an exception which should cause the preceding
                 # download to cancel and exit quickly
                 start_time = time.time()
@@ -95,16 +99,19 @@ class TestUpload(BaseTransferManagerIntegTest):
         max_allowed_exit_time = 5
         actual_time_to_exit = end_time - start_time
         self.assertLess(
-            actual_time_to_exit, max_allowed_exit_time,
+            actual_time_to_exit,
+            max_allowed_exit_time,
             "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, actual_time_to_exit)
+                max_allowed_exit_time, actual_time_to_exit
+            ),
         )
 
         try:
             future.result()
             self.skipTest(
                 'Upload completed before interrupted and therefore '
-                'could not cancel the upload')
+                'could not cancel the upload'
+            )
         except CancelledError as e:
             self.assertEqual(str(e), 'KeyboardInterrupt()')
             # If the transfer did get cancelled,
@@ -132,13 +139,17 @@ class TestUpload(BaseTransferManagerIntegTest):
             filename = 'file' + str(i)
             keynames.append(filename)
             fileobjs.append(
-                self.get_input_fileobj(name=filename, size=1024 * 1024))
+                self.get_input_fileobj(name=filename, size=1024 * 1024)
+            )
 
         try:
             with transfer_manager:
                 for i, fileobj in enumerate(fileobjs):
-                    futures.append(transfer_manager.upload(
-                        fileobj, self.bucket_name, keynames[i]))
+                    futures.append(
+                        transfer_manager.upload(
+                            fileobj, self.bucket_name, keynames[i]
+                        )
+                    )
                 # Raise an exception which should cause the preceding
                 # transfer to cancel and exit quickly
                 start_time = time.time()
@@ -150,9 +161,11 @@ class TestUpload(BaseTransferManagerIntegTest):
         # This means that it should take less than a couple seconds to exit.
         max_allowed_exit_time = 5
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
+            end_time - start_time,
+            max_allowed_exit_time,
             "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time)
+                max_allowed_exit_time, end_time - start_time
+            ),
         )
 
         # Make sure at least one of the futures got cancelled
@@ -168,8 +181,8 @@ class TestUpload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
         file = self.get_input_fileobj(size=20 * 1024 * 1024, name='20mb.txt')
         future = transfer_manager.upload(
-            file, self.bucket_name, '20mb.txt',
-            subscribers=[subscriber])
+            file, self.bucket_name, '20mb.txt', subscribers=[subscriber]
+        )
         self.addCleanup(self.delete_object, '20mb.txt')
 
         future.result()

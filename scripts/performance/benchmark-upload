@@ -55,8 +55,7 @@ def human_readable_to_bytes(value):
         suffix = value[-3:].lower()
     else:
         suffix = value[-2:].lower()
-    has_size_identifier = (
-        len(value) >= 2 and suffix in SIZE_SUFFIX)
+    has_size_identifier = len(value) >= 2 and suffix in SIZE_SUFFIX
     if not has_size_identifier:
         try:
             return int(value)
@@ -64,7 +63,7 @@ def human_readable_to_bytes(value):
             raise ValueError("Invalid size value: %s" % value)
     else:
         multiplier = SIZE_SUFFIX[suffix]
-        return int(value[:-len(suffix)]) * multiplier
+        return int(value[: -len(suffix)]) * multiplier
 
 
 def create_file(filename, file_size):
@@ -88,8 +87,8 @@ def benchmark_upload(args):
 
         upload_file_script = (
             './upload-file --file-name %s --file-type %s --s3-bucket %s '
-            '--s3-key %s' % (
-                source_file, args.file_type, args.s3_bucket, TEMP_KEY)
+            '--s3-key %s'
+            % (source_file, args.file_type, args.s3_bucket, TEMP_KEY)
         )
         benchmark_args = ['./benchmark', upload_file_script]
         if args.output_file:
@@ -109,27 +108,33 @@ def main():
         help=(
             'The local file to upload. Note this is optional. You can also '
             'use --file-size which will create a temporary file for you.'
-        )
+        ),
     )
     source_file_group.add_argument(
-        '--file-size', type=human_readable_to_bytes,
+        '--file-size',
+        type=human_readable_to_bytes,
         help=(
             'The size of the temporary file to create. You can also specify '
             'your own file with --source-file'
-        )
+        ),
     )
     parser.add_argument(
-        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
-        required=True, help='The way to represent the file when uploading')
+        '--file-type',
+        choices=['filename', 'seekable', 'nonseekable'],
+        required=True,
+        help='The way to represent the file when uploading',
+    )
     parser.add_argument(
-        '--s3-bucket', required=True,
-        help='The S3 bucket to upload the file to')
+        '--s3-bucket',
+        required=True,
+        help='The S3 bucket to upload the file to',
+    )
     parser.add_argument(
         '--output-file',
         help=(
             'The file to output the data collected to. The default '
             'location performance.csv'
-        )
+        ),
     )
     args = parser.parse_args()
     benchmark_upload(args)

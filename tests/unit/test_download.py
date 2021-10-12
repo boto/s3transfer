@@ -55,6 +55,7 @@ class DownloadException(Exception):
 
 class WriteCollector:
     """A utility to collect information about writes and seeks"""
+
     def __init__(self):
         self._pos = 0
         self.writes = []
@@ -69,6 +70,7 @@ class WriteCollector:
 
 class AlwaysIndicatesSpecialFileOSUtils(OSUtils):
     """OSUtil that always returns True for is_special_file"""
+
     def is_special_file(self, filename):
         return True
 
@@ -82,6 +84,7 @@ class CancelledStreamWrapper:
     :param num_reads: On which read to signal a cancellation. 0 is the first
         read.
     """
+
     def __init__(self, stream, transfer_coordinator, num_reads=0):
         self._stream = stream
         self._transfer_coordinator = transfer_coordinator
@@ -117,13 +120,16 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super().setUp()
         self.download_output_manager = DownloadFilenameOutputManager(
-            self.osutil, self.transfer_coordinator,
-            io_executor=self.io_executor)
+            self.osutil,
+            self.transfer_coordinator,
+            io_executor=self.io_executor,
+        )
 
     def test_is_compatible(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                self.filename, self.osutil)
+                self.filename, self.osutil
+            )
         )
 
     def test_get_download_task_tag(self):
@@ -131,7 +137,8 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
 
     def test_get_fileobj_for_io_writes(self):
         with self.download_output_manager.get_fileobj_for_io_writes(
-                self.future) as f:
+            self.future
+        ) as f:
             # Ensure it is a file like object returned
             self.assertTrue(hasattr(f, 'read'))
             self.assertTrue(hasattr(f, 'seek'))
@@ -142,7 +149,8 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def test_get_final_io_task(self):
         ref_contents = b'my_contents'
         with self.download_output_manager.get_fileobj_for_io_writes(
-                self.future) as f:
+            self.future
+        ) as f:
             temp_filename = f.name
             # Write some data to test that the data gets moved over to the
             # final location.
@@ -161,16 +169,19 @@ class TestDownloadFilenameOutputManager(BaseDownloadOutputManagerTest):
     def test_can_queue_file_io_task(self):
         fileobj = WriteCollector()
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='foo', offset=0)
+            fileobj=fileobj, data='foo', offset=0
+        )
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='bar', offset=3)
+            fileobj=fileobj, data='bar', offset=3
+        )
         self.io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
     def test_get_file_io_write_task(self):
         fileobj = WriteCollector()
         io_write_task = self.download_output_manager.get_io_write_task(
-            fileobj=fileobj, data='foo', offset=3)
+            fileobj=fileobj, data='foo', offset=3
+        )
         self.assertIsInstance(io_write_task, IOWriteTask)
 
         io_write_task()
@@ -182,22 +193,29 @@ class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
         super().setUp()
         self.osutil = AlwaysIndicatesSpecialFileOSUtils()
         self.download_output_manager = DownloadSpecialFilenameOutputManager(
-            self.osutil, self.transfer_coordinator,
-            io_executor=self.io_executor)
+            self.osutil,
+            self.transfer_coordinator,
+            io_executor=self.io_executor,
+        )
 
     def test_is_compatible_for_special_file(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                self.filename, AlwaysIndicatesSpecialFileOSUtils()))
+                self.filename, AlwaysIndicatesSpecialFileOSUtils()
+            )
+        )
 
     def test_is_not_compatible_for_non_special_file(self):
         self.assertFalse(
             self.download_output_manager.is_compatible(
-                self.filename, OSUtils()))
+                self.filename, OSUtils()
+            )
+        )
 
     def test_get_fileobj_for_io_writes(self):
         with self.download_output_manager.get_fileobj_for_io_writes(
-                self.future) as f:
+            self.future
+        ) as f:
             # Ensure it is a file like object returned
             self.assertTrue(hasattr(f, 'read'))
             # Make sure the name of the file returned is the same as the
@@ -206,14 +224,17 @@ class TestDownloadSpecialFilenameOutputManager(BaseDownloadOutputManagerTest):
 
     def test_get_final_io_task(self):
         self.assertIsInstance(
-            self.download_output_manager.get_final_io_task(), IOCloseTask)
+            self.download_output_manager.get_final_io_task(), IOCloseTask
+        )
 
     def test_can_queue_file_io_task(self):
         fileobj = WriteCollector()
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='foo', offset=0)
+            fileobj=fileobj, data='foo', offset=0
+        )
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='bar', offset=3)
+            fileobj=fileobj, data='bar', offset=3
+        )
         self.io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
@@ -222,8 +243,10 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super().setUp()
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator,
-            io_executor=self.io_executor)
+            self.osutil,
+            self.transfer_coordinator,
+            io_executor=self.io_executor,
+        )
 
         # Create a fileobj to write to
         self.fileobj = open(self.filename, 'wb')
@@ -238,18 +261,18 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_is_compatible(self):
         self.assertTrue(
             self.download_output_manager.is_compatible(
-                self.fileobj, self.osutil)
+                self.fileobj, self.osutil
+            )
         )
 
     def test_is_compatible_bytes_io(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(
-                BytesIO(), self.osutil)
+            self.download_output_manager.is_compatible(BytesIO(), self.osutil)
         )
 
     def test_not_compatible_for_non_filelike_obj(self):
-        self.assertFalse(self.download_output_manager.is_compatible(
-            object(), self.osutil)
+        self.assertFalse(
+            self.download_output_manager.is_compatible(object(), self.osutil)
         )
 
     def test_get_download_task_tag(self):
@@ -258,29 +281,33 @@ class TestDownloadSeekableOutputManager(BaseDownloadOutputManagerTest):
     def test_get_fileobj_for_io_writes(self):
         self.assertIs(
             self.download_output_manager.get_fileobj_for_io_writes(
-                self.future),
-            self.fileobj
+                self.future
+            ),
+            self.fileobj,
         )
 
     def test_get_final_io_task(self):
         self.assertIsInstance(
             self.download_output_manager.get_final_io_task(),
-            CompleteDownloadNOOPTask
+            CompleteDownloadNOOPTask,
         )
 
     def test_can_queue_file_io_task(self):
         fileobj = WriteCollector()
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='foo', offset=0)
+            fileobj=fileobj, data='foo', offset=0
+        )
         self.download_output_manager.queue_file_io_task(
-            fileobj=fileobj, data='bar', offset=3)
+            fileobj=fileobj, data='bar', offset=3
+        )
         self.io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
     def test_get_file_io_write_task(self):
         fileobj = WriteCollector()
         io_write_task = self.download_output_manager.get_io_write_task(
-            fileobj=fileobj, data='foo', offset=3)
+            fileobj=fileobj, data='foo', offset=3
+        )
         self.assertIsInstance(io_write_task, IOWriteTask)
 
         io_write_task()
@@ -291,17 +318,21 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
     def setUp(self):
         super().setUp()
         self.download_output_manager = DownloadNonSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, io_executor=None)
+            self.osutil, self.transfer_coordinator, io_executor=None
+        )
 
     def test_is_compatible_with_seekable_stream(self):
         with open(self.filename, 'wb') as f:
-            self.assertTrue(self.download_output_manager.is_compatible(
-                f, self.osutil)
+            self.assertTrue(
+                self.download_output_manager.is_compatible(f, self.osutil)
             )
 
     def test_not_compatible_with_filename(self):
-        self.assertFalse(self.download_output_manager.is_compatible(
-            self.filename, self.osutil))
+        self.assertFalse(
+            self.download_output_manager.is_compatible(
+                self.filename, self.osutil
+            )
+        )
 
     def test_compatible_with_non_seekable_stream(self):
         class NonSeekable:
@@ -309,20 +340,20 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
                 pass
 
         f = NonSeekable()
-        self.assertTrue(self.download_output_manager.is_compatible(
-            f, self.osutil)
+        self.assertTrue(
+            self.download_output_manager.is_compatible(f, self.osutil)
         )
 
     def test_is_compatible_with_bytesio(self):
         self.assertTrue(
-            self.download_output_manager.is_compatible(
-                BytesIO(), self.osutil)
+            self.download_output_manager.is_compatible(BytesIO(), self.osutil)
         )
 
     def test_get_download_task_tag(self):
         self.assertIs(
             self.download_output_manager.get_download_task_tag(),
-            IN_MEMORY_DOWNLOAD_TAG)
+            IN_MEMORY_DOWNLOAD_TAG,
+        )
 
     def test_submit_writes_from_internal_queue(self):
         class FakeQueue:
@@ -335,18 +366,21 @@ class TestDownloadNonSeekableOutputManager(BaseDownloadOutputManagerTest):
         q = FakeQueue()
         io_executor = BoundedExecutor(1000, 1)
         manager = DownloadNonSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, io_executor=io_executor,
-            defer_queue=q)
+            self.osutil,
+            self.transfer_coordinator,
+            io_executor=io_executor,
+            defer_queue=q,
+        )
         fileobj = WriteCollector()
-        manager.queue_file_io_task(
-            fileobj=fileobj, data='foo', offset=1)
+        manager.queue_file_io_task(fileobj=fileobj, data='foo', offset=1)
         io_executor.shutdown()
         self.assertEqual(fileobj.writes, [(0, 'foo'), (3, 'bar')])
 
     def test_get_file_io_write_task(self):
         fileobj = WriteCollector()
         io_write_task = self.download_output_manager.get_io_write_task(
-            fileobj=fileobj, data='foo', offset=1)
+            fileobj=fileobj, data='foo', offset=1
+        )
         self.assertIsInstance(io_write_task, IOStreamingWriteTask)
 
         io_write_task()
@@ -380,7 +414,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
             'osutil': self.osutil,
             'request_executor': self.executor,
             'io_executor': self.io_executor,
-            'transfer_future': self.transfer_future
+            'transfer_future': self.transfer_future,
         }
         self.submission_task = self.get_download_submission_task()
 
@@ -390,9 +424,11 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def get_call_args(self, **kwargs):
         default_call_args = {
-            'fileobj': self.filename, 'bucket': self.bucket,
-            'key': self.key, 'extra_args': self.extra_args,
-            'subscribers': self.subscribers
+            'fileobj': self.filename,
+            'bucket': self.bucket,
+            'key': self.key,
+            'extra_args': self.extra_args,
+            'subscribers': self.subscribers,
         }
         default_call_args.update(kwargs)
         return CallArgs(**default_call_args)
@@ -412,12 +448,12 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
             # If it was ranged get, make sure we do not include the join task.
             submissions_to_compare = submissions_to_compare[:-1]
         for submission in submissions_to_compare:
-            self.assertEqual(
-                submission['tag'], tag_value)
+            self.assertEqual(submission['tag'], tag_value)
 
     def add_head_object_response(self):
         self.stubber.add_response(
-            'head_object', {'ContentLength': len(self.content)})
+            'head_object', {'ContentLength': len(self.content)}
+        )
 
     def add_get_responses(self):
         chunksize = self.config.multipart_chunksize
@@ -426,7 +462,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
                 stream = BytesIO(self.content[i:])
                 self.stubber.add_response('get_object', {'Body': stream})
             else:
-                stream = BytesIO(self.content[i:i+chunksize])
+                stream = BytesIO(self.content[i : i + chunksize])
                 self.stubber.add_response('get_object', {'Body': stream})
 
     def configure_for_ranged_get(self):
@@ -435,7 +471,8 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def get_download_submission_task(self):
         return self.get_task(
-            DownloadSubmissionTask, main_kwargs=self.submission_main_kwargs)
+            DownloadSubmissionTask, main_kwargs=self.submission_main_kwargs
+        )
 
     def wait_and_assert_completed_successfully(self, submission_task):
         submission_task()
@@ -542,12 +579,16 @@ class TestGetObjectTask(BaseTaskTest):
         self.io_chunksize = 64 * (1024 ** 2)
         self.task_cls = GetObjectTask
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, self.io_executor)
+            self.osutil, self.transfer_coordinator, self.io_executor
+        )
 
     def get_download_task(self, **kwargs):
         default_kwargs = {
-            'client': self.client, 'bucket': self.bucket, 'key': self.key,
-            'fileobj': self.fileobj, 'extra_args': self.extra_args,
+            'client': self.client,
+            'bucket': self.bucket,
+            'key': self.key,
+            'fileobj': self.fileobj,
+            'extra_args': self.extra_args,
             'callbacks': self.callbacks,
             'max_attempts': self.max_attempts,
             'download_output_manager': self.download_output_manager,
@@ -565,8 +606,9 @@ class TestGetObjectTask(BaseTaskTest):
 
     def test_main(self):
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task()
         task()
@@ -576,10 +618,13 @@ class TestGetObjectTask(BaseTaskTest):
 
     def test_extra_args(self):
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
+            'get_object',
+            service_response={'Body': self.stream},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key, 'Range': 'bytes=0-'
-            }
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Range': 'bytes=0-',
+            },
         )
         self.extra_args['Range'] = 'bytes=0-'
         task = self.get_download_task()
@@ -590,8 +635,9 @@ class TestGetObjectTask(BaseTaskTest):
 
     def test_control_chunk_size(self):
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task(io_chunksize=1)
         task()
@@ -599,14 +645,15 @@ class TestGetObjectTask(BaseTaskTest):
         self.stubber.assert_no_pending_responses()
         expected_contents = []
         for i in range(len(self.content)):
-            expected_contents.append((i, bytes(self.content[i:i+1])))
+            expected_contents.append((i, bytes(self.content[i : i + 1])))
 
         self.assert_io_writes(expected_contents)
 
     def test_start_index(self):
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task(start_index=5)
         task()
@@ -618,8 +665,9 @@ class TestGetObjectTask(BaseTaskTest):
         bandwidth_limiter = mock.Mock(BandwidthLimiter)
 
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task(bandwidth_limiter=bandwidth_limiter)
         task()
@@ -627,19 +675,21 @@ class TestGetObjectTask(BaseTaskTest):
         self.stubber.assert_no_pending_responses()
         self.assertEqual(
             bandwidth_limiter.get_bandwith_limited_stream.call_args_list,
-            [mock.call(mock.ANY, self.transfer_coordinator)]
+            [mock.call(mock.ANY, self.transfer_coordinator)],
         )
 
     def test_retries_succeeds(self):
         self.stubber.add_response(
-            'get_object', service_response={
+            'get_object',
+            service_response={
                 'Body': StreamWithError(self.stream, SOCKET_ERROR)
             },
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task()
         task()
@@ -652,10 +702,11 @@ class TestGetObjectTask(BaseTaskTest):
     def test_retries_failure(self):
         for _ in range(self.max_attempts):
             self.stubber.add_response(
-                'get_object', service_response={
+                'get_object',
+                service_response={
                     'Body': StreamWithError(self.stream, SOCKET_ERROR)
                 },
-                expected_params={'Bucket': self.bucket, 'Key': self.key}
+                expected_params={'Bucket': self.bucket, 'Key': self.key},
             )
 
         task = self.get_download_task()
@@ -670,15 +721,18 @@ class TestGetObjectTask(BaseTaskTest):
     def test_retries_in_middle_of_streaming(self):
         # After the first read a retryable error will be thrown
         self.stubber.add_response(
-            'get_object', service_response={
+            'get_object',
+            service_response={
                 'Body': StreamWithError(
-                    copy.deepcopy(self.stream), SOCKET_ERROR, 1)
+                    copy.deepcopy(self.stream), SOCKET_ERROR, 1
+                )
             },
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         self.stubber.add_response(
-            'get_object', service_response={'Body': self.stream},
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task(io_chunksize=1)
         task()
@@ -694,7 +748,7 @@ class TestGetObjectTask(BaseTaskTest):
         # element in the list should be a copy of the first element since
         # a retryable exception happened in between.
         for i in range(len(self.content)):
-            expected_contents.append((i, bytes(self.content[i:i+1])))
+            expected_contents.append((i, bytes(self.content[i : i + 1])))
         self.assert_io_writes(expected_contents)
 
     def test_cancels_out_of_queueing(self):
@@ -702,9 +756,10 @@ class TestGetObjectTask(BaseTaskTest):
             'get_object',
             service_response={
                 'Body': CancelledStreamWrapper(
-                    self.stream, self.transfer_coordinator)
+                    self.stream, self.transfer_coordinator
+                )
             },
-            expected_params={'Bucket': self.bucket, 'Key': self.key}
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
         )
         task = self.get_download_task()
         task()
@@ -739,7 +794,8 @@ class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):
         # object once downloaded.
         self.io_executor = None
         self.download_output_manager = DownloadSeekableOutputManager(
-            self.osutil, self.transfer_coordinator, self.io_executor)
+            self.osutil, self.transfer_coordinator, self.io_executor
+        )
 
     def assert_io_writes(self, expected_writes):
         self.assertEqual(self.fileobj.writes, expected_writes)
@@ -763,18 +819,12 @@ class TestIOStreamingWriteTask(BaseIOTaskTest):
         with open(self.temp_filename, 'wb') as f:
             task = self.get_task(
                 IOStreamingWriteTask,
-                main_kwargs={
-                    'fileobj': f,
-                    'data': b'foobar'
-                }
+                main_kwargs={'fileobj': f, 'data': b'foobar'},
             )
             task()
             task2 = self.get_task(
                 IOStreamingWriteTask,
-                main_kwargs={
-                    'fileobj': f,
-                    'data': b'baz'
-                }
+                main_kwargs={'fileobj': f, 'data': b'baz'},
             )
             task2()
         with open(self.temp_filename, 'rb') as f:
@@ -789,22 +839,14 @@ class TestIOWriteTask(BaseIOTaskTest):
             # Write once to the file
             task = self.get_task(
                 IOWriteTask,
-                main_kwargs={
-                    'fileobj': f,
-                    'data': b'foo',
-                    'offset': 0
-                }
+                main_kwargs={'fileobj': f, 'data': b'foo', 'offset': 0},
             )
             task()
 
             # Write again to the file
             task = self.get_task(
                 IOWriteTask,
-                main_kwargs={
-                    'fileobj': f,
-                    'data': b'bar',
-                    'offset': 3
-                }
+                main_kwargs={'fileobj': f, 'data': b'bar', 'offset': 3},
             )
             task()
 
@@ -820,8 +862,8 @@ class TestIORenameFileTask(BaseIOTaskTest):
                 main_kwargs={
                     'fileobj': f,
                     'final_filename': self.final_filename,
-                    'osutil': self.osutil
-                }
+                    'osutil': self.osutil,
+                },
             )
             task()
         self.assertTrue(os.path.exists(self.final_filename))
@@ -883,8 +925,8 @@ class TestDeferQueue(unittest.TestCase):
                 {'offset': 0, 'data': 'a'},
                 {'offset': 1, 'data': 'b'},
                 {'offset': 2, 'data': 'c'},
-                {'offset': 3, 'data': 'd'}
-            ]
+                {'offset': 3, 'data': 'd'},
+            ],
         )
 
     def test_unlocks_partial_range(self):
@@ -898,7 +940,7 @@ class TestDeferQueue(unittest.TestCase):
             [
                 {'offset': 0, 'data': 'a'},
                 {'offset': 1, 'data': 'b'},
-            ]
+            ],
         )
 
     def test_data_can_be_any_size(self):
@@ -909,7 +951,7 @@ class TestDeferQueue(unittest.TestCase):
             [
                 {'offset': 0, 'data': 'abcde'},
                 {'offset': 5, 'data': 'hello world'},
-            ]
+            ],
         )
 
     def test_data_queued_in_order(self):
@@ -933,7 +975,7 @@ class TestDeferQueue(unittest.TestCase):
 
         self.assertEqual(
             self.q.request_writes(offset=3, data='d'),
-            [{'offset': 3, 'data': 'd'}]
+            [{'offset': 3, 'data': 'd'}],
         )
 
     def test_duplicate_writes_are_ignored(self):
@@ -953,5 +995,5 @@ class TestDeferQueue(unittest.TestCase):
                 # Note we're seeing 'b' 'c', and not 'X', 'Y'.
                 {'offset': 1, 'data': 'b'},
                 {'offset': 2, 'data': 'c'},
-            ]
+            ],
         )

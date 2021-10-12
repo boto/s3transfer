@@ -26,6 +26,7 @@ class ErrorRaisingSeekWrapper:
     :param fileobj: The fileobj that it wraps
     :param exception: The exception to raise when seeked on.
     """
+
     def __init__(self, fileobj, exception):
         self._fileobj = fileobj
         self._exception = exception

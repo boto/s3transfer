@@ -24,7 +24,9 @@ class TestDeleteObjectTask(BaseTaskTest):
 
     def get_delete_task(self, **kwargs):
         default_kwargs = {
-            'client': self.client, 'bucket': self.bucket, 'key': self.key,
+            'client': self.client,
+            'bucket': self.bucket,
+            'key': self.key,
             'extra_args': self.extra_args,
         }
         default_kwargs.update(kwargs)
@@ -32,10 +34,12 @@ class TestDeleteObjectTask(BaseTaskTest):
 
     def test_main(self):
         self.stubber.add_response(
-            'delete_object', service_response={},
+            'delete_object',
+            service_response={},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
-            }
+                'Bucket': self.bucket,
+                'Key': self.key,
+            },
         )
         task = self.get_delete_task()
         task()
@@ -46,14 +50,16 @@ class TestDeleteObjectTask(BaseTaskTest):
         self.extra_args['MFA'] = 'mfa-code'
         self.extra_args['VersionId'] = '12345'
         self.stubber.add_response(
-            'delete_object', service_response={},
+            'delete_object',
+            service_response={},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
+                'Bucket': self.bucket,
+                'Key': self.key,
                 # These extra_args should be injected into the
                 # expected params for the delete_object call.
                 'MFA': 'mfa-code',
                 'VersionId': '12345',
-            }
+            },
         )
         task = self.get_delete_task()
         task()

@@ -27,8 +27,11 @@ from tests import FileCreator, mock, unittest
 class StubbedClient:
     def __init__(self):
         self._client = botocore.session.get_session().create_client(
-            's3', 'us-west-2', aws_access_key_id='foo',
-            aws_secret_access_key='bar')
+            's3',
+            'us-west-2',
+            aws_access_key_id='foo',
+            aws_secret_access_key='bar',
+        )
         self._stubber = Stubber(self._client)
         self._stubber.activate()
         self._caught_stubber_errors = []
@@ -81,15 +84,12 @@ class TestProcessPoolDownloader(unittest.TestCase):
         self.stubbed_client_factory = StubbedClientFactory(self.stubbed_client)
 
         self.client_factory_patch = mock.patch(
-            's3transfer.processpool.ClientFactory',
-            self.stubbed_client_factory
+            's3transfer.processpool.ClientFactory', self.stubbed_client_factory
         )
         self.client_factory_patch.start()
         self.files = FileCreator()
 
-        self.config = ProcessTransferConfig(
-            max_request_processes=1
-        )
+        self.config = ProcessTransferConfig(max_request_processes=1)
         self.downloader = ProcessPoolDownloader(config=self.config)
         self.bucket = 'mybucket'
         self.key = 'mykey'
@@ -109,51 +109,53 @@ class TestProcessPoolDownloader(unittest.TestCase):
 
     def test_download_file(self):
         self.stubbed_client.add_response(
-            'head_object', {'ContentLength': len(self.remote_contents)})
-        self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream}
+            'head_object', {'ContentLength': len(self.remote_contents)}
         )
+        self.stubbed_client.add_response('get_object', {'Body': self.stream})
         with self.downloader:
             self.downloader.download_file(self.bucket, self.key, self.filename)
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_download_multiple_files(self):
-        self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream}
-        )
+        self.stubbed_client.add_response('get_object', {'Body': self.stream})
         self.stubbed_client.add_response(
             'get_object', {'Body': BytesIO(self.remote_contents)}
         )
         with self.downloader:
             self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
             other_file = self.files.full_path('filename2')
             self.downloader.download_file(
-                self.bucket, self.key, other_file,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                other_file,
+                expected_size=len(self.remote_contents),
+            )
         self.assert_contents(self.filename, self.remote_contents)
         self.assert_contents(other_file, self.remote_contents)
 
     def test_download_file_ranged_download(self):
-        half_of_content_length = int(len(self.remote_contents)/2)
+        half_of_content_length = int(len(self.remote_contents) / 2)
         self.stubbed_client.add_response(
-            'head_object', {'ContentLength': len(self.remote_contents)})
-        self.stubbed_client.add_response(
-            'get_object', {
-                'Body': BytesIO(
-                    self.remote_contents[:half_of_content_length])}
+            'head_object', {'ContentLength': len(self.remote_contents)}
         )
         self.stubbed_client.add_response(
-            'get_object', {
-                'Body': BytesIO(
-                    self.remote_contents[half_of_content_length:])}
+            'get_object',
+            {'Body': BytesIO(self.remote_contents[:half_of_content_length])},
+        )
+        self.stubbed_client.add_response(
+            'get_object',
+            {'Body': BytesIO(self.remote_contents[half_of_content_length:])},
         )
         downloader = ProcessPoolDownloader(
             config=ProcessTransferConfig(
                 multipart_chunksize=half_of_content_length,
                 multipart_threshold=half_of_content_length,
-                max_request_processes=1
+                max_request_processes=1,
             )
         )
         with downloader:
@@ -162,42 +164,52 @@ class TestProcessPoolDownloader(unittest.TestCase):
 
     def test_download_file_extra_args(self):
         self.stubbed_client.add_response(
-            'head_object', {'ContentLength': len(self.remote_contents)},
+            'head_object',
+            {'ContentLength': len(self.remote_contents)},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
-                'VersionId': 'versionid'
-            }
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'VersionId': 'versionid',
+            },
         )
         self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream},
+            'get_object',
+            {'Body': self.stream},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
-                'VersionId': 'versionid'
-            }
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'VersionId': 'versionid',
+            },
         )
         with self.downloader:
             self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                extra_args={'VersionId': 'versionid'}
+                self.bucket,
+                self.key,
+                self.filename,
+                extra_args={'VersionId': 'versionid'},
             )
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_download_file_expected_size(self):
-        self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream}
-        )
+        self.stubbed_client.add_response('get_object', {'Body': self.stream})
         with self.downloader:
             self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_cleans_up_tempfile_on_failure(self):
         self.stubbed_client.add_client_error('get_object', 'NoSuchKey')
         with self.downloader:
             self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
         self.assertFalse(os.path.exists(self.filename))
         # Any tempfile should have been erased as well
         possible_matches = glob.glob('%s*' % self.filename + os.extsep)
@@ -207,37 +219,44 @@ class TestProcessPoolDownloader(unittest.TestCase):
         with self.downloader:
             with self.assertRaises(ValueError):
                 self.downloader.download_file(
-                    self.bucket, self.key, self.filename,
-                    extra_args={'NotSupported': 'NotSupported'}
+                    self.bucket,
+                    self.key,
+                    self.filename,
+                    extra_args={'NotSupported': 'NotSupported'},
                 )
 
     def test_result_with_success(self):
-        self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream}
-        )
+        self.stubbed_client.add_response('get_object', {'Body': self.stream})
         with self.downloader:
             future = self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
             self.assertIsNone(future.result())
 
     def test_result_with_exception(self):
         self.stubbed_client.add_client_error('get_object', 'NoSuchKey')
         with self.downloader:
             future = self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
             with self.assertRaises(botocore.exceptions.ClientError):
                 future.result()
 
     def test_result_with_cancel(self):
-        self.stubbed_client.add_response(
-            'get_object', {'Body': self.stream}
-        )
+        self.stubbed_client.add_response('get_object', {'Body': self.stream})
         with self.downloader:
             future = self.downloader.download_file(
-                self.bucket, self.key, self.filename,
-                expected_size=len(self.remote_contents))
+                self.bucket,
+                self.key,
+                self.filename,
+                expected_size=len(self.remote_contents),
+            )
             future.cancel()
             with self.assertRaises(CancelledError):
                 future.result()

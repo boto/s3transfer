@@ -96,9 +96,19 @@ def run_benchmark(pid, output_file, data_interval):
             recv_rate = recv_delta / dt
 
             # Save all of the data into a CSV file.
-            f.write(','.join(str(val) for val in [
-                current_time, memory_used, cpu_percent, sent_rate,
-                recv_rate]) + '\n')
+            f.write(
+                ','.join(
+                    str(val)
+                    for val in [
+                        current_time,
+                        memory_used,
+                        cpu_percent,
+                        sent_rate,
+                        recv_rate,
+                    ]
+                )
+                + '\n'
+            )
             f.flush()
     return 0
 
@@ -116,14 +126,18 @@ def _get_underlying_python_process(process):
 
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument('script', help='The script to run for benchmarking')
     parser.add_argument(
-        'script', help='The script to run for benchmarking')
+        '--data-interval',
+        default=1,
+        type=float,
+        help='The interval in seconds to poll for data points',
+    )
     parser.add_argument(
-        '--data-interval', default=1, type=float,
-        help='The interval in seconds to poll for data points')
-    parser.add_argument(
-        '--output-file', default='performance.csv',
-        help='The file to output the data collected to')
+        '--output-file',
+        default='performance.csv',
+        help='The file to output the data collected to',
+    )
     args = parser.parse_args()
     return benchmark(args)
 

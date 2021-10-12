@@ -34,37 +34,43 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         if config is None:
             config = self.config
         return ProcessPoolDownloader(
-            client_kwargs=client_kwargs, config=config)
+            client_kwargs=client_kwargs, config=config
+        )
 
     def test_below_threshold(self):
         downloader = self.create_process_pool_downloader()
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '1mb.txt')
         with downloader:
             downloader.download_file(
-                self.bucket_name, '1mb.txt', download_path)
+                self.bucket_name, '1mb.txt', download_path
+            )
         assert_files_equal(filename, download_path)
 
     def test_above_threshold(self):
         downloader = self.create_process_pool_downloader()
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
+            'foo.txt', filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
         with downloader:
             downloader.download_file(
-                self.bucket_name, '20mb.txt', download_path)
+                self.bucket_name, '20mb.txt', download_path
+            )
         assert_files_equal(filename, download_path)
 
     def test_large_download_exits_quickly_on_exception(self):
         downloader = self.create_process_pool_downloader()
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=60 * 1024 * 1024)
+            'foo.txt', filesize=60 * 1024 * 1024
+        )
         self.upload_file(filename, '60mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '60mb.txt')
@@ -72,7 +78,8 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         try:
             with downloader:
                 downloader.download_file(
-                    self.bucket_name, '60mb.txt', download_path)
+                    self.bucket_name, '60mb.txt', download_path
+                )
                 # Sleep for a little to get the transfer process going
                 time.sleep(sleep_time)
                 # Raise an exception which should cause the preceding
@@ -87,9 +94,11 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         # sleeping to exit.
         max_allowed_exit_time = 5
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
+            end_time - start_time,
+            max_allowed_exit_time,
             "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time)
+                max_allowed_exit_time, end_time - start_time
+            ),
         )
 
         # Make sure the actual file and the temporary do not exist
@@ -101,7 +110,8 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         downloader = self.create_process_pool_downloader()
 
         filename = self.files.create_file_with_size(
-            '1mb.txt', filesize=1024 * 1024)
+            '1mb.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         filenames = []
@@ -114,7 +124,8 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
                 start_time = time.time()
                 for filename in filenames:
                     downloader.download_file(
-                        self.bucket_name, '1mb.txt', filename)
+                        self.bucket_name, '1mb.txt', filename
+                    )
                 # Raise an exception which should cause the preceding
                 # transfer to cancel and exit quickly
                 raise KeyboardInterrupt()
@@ -125,9 +136,11 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         # This means that it should take less than a couple seconds to exit.
         max_allowed_exit_time = 5
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
+            end_time - start_time,
+            max_allowed_exit_time,
             "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time)
+                max_allowed_exit_time, end_time - start_time
+            ),
         )
 
         # For the transfer that did get cancelled, make sure the temporary

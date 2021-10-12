@@ -26,6 +26,7 @@ class ArbitraryException(Exception):
 
 class SignalTransferringBody(BytesIO):
     """A mocked body with the ability to signal when transfers occur"""
+
     def __init__(self):
         super().__init__()
         self.signal_transferring_call_count = 0
@@ -72,7 +73,8 @@ class TestTransferManager(StubbedClientTest):
         manager = TransferManager(
             self.client,
             TransferConfig(
-                max_request_concurrency=1, max_submission_concurrency=1)
+                max_request_concurrency=1, max_submission_concurrency=1
+            ),
         )
         try:
             with manager:
@@ -109,7 +111,8 @@ class TestTransferManager(StubbedClientTest):
         manager = TransferManager(
             self.client,
             TransferConfig(
-                max_request_concurrency=1, max_submission_concurrency=1)
+                max_request_concurrency=1, max_submission_concurrency=1
+            ),
         )
         try:
             with manager:
@@ -119,40 +122,47 @@ class TestTransferManager(StubbedClientTest):
         except KeyboardInterrupt:
             # At least one of the submitted futures should have been
             # cancelled.
-            with self.assertRaisesRegex(
-                    CancelledError, 'KeyboardInterrupt()'):
+            with self.assertRaisesRegex(CancelledError, 'KeyboardInterrupt()'):
                 for future in futures:
                     future.result()
 
     def test_enable_disable_callbacks_only_ever_registered_once(self):
         body = SignalTransferringBody()
-        request = create_request_object({
-            'method': 'PUT',
-            'url': 'https://s3.amazonaws.com',
-            'body': body,
-            'headers': {},
-            'context': {}
-        })
+        request = create_request_object(
+            {
+                'method': 'PUT',
+                'url': 'https://s3.amazonaws.com',
+                'body': body,
+                'headers': {},
+                'context': {},
+            }
+        )
         # Create two TransferManager's using the same client
         TransferManager(self.client)
         TransferManager(self.client)
         self.client.meta.events.emit(
-            'request-created.s3', request=request, operation_name='PutObject')
+            'request-created.s3', request=request, operation_name='PutObject'
+        )
         # The client should have only have the enable/disable callback
         # handlers registered once depite being used for two different
         # TransferManagers.
         self.assertEqual(
-            body.signal_transferring_call_count, 1,
-            'The enable_callback() should have only ever been registered once')
+            body.signal_transferring_call_count,
+            1,
+            'The enable_callback() should have only ever been registered once',
+        )
         self.assertEqual(
-            body.signal_not_transferring_call_count, 1,
+            body.signal_not_transferring_call_count,
+            1,
             'The disable_callback() should have only ever been registered '
-            'once')
+            'once',
+        )
 
     def test_use_custom_executor_implementation(self):
         mocked_executor_cls = mock.Mock(BaseExecutor)
         transfer_manager = TransferManager(
-            self.client, executor_cls=mocked_executor_cls)
+            self.client, executor_cls=mocked_executor_cls
+        )
         transfer_manager.delete('bucket', 'key')
         self.assertTrue(mocked_executor_cls.return_value.submit.called)
 

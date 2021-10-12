@@ -36,8 +36,9 @@ class TaskFailureException(Exception):
 
 
 class SuccessTask(Task):
-    def _main(self, return_value='success', callbacks=None,
-              failure_cleanups=None):
+    def _main(
+        self, return_value='success', callbacks=None, failure_cleanups=None
+    ):
         if callbacks:
             for callback in callbacks:
                 callback()
@@ -69,8 +70,14 @@ class NOOPSubmissionTask(SubmissionTask):
 
 
 class ExceptionSubmissionTask(SubmissionTask):
-    def _submit(self, transfer_future, executor=None, tasks_to_submit=None,
-                additional_callbacks=None, exception=TaskFailureException):
+    def _submit(
+        self,
+        transfer_future,
+        executor=None,
+        tasks_to_submit=None,
+        additional_callbacks=None,
+        exception=TaskFailureException,
+    ):
         if executor and tasks_to_submit:
             for task_to_submit in tasks_to_submit:
                 self._transfer_coordinator.submit(executor, task_to_submit)
@@ -117,7 +124,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
     def test_transitions_from_not_started_to_queued_to_running(self):
         self.transfer_coordinator = StatusRecordingTransferCoordinator()
         submission_task = self.get_task(
-            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs
+        )
         # Status should be queued until submission task has been ran.
         self.assertEqual(self.transfer_coordinator.status, 'not-started')
 
@@ -128,23 +136,26 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # Ensure the transitions were as expected as well.
         self.assertEqual(
             self.transfer_coordinator.status_changes,
-            ['not-started', 'queued', 'running']
+            ['not-started', 'queued', 'running'],
         )
 
     def test_on_queued_callbacks(self):
         submission_task = self.get_task(
-            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         subscriber = RecordingSubscriber()
         self.call_args.subscribers.append(subscriber)
         submission_task()
         # Make sure the on_queued callback of the subscriber is called.
         self.assertEqual(
-            subscriber.on_queued_calls, [{'future': self.transfer_future}])
+            subscriber.on_queued_calls, [{'future': self.transfer_future}]
+        )
 
     def test_on_queued_status_in_callbacks(self):
         submission_task = self.get_task(
-            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         subscriber = RecordingStateSubscriber(self.transfer_coordinator)
         self.call_args.subscribers.append(subscriber)
@@ -154,7 +165,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
     def test_sets_exception_from_submit(self):
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
         submission_task()
 
         # Make sure the status of the future is failed
@@ -168,7 +180,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
     def test_catches_and_sets_keyboard_interrupt_exception_from_submit(self):
         self.main_kwargs['exception'] = KeyboardInterrupt
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
         submission_task()
 
         self.assertEqual(self.transfer_coordinator.status, 'failed')
@@ -177,7 +190,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
     def test_calls_done_callbacks_on_exception(self):
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         subscriber = RecordingSubscriber()
         self.call_args.subscribers.append(subscriber)
@@ -194,17 +208,20 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
         # Make sure the on_done callback of the subscriber is called.
         self.assertEqual(
-            subscriber.on_done_calls, [{'future': self.transfer_future}])
+            subscriber.on_done_calls, [{'future': self.transfer_future}]
+        )
 
     def test_calls_failure_cleanups_on_exception(self):
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         # Add the callback to the callbacks to be invoked when the
         # transfer fails.
         invocations_of_cleanup = []
         cleanup_callback = FunctionContainer(
-            invocations_of_cleanup.append, 'cleanup happened')
+            invocations_of_cleanup.append, 'cleanup happened'
+        )
         self.transfer_coordinator.add_failure_cleanup(cleanup_callback)
         submission_task()
 
@@ -225,7 +242,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.main_kwargs['tasks_to_submit'] = [final_task]
 
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         subscriber = RecordingSubscriber()
         self.call_args.subscribers.append(subscriber)
@@ -243,7 +261,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
 
         # Make sure the on_done callback of the subscriber is called only once.
         self.assertEqual(
-            subscriber.on_done_calls, [{'future': self.transfer_future}])
+            subscriber.on_done_calls, [{'future': self.transfer_future}]
+        )
 
     def test_done_callbacks_only_ran_once_on_exception(self):
         # We want to be able to handle the case where the final task completes
@@ -256,13 +275,15 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.main_kwargs['tasks_to_submit'] = [final_task]
 
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         # Add the callback to the callbacks to be invoked when the
         # transfer fails.
         invocations_of_cleanup = []
         cleanup_callback = FunctionContainer(
-            invocations_of_cleanup.append, 'cleanup happened')
+            invocations_of_cleanup.append, 'cleanup happened'
+        )
         self.transfer_coordinator.add_failure_cleanup(cleanup_callback)
         submission_task()
 
@@ -276,14 +297,16 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         invocations_of_cleanup = []
         event = Event()
         cleanup_callback = FunctionContainer(
-            invocations_of_cleanup.append, 'cleanup happened')
+            invocations_of_cleanup.append, 'cleanup happened'
+        )
         # We want the cleanup to be added in the execution of the task and
         # still be executed by the submission task when it fails.
         task = self.get_task(
-            SuccessTask, main_kwargs={
+            SuccessTask,
+            main_kwargs={
                 'callbacks': [event.set],
-                'failure_cleanups': [cleanup_callback]
-            }
+                'failure_cleanups': [cleanup_callback],
+            },
         )
 
         self.main_kwargs['executor'] = self.executor
@@ -291,7 +314,8 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         self.main_kwargs['additional_callbacks'] = [event.wait]
 
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         submission_task()
         self.assertEqual(self.transfer_coordinator.status, 'failed')
@@ -325,28 +349,33 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         invocations_of_cleanup = []
         event = Event()
         cleanup_callback = FunctionContainer(
-            invocations_of_cleanup.append, 'cleanup happened')
+            invocations_of_cleanup.append, 'cleanup happened'
+        )
 
         cleanup_task = self.get_task(
-            SuccessTask, main_kwargs={
+            SuccessTask,
+            main_kwargs={
                 'callbacks': [event.set],
-                'failure_cleanups': [cleanup_callback]
-            }
+                'failure_cleanups': [cleanup_callback],
+            },
         )
         task_for_submitting_cleanup_task = self.get_task(
-            SubmitMoreTasksTask, main_kwargs={
+            SubmitMoreTasksTask,
+            main_kwargs={
                 'executor': self.executor,
-                'tasks_to_submit': [cleanup_task]
-            }
+                'tasks_to_submit': [cleanup_task],
+            },
         )
 
         self.main_kwargs['executor'] = self.executor
         self.main_kwargs['tasks_to_submit'] = [
-            task_for_submitting_cleanup_task]
+            task_for_submitting_cleanup_task
+        ]
         self.main_kwargs['additional_callbacks'] = [event.wait]
 
         submission_task = self.get_task(
-            ExceptionSubmissionTask, main_kwargs=self.main_kwargs)
+            ExceptionSubmissionTask, main_kwargs=self.main_kwargs
+        )
 
         submission_task()
         self.assertEqual(self.transfer_coordinator.status, 'failed')
@@ -355,12 +384,14 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
     def test_submission_task_announces_done_if_cancelled_before_main(self):
         invocations_of_done = []
         done_callback = FunctionContainer(
-            invocations_of_done.append, 'done announced')
+            invocations_of_done.append, 'done announced'
+        )
         self.transfer_coordinator.add_done_callback(done_callback)
 
         self.transfer_coordinator.cancel()
         submission_task = self.get_task(
-            NOOPSubmissionTask, main_kwargs=self.main_kwargs)
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs
+        )
         submission_task()
 
         # Because the submission task was cancelled before being run
@@ -373,21 +404,21 @@ class TestTask(unittest.TestCase):
     def setUp(self):
         self.transfer_id = 1
         self.transfer_coordinator = TransferCoordinator(
-            transfer_id=self.transfer_id)
+            transfer_id=self.transfer_id
+        )
 
     def test_repr(self):
-        main_kwargs = {
-            'bucket': 'mybucket',
-            'param_to_not_include': 'foo'
-        }
+        main_kwargs = {'bucket': 'mybucket', 'param_to_not_include': 'foo'}
         task = ReturnKwargsTask(
-            self.transfer_coordinator, main_kwargs=main_kwargs)
+            self.transfer_coordinator, main_kwargs=main_kwargs
+        )
         # The repr should not include the other parameter because it is not
         # a desired parameter to include.
         self.assertEqual(
             repr(task),
             'ReturnKwargsTask(transfer_id={}, {})'.format(
-                self.transfer_id, {'bucket': 'mybucket'})
+                self.transfer_id, {'bucket': 'mybucket'}
+            ),
         )
 
     def test_transfer_id(self):
@@ -426,8 +457,11 @@ class TestTask(unittest.TestCase):
     def test_result_setting_for_success(self):
         override_return = 'foo'
         SuccessTask(self.transfer_coordinator)()
-        SuccessTask(self.transfer_coordinator, main_kwargs={
-            'return_value': override_return}, is_final=True)()
+        SuccessTask(
+            self.transfer_coordinator,
+            main_kwargs={'return_value': override_return},
+            is_final=True,
+        )()
 
         # The return value for the transfer future should be of the final
         # task.
@@ -438,8 +472,9 @@ class TestTask(unittest.TestCase):
 
         # If another failure comes in, the result should still throw the
         # original exception when result() is eventually called.
-        FailureTask(self.transfer_coordinator, main_kwargs={
-            'exception': Exception})()
+        FailureTask(
+            self.transfer_coordinator, main_kwargs={'exception': Exception}
+        )()
 
         # Even if a success task comes along, the result of the future
         # should be the original exception
@@ -449,36 +484,48 @@ class TestTask(unittest.TestCase):
 
     def test_done_callbacks_success(self):
         callback_results = []
-        SuccessTask(self.transfer_coordinator, done_callbacks=[
-            partial(callback_results.append, 'first'),
-            partial(callback_results.append, 'second')
-        ])()
+        SuccessTask(
+            self.transfer_coordinator,
+            done_callbacks=[
+                partial(callback_results.append, 'first'),
+                partial(callback_results.append, 'second'),
+            ],
+        )()
         # For successful tasks, the done callbacks should get called.
         self.assertEqual(callback_results, ['first', 'second'])
 
     def test_done_callbacks_failure(self):
         callback_results = []
-        FailureTask(self.transfer_coordinator, done_callbacks=[
-            partial(callback_results.append, 'first'),
-            partial(callback_results.append, 'second')
-        ])()
+        FailureTask(
+            self.transfer_coordinator,
+            done_callbacks=[
+                partial(callback_results.append, 'first'),
+                partial(callback_results.append, 'second'),
+            ],
+        )()
         # For even failed tasks, the done callbacks should get called.
         self.assertEqual(callback_results, ['first', 'second'])
 
         # Callbacks should continue to be called even after a related failure
-        SuccessTask(self.transfer_coordinator, done_callbacks=[
-            partial(callback_results.append, 'third'),
-            partial(callback_results.append, 'fourth')
-        ])()
+        SuccessTask(
+            self.transfer_coordinator,
+            done_callbacks=[
+                partial(callback_results.append, 'third'),
+                partial(callback_results.append, 'fourth'),
+            ],
+        )()
         self.assertEqual(
-            callback_results, ['first', 'second', 'third', 'fourth'])
+            callback_results, ['first', 'second', 'third', 'fourth']
+        )
 
     def test_failure_cleanups_on_failure(self):
         callback_results = []
         self.transfer_coordinator.add_failure_cleanup(
-            callback_results.append, 'first')
+            callback_results.append, 'first'
+        )
         self.transfer_coordinator.add_failure_cleanup(
-            callback_results.append, 'second')
+            callback_results.append, 'second'
+        )
         FailureTask(self.transfer_coordinator)()
         # The failure callbacks should have not been called yet because it
         # is not the last task
@@ -491,9 +538,11 @@ class TestTask(unittest.TestCase):
     def test_no_failure_cleanups_on_success(self):
         callback_results = []
         self.transfer_coordinator.add_failure_cleanup(
-            callback_results.append, 'first')
+            callback_results.append, 'first'
+        )
         self.transfer_coordinator.add_failure_cleanup(
-            callback_results.append, 'second')
+            callback_results.append, 'second'
+        )
         SuccessTask(self.transfer_coordinator, is_final=True)()
         # The failure cleanups should not have been called because no task
         # failed for the transfer context.
@@ -502,8 +551,8 @@ class TestTask(unittest.TestCase):
     def test_passing_main_kwargs(self):
         main_kwargs = {'foo': 'bar', 'baz': 'biz'}
         ReturnKwargsTask(
-            self.transfer_coordinator, main_kwargs=main_kwargs,
-            is_final=True)()
+            self.transfer_coordinator, main_kwargs=main_kwargs, is_final=True
+        )()
         # The kwargs should have been passed to the main()
         self.assertEqual(self.transfer_coordinator.result(), main_kwargs)
 
@@ -516,20 +565,22 @@ class TestTask(unittest.TestCase):
             pending_kwargs['foo'] = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': ref_main_kwargs['foo']}
+                    main_kwargs={'return_value': ref_main_kwargs['foo']},
                 )
             )
             pending_kwargs['baz'] = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': ref_main_kwargs['baz']}
+                    main_kwargs={'return_value': ref_main_kwargs['baz']},
                 )
             )
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
-            is_final=True)()
+            self.transfer_coordinator,
+            pending_main_kwargs=pending_kwargs,
+            is_final=True,
+        )()
         # The result should have the pending keyword arg values flushed
         # out.
         self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
@@ -543,13 +594,13 @@ class TestTask(unittest.TestCase):
             first_future = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': ref_main_kwargs['foo'][0]}
+                    main_kwargs={'return_value': ref_main_kwargs['foo'][0]},
                 )
             )
             second_future = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': ref_main_kwargs['foo'][1]}
+                    main_kwargs={'return_value': ref_main_kwargs['foo'][1]},
                 )
             )
             # Make the pending keyword arg value a list
@@ -557,8 +608,10 @@ class TestTask(unittest.TestCase):
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
-            is_final=True)()
+            self.transfer_coordinator,
+            pending_main_kwargs=pending_kwargs,
+            is_final=True,
+        )()
         # The result should have the pending keyword arg values flushed
         # out in the expected order.
         self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
@@ -569,7 +622,7 @@ class TestTask(unittest.TestCase):
         ref_main_kwargs = {
             'nonpending_value': 'foo',
             'pending_value': 'bar',
-            'pending_list': ['first', 'second']
+            'pending_list': ['first', 'second'],
         }
 
         # Create the pending tasks
@@ -577,23 +630,26 @@ class TestTask(unittest.TestCase):
             pending_kwargs['pending_value'] = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value':
-                                 ref_main_kwargs['pending_value']}
+                    main_kwargs={
+                        'return_value': ref_main_kwargs['pending_value']
+                    },
                 )
             )
 
             first_future = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value':
-                                 ref_main_kwargs['pending_list'][0]}
+                    main_kwargs={
+                        'return_value': ref_main_kwargs['pending_list'][0]
+                    },
                 )
             )
             second_future = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value':
-                                 ref_main_kwargs['pending_list'][1]}
+                    main_kwargs={
+                        'return_value': ref_main_kwargs['pending_list'][1]
+                    },
                 )
             )
             # Make the pending keyword arg value a list
@@ -602,9 +658,11 @@ class TestTask(unittest.TestCase):
         # Create a task that depends on the tasks passed to the executor
         # and just regular nonpending kwargs.
         ReturnKwargsTask(
-            self.transfer_coordinator, main_kwargs=main_kwargs,
+            self.transfer_coordinator,
+            main_kwargs=main_kwargs,
             pending_main_kwargs=pending_kwargs,
-            is_final=True)()
+            is_final=True,
+        )()
         # The result should have all of the kwargs (both pending and
         # nonpending)
         self.assertEqual(self.transfer_coordinator.result(), ref_main_kwargs)
@@ -618,16 +676,19 @@ class TestTask(unittest.TestCase):
             pending_kwargs['foo'] = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': 'bar'}
+                    main_kwargs={'return_value': 'bar'},
                 )
             )
             pending_kwargs['baz'] = executor.submit(
-                FailureTask(self.transfer_coordinator))
+                FailureTask(self.transfer_coordinator)
+            )
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
-            is_final=True)()
+            self.transfer_coordinator,
+            pending_main_kwargs=pending_kwargs,
+            is_final=True,
+        )()
         # The end result should raise the exception from the initial
         # pending future value
         with self.assertRaises(TaskFailureException):
@@ -642,18 +703,21 @@ class TestTask(unittest.TestCase):
             first_future = executor.submit(
                 SuccessTask(
                     self.transfer_coordinator,
-                    main_kwargs={'return_value': 'bar'}
+                    main_kwargs={'return_value': 'bar'},
                 )
             )
             second_future = executor.submit(
-                FailureTask(self.transfer_coordinator))
+                FailureTask(self.transfer_coordinator)
+            )
 
             pending_kwargs['pending_list'] = [first_future, second_future]
 
         # Create a task that depends on the tasks passed to the executor
         ReturnKwargsTask(
-            self.transfer_coordinator, pending_main_kwargs=pending_kwargs,
-            is_final=True)()
+            self.transfer_coordinator,
+            pending_main_kwargs=pending_kwargs,
+            is_final=True,
+        )()
         # The end result should raise the exception from the initial
         # pending future value in the list
         with self.assertRaises(TaskFailureException):
@@ -678,8 +742,8 @@ class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
                 'client': self.client,
                 'bucket': self.bucket,
                 'key': self.key,
-                'extra_args': extra_args
-            }
+                'extra_args': extra_args,
+            },
         )
         self.stubber.add_response(
             method='create_multipart_upload',
@@ -687,8 +751,8 @@ class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'Metadata': {'foo': 'bar'}
-            }
+                'Metadata': {'foo': 'bar'},
+            },
         )
         result_id = task()
         self.stubber.assert_no_pending_responses()
@@ -705,8 +769,8 @@ class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'UploadId': upload_id
-            }
+                'UploadId': upload_id,
+            },
         )
         self.transfer_coordinator.failure_cleanups[0]()
         self.stubber.assert_no_pending_responses()
@@ -724,19 +788,18 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
                 'key': self.key,
                 'upload_id': upload_id,
                 'parts': parts,
-                'extra_args': {}
-            }
+                'extra_args': {},
+            },
         )
         self.stubber.add_response(
             method='complete_multipart_upload',
             service_response={},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
+                'Bucket': self.bucket,
+                'Key': self.key,
                 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': parts
-                }
-            }
+                'MultipartUpload': {'Parts': parts},
+            },
         )
         task()
         self.stubber.assert_no_pending_responses()
@@ -752,20 +815,19 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
                 'key': self.key,
                 'upload_id': upload_id,
                 'parts': parts,
-                'extra_args': {'RequestPayer': 'requester'}
-            }
+                'extra_args': {'RequestPayer': 'requester'},
+            },
         )
         self.stubber.add_response(
             method='complete_multipart_upload',
             service_response={},
             expected_params={
-                'Bucket': self.bucket, 'Key': self.key,
+                'Bucket': self.bucket,
+                'Key': self.key,
                 'UploadId': upload_id,
-                'MultipartUpload': {
-                    'Parts': parts
-                },
-                'RequestPayer': 'requester'
-            }
+                'MultipartUpload': {'Parts': parts},
+                'RequestPayer': 'requester',
+            },
         )
         task()
         self.stubber.assert_no_pending_responses()

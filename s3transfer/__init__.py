@@ -123,24 +123,24 @@ transfer.  For example:
 
 
 """
-import os
-import math
+import concurrent.futures
 import functools
 import logging
-import socket
-import threading
+import math
+import os
 import random
+import socket
 import string
-import concurrent.futures
+import threading
 
 from botocore.compat import six
-from botocore.vendored.requests.packages.urllib3.exceptions import \
-    ReadTimeoutError
 from botocore.exceptions import IncompleteReadError
+from botocore.vendored.requests.packages.urllib3.exceptions import (
+    ReadTimeoutError,
+)
 
 import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
-
 
 __author__ = 'Amazon Web Services'
 __version__ = '0.5.0'

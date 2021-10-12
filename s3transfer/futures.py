@@ -10,19 +10,16 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from concurrent import futures
-from collections import namedtuple
 import copy
 import logging
 import sys
 import threading
+from collections import namedtuple
+from concurrent import futures
 
-from s3transfer.compat import MAXINT
-from s3transfer.compat import six
+from s3transfer.compat import MAXINT, six
 from s3transfer.exceptions import CancelledError, TransferNotDoneError
-from s3transfer.utils import FunctionContainer
-from s3transfer.utils import TaskSemaphore
-
+from s3transfer.utils import FunctionContainer, TaskSemaphore
 
 logger = logging.getLogger(__name__)
 

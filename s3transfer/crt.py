@@ -11,26 +11,30 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import logging
-from io import BytesIO
 import threading
-
-import botocore.awsrequest
-import botocore.session
-from botocore import UNSIGNED
-from botocore.config import Config
-from botocore.compat import urlsplit
-from botocore.exceptions import NoCredentialsError
+from io import BytesIO
 
 import awscrt.http
-from awscrt.s3 import S3Client, S3RequestType, S3RequestTlsMode
-from awscrt.io import ClientBootstrap, DefaultHostResolver, EventLoopGroup
-from awscrt.io import ClientTlsContext, TlsContextOptions
-from awscrt.auth import AwsCredentialsProvider, AwsCredentials
+import botocore.awsrequest
+import botocore.session
+from awscrt.auth import AwsCredentials, AwsCredentialsProvider
+from awscrt.io import (
+    ClientBootstrap,
+    ClientTlsContext,
+    DefaultHostResolver,
+    EventLoopGroup,
+    TlsContextOptions,
+)
+from awscrt.s3 import S3Client, S3RequestTlsMode, S3RequestType
+from botocore import UNSIGNED
+from botocore.compat import urlsplit
+from botocore.config import Config
+from botocore.exceptions import NoCredentialsError
 
+from s3transfer.constants import GB, MB
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
 from s3transfer.utils import CallArgs, OSUtils, get_callbacks
-from s3transfer.constants import GB, MB
 
 logger = logging.getLogger(__name__)
 

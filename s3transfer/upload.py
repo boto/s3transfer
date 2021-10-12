@@ -14,15 +14,20 @@ import math
 
 from botocore.compat import six
 
-from s3transfer.compat import seekable, readable
+from s3transfer.compat import readable, seekable
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
-from s3transfer.tasks import Task
-from s3transfer.tasks import SubmissionTask
-from s3transfer.tasks import CreateMultipartUploadTask
-from s3transfer.tasks import CompleteMultipartUploadTask
-from s3transfer.utils import get_callbacks
-from s3transfer.utils import get_filtered_dict
-from s3transfer.utils import DeferredOpenFile, ChunksizeAdjuster
+from s3transfer.tasks import (
+    CompleteMultipartUploadTask,
+    CreateMultipartUploadTask,
+    SubmissionTask,
+    Task,
+)
+from s3transfer.utils import (
+    ChunksizeAdjuster,
+    DeferredOpenFile,
+    get_callbacks,
+    get_filtered_dict,
+)
 
 
 class AggregatedProgressCallback(object):

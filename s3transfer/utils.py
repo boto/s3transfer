@@ -10,24 +10,20 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import random
 import functools
+import logging
 import math
 import os
+import random
 import socket
 import stat
 import string
-import logging
 import threading
 from collections import defaultdict
 
-from botocore.exceptions import IncompleteReadError
-from botocore.exceptions import ReadTimeoutError
+from botocore.exceptions import IncompleteReadError, ReadTimeoutError
 
-from s3transfer.compat import SOCKET_ERROR
-from s3transfer.compat import rename_file
-from s3transfer.compat import fallocate
-
+from s3transfer.compat import SOCKET_ERROR, fallocate, rename_file
 
 MAX_PARTS = 10000
 # The maximum file size you can upload via S3 per request.

@@ -10,14 +10,13 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import inspect
-import sys
-import os
 import errno
+import inspect
+import os
 import socket
+import sys
 
 from botocore.compat import six
-
 
 if sys.platform.startswith('win'):
     def rename_file(current_filename, new_filename):

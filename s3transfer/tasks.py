@@ -15,7 +15,6 @@ import logging
 
 from s3transfer.utils import get_callbacks
 
-
 logger = logging.getLogger(__name__)
 
 

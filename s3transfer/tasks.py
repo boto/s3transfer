@@ -24,9 +24,15 @@ class Task:
     This is a base class for other classes to subclass from. All subclassed
     classes must implement the main() method.
     """
-    def __init__(self, transfer_coordinator, main_kwargs=None,
-                 pending_main_kwargs=None, done_callbacks=None,
-                 is_final=False):
+
+    def __init__(
+        self,
+        transfer_coordinator,
+        main_kwargs=None,
+        pending_main_kwargs=None,
+        done_callbacks=None,
+        is_final=False,
+    ):
         """
         :type transfer_coordinator: s3transfer.futures.TransferCoordinator
         :param transfer_coordinator: The context associated to the
@@ -79,14 +85,22 @@ class Task:
         # These are the general main_kwarg parameters that we want to
         # display in the repr.
         params_to_display = [
-            'bucket', 'key', 'part_number', 'final_filename',
-            'transfer_future', 'offset', 'extra_args'
+            'bucket',
+            'key',
+            'part_number',
+            'final_filename',
+            'transfer_future',
+            'offset',
+            'extra_args',
         ]
         main_kwargs_to_display = self._get_kwargs_with_params_to_include(
-            self._main_kwargs, params_to_display)
+            self._main_kwargs, params_to_display
+        )
         return '{}(transfer_id={}, {})'.format(
-            self.__class__.__name__, self._transfer_coordinator.transfer_id,
-            main_kwargs_to_display)
+            self.__class__.__name__,
+            self._transfer_coordinator.transfer_id,
+            main_kwargs_to_display,
+        )
 
     @property
     def transfer_id(self):
@@ -140,11 +154,10 @@ class Task:
         # if they are going to make the logs hard to follow.
         params_to_exclude = ['data']
         kwargs_to_display = self._get_kwargs_with_params_to_exclude(
-            kwargs, params_to_exclude)
-        # Log what is about to be executed.
-        logger.debug(
-            f"Executing task {self} with kwargs {kwargs_to_display}"
+            kwargs, params_to_exclude
         )
+        # Log what is about to be executed.
+        logger.debug(f"Executing task {self} with kwargs {kwargs_to_display}")
 
         return_value = self._main(**kwargs)
         # If the task is the final task, then set the TransferFuture's
@@ -190,7 +203,8 @@ class Task:
         # concurrency bug by removing any association with concurrent.futures
         # implementation of waiters.
         logger.debug(
-            '%s about to wait for the following futures %s', self, futures)
+            '%s about to wait for the following futures %s', self, futures
+        )
         for future in futures:
             try:
                 logger.debug('%s about to wait for %s', self, future)
@@ -229,6 +243,7 @@ class SubmissionTask(Task):
     Submission tasks are the top-level task used to submit a series of tasks
     to execute a particular transfer.
     """
+
     def _main(self, transfer_future, **kwargs):
         """
         :type transfer_future: s3transfer.futures.TransferFuture
@@ -302,8 +317,9 @@ class SubmissionTask(Task):
             self._wait_until_all_complete(submitted_futures)
             # However, more futures may have been submitted as we waited so
             # we need to check again for any more associated futures.
-            possibly_more_submitted_futures = \
+            possibly_more_submitted_futures = (
                 self._transfer_coordinator.associated_futures
+            )
             # If the current list of submitted futures is equal to the
             # the list of associated futures for when after the wait completes,
             # we can ensure no more futures were submitted in waiting on
@@ -317,6 +333,7 @@ class SubmissionTask(Task):
 
 class CreateMultipartUploadTask(Task):
     """Task to initiate a multipart upload"""
+
     def _main(self, client, bucket, key, extra_args):
         """
         :param client: The client to use when calling CreateMultipartUpload
@@ -329,19 +346,23 @@ class CreateMultipartUploadTask(Task):
         """
         # Create the multipart upload.
         response = client.create_multipart_upload(
-            Bucket=bucket, Key=key, **extra_args)
+            Bucket=bucket, Key=key, **extra_args
+        )
         upload_id = response['UploadId']
 
         # Add a cleanup if the multipart upload fails at any point.
         self._transfer_coordinator.add_failure_cleanup(
-            client.abort_multipart_upload, Bucket=bucket, Key=key,
-            UploadId=upload_id
+            client.abort_multipart_upload,
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
         )
         return upload_id
 
 
 class CompleteMultipartUploadTask(Task):
     """Task to complete a multipart upload"""
+
     def _main(self, client, bucket, key, upload_id, parts, extra_args):
         """
         :param client: The client to use when calling CompleteMultipartUpload
@@ -358,6 +379,9 @@ class CompleteMultipartUploadTask(Task):
             used in completing the multipart transfer.
         """
         client.complete_multipart_upload(
-            Bucket=bucket, Key=key, UploadId=upload_id,
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
             MultipartUpload={'Parts': parts},
-            **extra_args)
+            **extra_args,
+        )

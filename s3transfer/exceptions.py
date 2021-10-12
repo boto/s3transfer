@@ -33,4 +33,5 @@ class TransferNotDoneError(Exception):
 
 class FatalError(CancelledError):
     """A CancelledError raised from an error in the TransferManager"""
+
     pass

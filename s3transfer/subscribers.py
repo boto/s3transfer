@@ -20,11 +20,8 @@ class BaseSubscriber:
     It is recommended that all subscriber implementations subclass and then
     override the subscription methods (i.e. on_{subsribe_type}() methods).
     """
-    VALID_SUBSCRIBER_TYPES = [
-        'queued',
-        'progress',
-        'done'
-    ]
+
+    VALID_SUBSCRIBER_TYPES = ['queued', 'progress', 'done']
 
     def __new__(cls, *args, **kwargs):
         cls._validate_subscriber_methods()
@@ -36,13 +33,15 @@ class BaseSubscriber:
             subscriber_method = getattr(cls, 'on_' + subscriber_type)
             if not callable(subscriber_method):
                 raise InvalidSubscriberMethodError(
-                    'Subscriber method %s must be callable.' %
-                    subscriber_method)
+                    'Subscriber method %s must be callable.'
+                    % subscriber_method
+                )
 
             if not accepts_kwargs(subscriber_method):
                 raise InvalidSubscriberMethodError(
                     'Subscriber method %s must accept keyword '
-                    'arguments (**kwargs)' % subscriber_method)
+                    'arguments (**kwargs)' % subscriber_method
+                )
 
     def on_queued(self, future, **kwargs):
         """Callback to be invoked when transfer request gets queued

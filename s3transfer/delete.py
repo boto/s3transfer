@@ -47,8 +47,8 @@ class DeleteSubmissionTask(SubmissionTask):
                     'key': call_args.key,
                     'extra_args': call_args.extra_args,
                 },
-                is_final=True
-            )
+                is_final=True,
+            ),
         )
 
 

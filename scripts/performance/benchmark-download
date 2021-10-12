@@ -21,13 +21,13 @@ To benchmark with your own s3 key:
 """
 import argparse
 import os
-import tempfile
 import shutil
 import subprocess
+import tempfile
 
 from botocore.session import get_session
-from s3transfer.manager import TransferManager
 
+from s3transfer.manager import TransferManager
 
 TEMP_FILE = 'temp'
 TEMP_KEY = 'temp'

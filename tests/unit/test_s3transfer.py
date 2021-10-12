@@ -11,25 +11,30 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
-import tempfile
 import shutil
 import socket
-from tests import mock, unittest
+import tempfile
+from concurrent import futures
 from contextlib import closing
 
 from botocore.vendored import six
-from concurrent import futures
 
-from s3transfer.exceptions import RetriesExceededError
-from s3transfer.exceptions import S3UploadFailedError
-from s3transfer import ReadFileChunk, StreamReaderProgress
-from s3transfer import S3Transfer
-from s3transfer import OSUtils, TransferConfig
-from s3transfer import MultipartDownloader, MultipartUploader
-from s3transfer import ShutdownQueue
-from s3transfer import QueueShutdownError
-from s3transfer import random_file_extension
-from s3transfer import disable_upload_callbacks, enable_upload_callbacks
+from s3transfer import (
+    MultipartDownloader,
+    MultipartUploader,
+    OSUtils,
+    QueueShutdownError,
+    ReadFileChunk,
+    S3Transfer,
+    ShutdownQueue,
+    StreamReaderProgress,
+    TransferConfig,
+    disable_upload_callbacks,
+    enable_upload_callbacks,
+    random_file_extension,
+)
+from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
+from tests import mock, unittest
 
 
 class InMemoryOSLayer(OSUtils):

@@ -10,20 +10,19 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import os
-import threading
-import math
-import tempfile
-import shutil
 import hashlib
+import math
+import os
+import shutil
 import string
+import tempfile
+import threading
 
-from tests.integration import BaseTransferManagerIntegTest
-from botocore.compat import six
 from botocore.client import Config
+from botocore.compat import six
 
 import s3transfer
-
+from tests.integration import BaseTransferManagerIntegTest
 
 urlopen = six.moves.urllib.request.urlopen
 

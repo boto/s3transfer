@@ -18,13 +18,10 @@ import botocore.exceptions
 import botocore.session
 from botocore.stub import Stubber
 
-from tests import mock
-from tests import unittest
-from tests import FileCreator
 from s3transfer.compat import six
 from s3transfer.exceptions import CancelledError
-from s3transfer.processpool import ProcessTransferConfig
-from s3transfer.processpool import ProcessPoolDownloader
+from s3transfer.processpool import ProcessPoolDownloader, ProcessTransferConfig
+from tests import FileCreator, mock, unittest
 
 
 class StubbedClient(object):

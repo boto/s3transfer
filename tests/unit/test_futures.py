@@ -14,28 +14,35 @@ import os
 import sys
 import time
 import traceback
-
 from concurrent.futures import ThreadPoolExecutor
 
-from tests import unittest
-from tests import mock
-from tests import RecordingExecutor
-from tests import TransferCoordinatorWithInterrupt
-from s3transfer.exceptions import CancelledError
-from s3transfer.exceptions import FatalError
-from s3transfer.exceptions import TransferNotDoneError
-from s3transfer.futures import TransferFuture
-from s3transfer.futures import TransferMeta
-from s3transfer.futures import TransferCoordinator
-from s3transfer.futures import BoundedExecutor
-from s3transfer.futures import ExecutorFuture
-from s3transfer.futures import BaseExecutor
-from s3transfer.futures import NonThreadedExecutor
-from s3transfer.futures import NonThreadedExecutorFuture
+from s3transfer.exceptions import (
+    CancelledError,
+    FatalError,
+    TransferNotDoneError,
+)
+from s3transfer.futures import (
+    BaseExecutor,
+    BoundedExecutor,
+    ExecutorFuture,
+    NonThreadedExecutor,
+    NonThreadedExecutorFuture,
+    TransferCoordinator,
+    TransferFuture,
+    TransferMeta,
+)
 from s3transfer.tasks import Task
-from s3transfer.utils import FunctionContainer
-from s3transfer.utils import TaskSemaphore
-from s3transfer.utils import NoResourcesAvailable
+from s3transfer.utils import (
+    FunctionContainer,
+    NoResourcesAvailable,
+    TaskSemaphore,
+)
+from tests import (
+    RecordingExecutor,
+    TransferCoordinatorWithInterrupt,
+    mock,
+    unittest,
+)
 
 
 def return_call_args(*args, **kwargs):

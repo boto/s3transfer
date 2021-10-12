@@ -11,16 +11,12 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import time
-
 from concurrent.futures import ThreadPoolExecutor
 
-from tests import unittest
-from tests import TransferCoordinatorWithInterrupt
-from s3transfer.exceptions import CancelledError
-from s3transfer.exceptions import FatalError
+from s3transfer.exceptions import CancelledError, FatalError
 from s3transfer.futures import TransferCoordinator
-from s3transfer.manager import TransferConfig
-from s3transfer.manager import TransferCoordinatorController
+from s3transfer.manager import TransferConfig, TransferCoordinatorController
+from tests import TransferCoordinatorWithInterrupt, unittest
 
 
 class FutureResultException(Exception):

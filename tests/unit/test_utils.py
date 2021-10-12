@@ -10,39 +10,40 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import io
 import os.path
+import random
+import re
 import shutil
 import tempfile
 import threading
-import random
-import re
 import time
-import io
 
-
-from tests import mock, unittest, RecordingSubscriber, NonSeekableWriter
 from s3transfer.compat import six
-from s3transfer.futures import TransferFuture
-from s3transfer.futures import TransferMeta
-from s3transfer.utils import get_callbacks
-from s3transfer.utils import random_file_extension
-from s3transfer.utils import invoke_progress_callbacks
-from s3transfer.utils import calculate_num_parts
-from s3transfer.utils import calculate_range_parameter
-from s3transfer.utils import get_filtered_dict
-from s3transfer.utils import CallArgs
-from s3transfer.utils import FunctionContainer
-from s3transfer.utils import CountCallbackInvoker
-from s3transfer.utils import OSUtils
-from s3transfer.utils import DeferredOpenFile
-from s3transfer.utils import ReadFileChunk
-from s3transfer.utils import StreamReaderProgress
-from s3transfer.utils import TaskSemaphore
-from s3transfer.utils import SlidingWindowSemaphore
-from s3transfer.utils import NoResourcesAvailable
-from s3transfer.utils import ChunksizeAdjuster
-from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE, MAX_SINGLE_UPLOAD_SIZE
-from s3transfer.utils import MAX_PARTS
+from s3transfer.futures import TransferFuture, TransferMeta
+from s3transfer.utils import (
+    MAX_PARTS,
+    MAX_SINGLE_UPLOAD_SIZE,
+    MIN_UPLOAD_CHUNKSIZE,
+    CallArgs,
+    ChunksizeAdjuster,
+    CountCallbackInvoker,
+    DeferredOpenFile,
+    FunctionContainer,
+    NoResourcesAvailable,
+    OSUtils,
+    ReadFileChunk,
+    SlidingWindowSemaphore,
+    StreamReaderProgress,
+    TaskSemaphore,
+    calculate_num_parts,
+    calculate_range_parameter,
+    get_callbacks,
+    get_filtered_dict,
+    invoke_progress_callbacks,
+    random_file_extension,
+)
+from tests import NonSeekableWriter, RecordingSubscriber, mock, unittest
 
 
 class TestGetCallbacks(unittest.TestCase):

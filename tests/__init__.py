@@ -10,8 +10,8 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import io
 import hashlib
+import io
 import math
 import os
 import platform
@@ -22,23 +22,26 @@ import unittest
 from unittest import mock  # noqa: F401
 
 import botocore.session
-from botocore.stub import Stubber
 from botocore.compat import six
+from botocore.stub import Stubber
 
+from s3transfer.futures import (
+    IN_MEMORY_DOWNLOAD_TAG,
+    IN_MEMORY_UPLOAD_TAG,
+    BoundedExecutor,
+    NonThreadedExecutor,
+    TransferCoordinator,
+    TransferFuture,
+    TransferMeta,
+)
 from s3transfer.manager import TransferConfig
-from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
-from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
-from s3transfer.futures import TransferCoordinator
-from s3transfer.futures import TransferMeta
-from s3transfer.futures import TransferFuture
-from s3transfer.futures import BoundedExecutor
-from s3transfer.futures import NonThreadedExecutor
 from s3transfer.subscribers import BaseSubscriber
-from s3transfer.utils import OSUtils
-from s3transfer.utils import CallArgs
-from s3transfer.utils import TaskSemaphore
-from s3transfer.utils import SlidingWindowSemaphore
-
+from s3transfer.utils import (
+    CallArgs,
+    OSUtils,
+    SlidingWindowSemaphore,
+    TaskSemaphore,
+)
 
 ORIGINAL_EXECUTOR_CLS = BoundedExecutor.EXECUTOR_CLS
 # Detect if CRT is available for use

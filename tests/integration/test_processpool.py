@@ -14,10 +14,9 @@ import glob
 import os
 import time
 
+from s3transfer.processpool import ProcessPoolDownloader, ProcessTransferConfig
 from tests import assert_files_equal
 from tests.integration import BaseTransferManagerIntegTest
-from s3transfer.processpool import ProcessTransferConfig
-from s3transfer.processpool import ProcessPoolDownloader
 
 
 class TestProcessPoolDownloader(BaseTransferManagerIntegTest):

@@ -20,7 +20,8 @@ import argparse
 import os
 
 import botocore.session
-from s3transfer.processpool import ProcessTransferConfig, ProcessPoolDownloader
+
+from s3transfer.processpool import ProcessPoolDownloader, ProcessTransferConfig
 
 MB = 1024 * 1024
 

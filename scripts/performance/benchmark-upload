@@ -21,12 +21,11 @@ To benchmark with your own local file::
 """
 import argparse
 import os
-import tempfile
 import shutil
 import subprocess
+import tempfile
 
 from botocore.session import get_session
-
 
 TEMP_FILE = 'temp'
 TEMP_KEY = 'temp'

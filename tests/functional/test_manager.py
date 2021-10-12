@@ -11,16 +11,13 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from io import BytesIO
+
 from botocore.awsrequest import create_request_object
 
-from tests import mock
-from tests import skip_if_using_serial_implementation
-from tests import StubbedClientTest
-from s3transfer.exceptions import CancelledError
-from s3transfer.exceptions import FatalError
+from s3transfer.exceptions import CancelledError, FatalError
 from s3transfer.futures import BaseExecutor
-from s3transfer.manager import TransferManager
-from s3transfer.manager import TransferConfig
+from s3transfer.manager import TransferConfig, TransferManager
+from tests import StubbedClientTest, mock, skip_if_using_serial_implementation
 
 
 class ArbitraryException(Exception):

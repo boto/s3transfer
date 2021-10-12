@@ -14,20 +14,21 @@ from concurrent import futures
 from functools import partial
 from threading import Event
 
-from tests import unittest
-from tests import RecordingSubscriber
-from tests import BaseTaskTest
-from tests import BaseSubmissionTaskTest
-from s3transfer.futures import TransferCoordinator
-from s3transfer.futures import BoundedExecutor
+from s3transfer.futures import BoundedExecutor, TransferCoordinator
 from s3transfer.subscribers import BaseSubscriber
-from s3transfer.tasks import Task
-from s3transfer.tasks import SubmissionTask
-from s3transfer.tasks import CreateMultipartUploadTask
-from s3transfer.tasks import CompleteMultipartUploadTask
-from s3transfer.utils import get_callbacks
-from s3transfer.utils import CallArgs
-from s3transfer.utils import FunctionContainer
+from s3transfer.tasks import (
+    CompleteMultipartUploadTask,
+    CreateMultipartUploadTask,
+    SubmissionTask,
+    Task,
+)
+from s3transfer.utils import CallArgs, FunctionContainer, get_callbacks
+from tests import (
+    BaseSubmissionTaskTest,
+    BaseTaskTest,
+    RecordingSubscriber,
+    unittest,
+)
 
 
 class TaskFailureException(Exception):

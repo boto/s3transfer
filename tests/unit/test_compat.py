@@ -11,16 +11,14 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
-import tempfile
 import shutil
 import signal
+import tempfile
 
 from botocore.compat import six
 
-from tests import unittest
-from tests import skip_if_windows
-from s3transfer.compat import seekable, readable
-from s3transfer.compat import BaseManager
+from s3transfer.compat import BaseManager, readable, seekable
+from tests import skip_if_windows, unittest
 
 
 class ErrorRaisingSeekWrapper(object):

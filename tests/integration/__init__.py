@@ -14,11 +14,9 @@ import botocore
 import botocore.session
 from botocore.exceptions import WaiterError
 
-from tests import unittest
-from tests import FileCreator
-from tests import random_bucket_name
 from s3transfer.manager import TransferManager
 from s3transfer.subscribers import BaseSubscriber
+from tests import FileCreator, random_bucket_name, unittest
 
 
 def recursive_delete(client, bucket_name):

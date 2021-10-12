@@ -15,8 +15,8 @@ To use the script, run::
 """
 import argparse
 import os
-import sys
 import subprocess
+import sys
 import time
 
 import psutil

@@ -20,12 +20,11 @@ If no ``--output-file`` was provided, the data will be saved to
 """
 import argparse
 import os
-import sys
 import subprocess
+import sys
 import time
 
 import psutil
-
 
 # Determine the interface to track network IO depending on the platform.
 if sys.platform.startswith('linux'):

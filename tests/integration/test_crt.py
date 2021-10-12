@@ -10,19 +10,18 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import os
 import glob
-from s3transfer.utils import OSUtils
-
-from tests.integration import BaseTransferManagerIntegTest
-from tests import assert_files_equal
+import os
 
 from s3transfer.subscribers import BaseSubscriber
-from tests import requires_crt, HAS_CRT
+from s3transfer.utils import OSUtils
+from tests import HAS_CRT, assert_files_equal, requires_crt
+from tests.integration import BaseTransferManagerIntegTest
 
 if HAS_CRT:
-    import s3transfer.crt
     from awscrt.exceptions import AwsCrtError
+
+    import s3transfer.crt
 
 
 class RecordingSubscriber(BaseSubscriber):

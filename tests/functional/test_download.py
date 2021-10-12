@@ -11,27 +11,27 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import copy
+import glob
 import os
+import shutil
 import tempfile
 import time
-import shutil
-import glob
 
 from botocore.exceptions import ClientError
 
-from tests import StreamWithError
-from tests import FileSizeProvider
-from tests import RecordingSubscriber
-from tests import RecordingOSUtils
-from tests import NonSeekableWriter
-from tests import BaseGeneralInterfaceTest
-from tests import skip_if_windows
-from tests import skip_if_using_serial_implementation
-from s3transfer.compat import six
-from s3transfer.compat import SOCKET_ERROR
+from s3transfer.compat import SOCKET_ERROR, six
 from s3transfer.exceptions import RetriesExceededError
-from s3transfer.manager import TransferManager
-from s3transfer.manager import TransferConfig
+from s3transfer.manager import TransferConfig, TransferManager
+from tests import (
+    BaseGeneralInterfaceTest,
+    FileSizeProvider,
+    NonSeekableWriter,
+    RecordingOSUtils,
+    RecordingSubscriber,
+    StreamWithError,
+    skip_if_using_serial_implementation,
+    skip_if_windows,
+)
 
 
 class BaseDownloadTest(BaseGeneralInterfaceTest):

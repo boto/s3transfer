@@ -10,17 +10,22 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import time
 import threading
-
+import time
 from concurrent.futures import CancelledError
 
 from botocore.compat import six
-from tests import skip_if_using_serial_implementation
-from tests import RecordingSubscriber, NonSeekableReader
-from tests.integration import BaseTransferManagerIntegTest
-from tests.integration import WaitForTransferStart
+
 from s3transfer.manager import TransferConfig
+from tests import (
+    NonSeekableReader,
+    RecordingSubscriber,
+    skip_if_using_serial_implementation,
+)
+from tests.integration import (
+    BaseTransferManagerIntegTest,
+    WaitForTransferStart,
+)
 
 
 class TestUpload(BaseTransferManagerIntegTest):

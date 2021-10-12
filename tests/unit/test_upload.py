@@ -11,34 +11,37 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 from __future__ import division
-import os
-import tempfile
-import shutil
+
 import math
+import os
+import shutil
+import tempfile
 
 from botocore.stub import ANY
 
-from tests import unittest
-from tests import BaseTaskTest
-from tests import BaseSubmissionTaskTest
-from tests import FileSizeProvider
-from tests import RecordingSubscriber
-from tests import RecordingExecutor
-from tests import NonSeekableReader
 from s3transfer.compat import six
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
 from s3transfer.manager import TransferConfig
-from s3transfer.upload import AggregatedProgressCallback
-from s3transfer.upload import InterruptReader
-from s3transfer.upload import UploadFilenameInputManager
-from s3transfer.upload import UploadSeekableInputManager
-from s3transfer.upload import UploadNonSeekableInputManager
-from s3transfer.upload import UploadSubmissionTask
-from s3transfer.upload import PutObjectTask
-from s3transfer.upload import UploadPartTask
-from s3transfer.utils import CallArgs
-from s3transfer.utils import OSUtils
-from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE
+from s3transfer.upload import (
+    AggregatedProgressCallback,
+    InterruptReader,
+    PutObjectTask,
+    UploadFilenameInputManager,
+    UploadNonSeekableInputManager,
+    UploadPartTask,
+    UploadSeekableInputManager,
+    UploadSubmissionTask,
+)
+from s3transfer.utils import MIN_UPLOAD_CHUNKSIZE, CallArgs, OSUtils
+from tests import (
+    BaseSubmissionTaskTest,
+    BaseTaskTest,
+    FileSizeProvider,
+    NonSeekableReader,
+    RecordingExecutor,
+    RecordingSubscriber,
+    unittest,
+)
 
 
 class InterruptionError(Exception):

@@ -12,19 +12,22 @@
 # language governing permissions and limitations under the License.
 import glob
 import os
-import time
 import threading
-
+import time
 from concurrent.futures import CancelledError
 
-from tests import assert_files_equal
-from tests import skip_if_windows
-from tests import skip_if_using_serial_implementation
-from tests import RecordingSubscriber
-from tests import NonSeekableWriter
-from tests.integration import BaseTransferManagerIntegTest
-from tests.integration import WaitForTransferStart
 from s3transfer.manager import TransferConfig
+from tests import (
+    NonSeekableWriter,
+    RecordingSubscriber,
+    assert_files_equal,
+    skip_if_using_serial_implementation,
+    skip_if_windows,
+)
+from tests.integration import (
+    BaseTransferManagerIntegTest,
+    WaitForTransferStart,
+)
 
 
 class TestDownload(BaseTransferManagerIntegTest):

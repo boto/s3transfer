@@ -18,14 +18,12 @@ from concurrent.futures import Future
 from botocore.session import Session
 
 from s3transfer.subscribers import BaseSubscriber
-
-from tests import (
-    FileCreator, requires_crt, HAS_CRT, unittest, mock
-)
+from tests import HAS_CRT, FileCreator, mock, requires_crt, unittest
 
 if HAS_CRT:
-    import s3transfer.crt
     import awscrt
+
+    import s3transfer.crt
 
 
 class submitThread(threading.Thread):

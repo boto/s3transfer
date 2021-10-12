@@ -10,17 +10,16 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from botocore.session import Session
 from botocore.credentials import CredentialResolver, ReadOnlyCredentials
+from botocore.session import Session
+
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.utils import CallArgs
-
-from tests import (
-    FileCreator, requires_crt, HAS_CRT, mock, unittest
-)
+from tests import HAS_CRT, FileCreator, mock, requires_crt, unittest
 
 if HAS_CRT:
     import awscrt.s3
+
     import s3transfer.crt
 
 

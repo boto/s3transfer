@@ -12,40 +12,41 @@
 # language governing permissions and limitations under the License.
 import os
 import signal
-import time
 import threading
+import time
 
-from six.moves import queue
-from botocore.exceptions import ClientError
-from botocore.exceptions import ReadTimeoutError
 from botocore.client import BaseClient
 from botocore.config import Config
+from botocore.exceptions import ClientError, ReadTimeoutError
+from six.moves import queue
 
-from tests import unittest
-from tests import mock
-from tests import skip_if_windows
-from tests import FileCreator
-from tests import StreamWithError
-from tests import StubbedClientTest
 from s3transfer.compat import six
 from s3transfer.constants import PROCESS_USER_AGENT
-from s3transfer.exceptions import RetriesExceededError
-from s3transfer.exceptions import CancelledError
-from s3transfer.utils import OSUtils
-from s3transfer.utils import CallArgs
-from s3transfer.processpool import SHUTDOWN_SIGNAL
-from s3transfer.processpool import ignore_ctrl_c
-from s3transfer.processpool import DownloadFileRequest
-from s3transfer.processpool import GetObjectJob
-from s3transfer.processpool import ProcessTransferConfig
-from s3transfer.processpool import ProcessPoolDownloader
-from s3transfer.processpool import ProcessPoolTransferFuture
-from s3transfer.processpool import ProcessPoolTransferMeta
-from s3transfer.processpool import TransferMonitor
-from s3transfer.processpool import TransferState
-from s3transfer.processpool import ClientFactory
-from s3transfer.processpool import GetObjectSubmitter
-from s3transfer.processpool import GetObjectWorker
+from s3transfer.exceptions import CancelledError, RetriesExceededError
+from s3transfer.processpool import (
+    SHUTDOWN_SIGNAL,
+    ClientFactory,
+    DownloadFileRequest,
+    GetObjectJob,
+    GetObjectSubmitter,
+    GetObjectWorker,
+    ProcessPoolDownloader,
+    ProcessPoolTransferFuture,
+    ProcessPoolTransferMeta,
+    ProcessTransferConfig,
+    TransferMonitor,
+    TransferState,
+    ignore_ctrl_c,
+)
+from s3transfer.utils import CallArgs, OSUtils
+from tests import (
+    FileCreator,
+    StreamWithError,
+    StubbedClientTest,
+    mock,
+    skip_if_windows,
+    unittest,
+)
 
 
 class RenameFailingOSUtils(OSUtils):

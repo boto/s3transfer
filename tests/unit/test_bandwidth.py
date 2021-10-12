@@ -14,16 +14,18 @@ import os
 import shutil
 import tempfile
 
-from tests import mock, unittest
-from s3transfer.bandwidth import RequestExceededException
-from s3transfer.bandwidth import RequestToken
-from s3transfer.bandwidth import TimeUtils
-from s3transfer.bandwidth import BandwidthLimiter
-from s3transfer.bandwidth import BandwidthLimitedStream
-from s3transfer.bandwidth import LeakyBucket
-from s3transfer.bandwidth import ConsumptionScheduler
-from s3transfer.bandwidth import BandwidthRateTracker
+from s3transfer.bandwidth import (
+    BandwidthLimitedStream,
+    BandwidthLimiter,
+    BandwidthRateTracker,
+    ConsumptionScheduler,
+    LeakyBucket,
+    RequestExceededException,
+    RequestToken,
+    TimeUtils,
+)
 from s3transfer.futures import TransferCoordinator
+from tests import mock, unittest
 
 
 class FixedIncrementalTickTimeUtils(TimeUtils):

@@ -15,36 +15,37 @@ import os
 import shutil
 import tempfile
 
-from tests import BaseTaskTest
-from tests import BaseSubmissionTaskTest
-from tests import StreamWithError
-from tests import FileCreator
-from tests import mock
-from tests import unittest
-from tests import RecordingExecutor
-from tests import NonSeekableWriter
-from s3transfer.compat import six
-from s3transfer.compat import SOCKET_ERROR
-from s3transfer.exceptions import RetriesExceededError
 from s3transfer.bandwidth import BandwidthLimiter
-from s3transfer.download import DownloadFilenameOutputManager
-from s3transfer.download import DownloadSpecialFilenameOutputManager
-from s3transfer.download import DownloadSeekableOutputManager
-from s3transfer.download import DownloadNonSeekableOutputManager
-from s3transfer.download import DownloadSubmissionTask
-from s3transfer.download import GetObjectTask
-from s3transfer.download import ImmediatelyWriteIOGetObjectTask
-from s3transfer.download import IOWriteTask
-from s3transfer.download import IOStreamingWriteTask
-from s3transfer.download import IORenameFileTask
-from s3transfer.download import IOCloseTask
-from s3transfer.download import CompleteDownloadNOOPTask
-from s3transfer.download import DownloadChunkIterator
-from s3transfer.download import DeferQueue
-from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
-from s3transfer.futures import BoundedExecutor
-from s3transfer.utils import OSUtils
-from s3transfer.utils import CallArgs
+from s3transfer.compat import SOCKET_ERROR, six
+from s3transfer.download import (
+    CompleteDownloadNOOPTask,
+    DeferQueue,
+    DownloadChunkIterator,
+    DownloadFilenameOutputManager,
+    DownloadNonSeekableOutputManager,
+    DownloadSeekableOutputManager,
+    DownloadSpecialFilenameOutputManager,
+    DownloadSubmissionTask,
+    GetObjectTask,
+    ImmediatelyWriteIOGetObjectTask,
+    IOCloseTask,
+    IORenameFileTask,
+    IOStreamingWriteTask,
+    IOWriteTask,
+)
+from s3transfer.exceptions import RetriesExceededError
+from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG, BoundedExecutor
+from s3transfer.utils import CallArgs, OSUtils
+from tests import (
+    BaseSubmissionTaskTest,
+    BaseTaskTest,
+    FileCreator,
+    NonSeekableWriter,
+    RecordingExecutor,
+    StreamWithError,
+    mock,
+    unittest,
+)
 
 
 class DownloadException(Exception):

@@ -11,24 +11,25 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import os
-import time
-import tempfile
 import shutil
+import tempfile
+import time
 
+from botocore.awsrequest import AWSRequest
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from botocore.awsrequest import AWSRequest
 from botocore.stub import ANY
 
-from tests import BaseGeneralInterfaceTest
-from tests import RecordingSubscriber
-from tests import RecordingOSUtils
-from tests import NonSeekableReader
-from tests import mock
 from s3transfer.compat import six
-from s3transfer.manager import TransferManager
-from s3transfer.manager import TransferConfig
+from s3transfer.manager import TransferConfig, TransferManager
 from s3transfer.utils import ChunksizeAdjuster
+from tests import (
+    BaseGeneralInterfaceTest,
+    NonSeekableReader,
+    RecordingOSUtils,
+    RecordingSubscriber,
+    mock,
+)
 
 
 class BaseUploadTest(BaseGeneralInterfaceTest):

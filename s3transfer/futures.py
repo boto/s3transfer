@@ -17,14 +17,14 @@ import threading
 from collections import namedtuple
 from concurrent import futures
 
-from s3transfer.compat import MAXINT, six
+from s3transfer.compat import MAXINT
 from s3transfer.exceptions import CancelledError, TransferNotDoneError
 from s3transfer.utils import FunctionContainer, TaskSemaphore
 
 logger = logging.getLogger(__name__)
 
 
-class BaseTransferFuture(object):
+class BaseTransferFuture:
     @property
     def meta(self):
         """The metadata associated to the TransferFuture"""
@@ -51,7 +51,7 @@ class BaseTransferFuture(object):
         raise NotImplementedError('cancel()')
 
 
-class BaseTransferMeta(object):
+class BaseTransferMeta:
     @property
     def call_args(self):
         """The call args used in the transfer request"""
@@ -155,7 +155,7 @@ class TransferMeta(BaseTransferMeta):
         self._size = size
 
 
-class TransferCoordinator(object):
+class TransferCoordinator:
     """A helper class for managing TransferFuture"""
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
@@ -172,7 +172,7 @@ class TransferCoordinator(object):
         self._failure_cleanups_lock = threading.Lock()
 
     def __repr__(self):
-        return '%s(transfer_id=%s)' % (
+        return '{}(transfer_id={})'.format(
             self.__class__.__name__, self.transfer_id)
 
     @property
@@ -311,7 +311,7 @@ class TransferCoordinator(object):
         :returns: A future representing the submitted task
         """
         logger.debug(
-            "Submitting task %s to executor %s for transfer request: %s." % (
+            "Submitting task {} to executor {} for transfer request: {}.".format(
                 task, executor, self.transfer_id)
         )
         future = executor.submit(task, tag=tag)
@@ -395,7 +395,7 @@ class TransferCoordinator(object):
             logger.debug("Exception raised in %s." % callback, exc_info=True)
 
 
-class BoundedExecutor(object):
+class BoundedExecutor:
     EXECUTOR_CLS = futures.ThreadPoolExecutor
 
     def __init__(self, max_size, max_num_threads, tag_semaphores=None,
@@ -471,7 +471,7 @@ class BoundedExecutor(object):
         self._executor.shutdown(wait)
 
 
-class ExecutorFuture(object):
+class ExecutorFuture:
     def __init__(self, future):
         """A future returned from the executor
 
@@ -506,7 +506,7 @@ class ExecutorFuture(object):
         return self._future.done()
 
 
-class BaseExecutor(object):
+class BaseExecutor:
     """Base Executor class implementation needed to work with s3transfer"""
     def __init__(self, max_workers=None):
         pass
@@ -538,7 +538,7 @@ class NonThreadedExecutor(BaseExecutor):
         pass
 
 
-class NonThreadedExecutorFuture(object):
+class NonThreadedExecutorFuture:
     """The Future returned from NonThreadedExecutor
 
     Note that this future is **not** thread-safe as it is being used
@@ -562,8 +562,7 @@ class NonThreadedExecutorFuture(object):
 
     def result(self, timeout=None):
         if self._exception:
-            six.reraise(
-                type(self._exception), self._exception, self._traceback)
+            raise self._exception.with_traceback(self._traceback)
         return self._result
 
     def _set_done(self):

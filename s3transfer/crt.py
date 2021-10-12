@@ -140,7 +140,7 @@ def create_s3_crt_client(region,
         throughput_target_gbps=target_gbps)
 
 
-class CRTTransferManager(object):
+class CRTTransferManager:
 
     def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
         """A transfer manager interface for Amazon S3 on CRT s3 client.
@@ -390,7 +390,7 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
         url_parts = urlsplit(aws_request.url)
         crt_path = url_parts.path
         if url_parts.query:
-            crt_path = '%s?%s' % (crt_path, url_parts.query)
+            crt_path = f'{crt_path}?{url_parts.query}'
         headers_list = []
         for name, value in aws_request.headers.items():
             if isinstance(value, str):

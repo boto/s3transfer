@@ -11,8 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import math
-
-from botocore.compat import six
+from io import BytesIO
 
 from s3transfer.compat import readable, seekable
 from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
@@ -30,7 +29,7 @@ from s3transfer.utils import (
 )
 
 
-class AggregatedProgressCallback(object):
+class AggregatedProgressCallback:
     def __init__(self, callbacks, threshold=1024 * 256):
         """Aggregates progress updates for every provided progress callback
 
@@ -63,7 +62,7 @@ class AggregatedProgressCallback(object):
         self._bytes_seen = 0
 
 
-class InterruptReader(object):
+class InterruptReader:
     """Wrapper that can interrupt reading using an error
 
     It uses a transfer coordinator to propagate an error if it notices
@@ -106,7 +105,7 @@ class InterruptReader(object):
         self.close()
 
 
-class UploadInputManager(object):
+class UploadInputManager:
     """Base manager class for handling various types of files for uploads
 
     This class is typically used for the UploadSubmissionTask class to help
@@ -231,7 +230,7 @@ class UploadFilenameInputManager(UploadInputManager):
     """Upload utility for filenames"""
     @classmethod
     def is_compatible(cls, upload_source):
-        return isinstance(upload_source, six.string_types)
+        return isinstance(upload_source, str)
 
     def stores_body_in_memory(self, operation_name):
         return False
@@ -345,7 +344,7 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
         # meaning the BytesIO object has no knowledge of its start position
         # relative the input source nor access to the rest of the input
         # source. So we must treat it as its own standalone file.
-        return six.BytesIO(data), len(data)
+        return BytesIO(data), len(data)
 
     def _get_put_object_fileobj_with_full_size(self, transfer_future):
         fileobj = transfer_future.meta.call_args.fileobj
@@ -358,7 +357,7 @@ class UploadSeekableInputManager(UploadFilenameInputManager):
 class UploadNonSeekableInputManager(UploadInputManager):
     """Upload utility for a file-like object that cannot seek."""
     def __init__(self, osutil, transfer_coordinator, bandwidth_limiter=None):
-        super(UploadNonSeekableInputManager, self).__init__(
+        super().__init__(
             osutil, transfer_coordinator, bandwidth_limiter)
         self._initial_data = b''
 
@@ -481,7 +480,7 @@ class UploadNonSeekableInputManager(UploadInputManager):
 
         :return: Fully wrapped data.
         """
-        fileobj = self._wrap_fileobj(six.BytesIO(data))
+        fileobj = self._wrap_fileobj(BytesIO(data))
         return self._osutil.open_file_chunk_reader_from_fileobj(
             fileobj=fileobj, chunk_size=len(data), full_file_size=len(data),
             callbacks=callbacks, close_callbacks=close_callbacks)
@@ -524,7 +523,7 @@ class UploadSubmissionTask(SubmissionTask):
             if upload_manager_cls.is_compatible(fileobj):
                 return upload_manager_cls
         raise RuntimeError(
-            'Input %s of type: %s is not supported.' % (
+            'Input {} of type: {} is not supported.'.format(
                 fileobj, type(fileobj)))
 
     def _submit(self, client, config, osutil, request_executor,

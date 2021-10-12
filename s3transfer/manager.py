@@ -15,8 +15,6 @@ import logging
 import re
 import threading
 
-from botocore.compat import six
-
 from s3transfer.bandwidth import BandwidthLimiter, LeakyBucket
 from s3transfer.constants import ALLOWED_DOWNLOAD_ARGS, KB, MB
 from s3transfer.copies import CopySubmissionTask
@@ -45,7 +43,7 @@ from s3transfer.utils import (
 logger = logging.getLogger(__name__)
 
 
-class TransferConfig(object):
+class TransferConfig:
     def __init__(self,
                  multipart_threshold=8 * MB,
                  multipart_chunksize=8 * MB,
@@ -152,7 +150,7 @@ class TransferConfig(object):
                     '0.' % (attr, attr_val))
 
 
-class TransferManager(object):
+class TransferManager:
     ALLOWED_DOWNLOAD_ARGS = ALLOWED_DOWNLOAD_ARGS
 
     ALLOWED_UPLOAD_ARGS = [
@@ -558,7 +556,7 @@ class TransferManager(object):
         # all of the inprogress futures in the shutdown.
         if exc_type:
             cancel = True
-            cancel_msg = six.text_type(exc_value)
+            cancel_msg = str(exc_value)
             if not cancel_msg:
                 cancel_msg = repr(exc_value)
             # If it was a KeyboardInterrupt, the cancellation was initiated
@@ -609,7 +607,7 @@ class TransferManager(object):
             self._io_executor.shutdown()
 
 
-class TransferCoordinatorController(object):
+class TransferCoordinatorController:
     def __init__(self):
         """Abstraction to control all transfer coordinators
 

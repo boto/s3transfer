@@ -84,7 +84,7 @@ def calculate_range_parameter(part_size, part_index, num_parts,
             end_range = str(total_size - 1)
     else:
         end_range = start_range + part_size - 1
-    range_param = 'bytes=%s-%s' % (start_range, end_range)
+    range_param = f'bytes={start_range}-{end_range}'
     return range_param
 
 
@@ -152,7 +152,7 @@ def get_filtered_dict(original_dict, whitelisted_keys):
     return filtered_dict
 
 
-class CallArgs(object):
+class CallArgs:
     def __init__(self, **kwargs):
         """A class that records call arguments
 
@@ -164,7 +164,7 @@ class CallArgs(object):
             setattr(self, arg, value)
 
 
-class FunctionContainer(object):
+class FunctionContainer:
     """An object that contains a function and any args or kwargs to call it
 
     When called the provided function will be called with provided args
@@ -176,14 +176,14 @@ class FunctionContainer(object):
         self._kwargs = kwargs
 
     def __repr__(self):
-        return 'Function: %s with args %s and kwargs %s' % (
+        return 'Function: {} with args {} and kwargs {}'.format(
             self._func, self._args, self._kwargs)
 
     def __call__(self):
         return self._func(*self._args, **self._kwargs)
 
 
-class CountCallbackInvoker(object):
+class CountCallbackInvoker:
     """An abstraction to invoke a callback when a shared count reaches zero
 
     :param callback: Callback invoke when finalized count reaches zero
@@ -231,7 +231,7 @@ class CountCallbackInvoker(object):
                 self._callback()
 
 
-class OSUtils(object):
+class OSUtils:
     _MAX_FILENAME_LEN = 255
 
     def get_file_size(self, filename):
@@ -305,12 +305,12 @@ class OSUtils(object):
         try:
             with self.open(filename, 'wb') as f:
                 fallocate(f, size)
-        except (OSError, IOError):
+        except OSError:
             self.remove_file(filename)
             raise
 
 
-class DeferredOpenFile(object):
+class DeferredOpenFile:
     def __init__(self, filename, start_byte=0, mode='rb', open_function=open):
         """A class that defers the opening of a file till needed
 
@@ -377,7 +377,7 @@ class DeferredOpenFile(object):
         self.close()
 
 
-class ReadFileChunk(object):
+class ReadFileChunk:
     def __init__(self, fileobj, chunk_size, full_file_size,
                  callbacks=None, enable_callbacks=True, close_callbacks=None):
         """
@@ -551,7 +551,7 @@ class ReadFileChunk(object):
         return iter([])
 
 
-class StreamReaderProgress(object):
+class StreamReaderProgress:
     """Wrapper for a read only stream that adds progress callbacks."""
     def __init__(self, stream, callbacks=None):
         self._stream = stream
@@ -569,7 +569,7 @@ class NoResourcesAvailable(Exception):
     pass
 
 
-class TaskSemaphore(object):
+class TaskSemaphore:
     def __init__(self, count):
         """A semaphore for the purpose of limiting the number of tasks
 
@@ -602,7 +602,7 @@ class TaskSemaphore(object):
             class but is needed for API compatibility with the
             SlidingWindowSemaphore implementation.
         """
-        logger.debug("Releasing acquire %s/%s" % (tag, acquire_token))
+        logger.debug(f"Releasing acquire {tag}/{acquire_token}")
         self._semaphore.release()
 
 
@@ -701,7 +701,7 @@ class SlidingWindowSemaphore(TaskSemaphore):
             self._condition.release()
 
 
-class ChunksizeAdjuster(object):
+class ChunksizeAdjuster:
     def __init__(self, max_size=MAX_SINGLE_UPLOAD_SIZE,
                  min_size=MIN_UPLOAD_CHUNKSIZE, max_parts=MAX_PARTS):
         self.max_size = max_size

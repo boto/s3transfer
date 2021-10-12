@@ -264,7 +264,7 @@ def _add_ignore_handler_for_interrupts():
     return signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-class ProcessTransferConfig(object):
+class ProcessTransferConfig:
     def __init__(self,
                  multipart_threshold=8 * MB,
                  multipart_chunksize=8 * MB,
@@ -284,7 +284,7 @@ class ProcessTransferConfig(object):
         self.max_request_processes = max_request_processes
 
 
-class ProcessPoolDownloader(object):
+class ProcessPoolDownloader:
     def __init__(self, client_kwargs=None, config=None):
         """Downloads S3 objects using process pools
 
@@ -536,7 +536,7 @@ class ProcessPoolTransferMeta(BaseTransferMeta):
         return self._user_context
 
 
-class ClientFactory(object):
+class ClientFactory:
     def __init__(self, client_kwargs=None):
         """Creates S3 clients for processes
 
@@ -561,7 +561,7 @@ class ClientFactory(object):
             's3', **self._client_kwargs)
 
 
-class TransferMonitor(object):
+class TransferMonitor:
     def __init__(self):
         """Monitors transfers for cross-process communication
 
@@ -657,7 +657,7 @@ class TransferMonitor(object):
         return self._transfer_states[transfer_id].decrement_jobs_to_complete()
 
 
-class TransferState(object):
+class TransferState:
     """Represents the current state of an individual transfer"""
     # NOTE: Ideally the TransferState object would be used directly by the
     # various different abstractions in the ProcessPoolDownloader and remove
@@ -713,7 +713,7 @@ TransferMonitorManager.register('TransferMonitor', TransferMonitor)
 
 class BaseS3TransferProcess(multiprocessing.Process):
     def __init__(self, client_factory):
-        super(BaseS3TransferProcess, self).__init__()
+        super().__init__()
         self._client_factory = client_factory
         self._client = None
 
@@ -755,7 +755,7 @@ class GetObjectSubmitter(BaseS3TransferProcess):
         :param worker_queue: Queue to submit GetObjectJobs for workers
             to perform.
         """
-        super(GetObjectSubmitter, self).__init__(client_factory)
+        super().__init__(client_factory)
         self._transfer_config = transfer_config
         self._transfer_monitor = transfer_monitor
         self._osutil = osutil
@@ -873,7 +873,7 @@ class GetObjectWorker(BaseS3TransferProcess):
         :param osutil: OSUtils object to use for os-related behavior when
             performing the transfer.
         """
-        super(GetObjectWorker, self).__init__(client_factory)
+        super().__init__(client_factory)
         self._queue = queue
         self._client_factory = client_factory
         self._transfer_monitor = transfer_monitor

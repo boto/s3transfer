@@ -31,18 +31,18 @@ class RequestExceededException(Exception):
         self.requested_amt = requested_amt
         self.retry_time = retry_time
         msg = (
-            'Request amount %s exceeded the amount available. Retry in %s' % (
+            'Request amount {} exceeded the amount available. Retry in {}'.format(
                 requested_amt, retry_time)
         )
-        super(RequestExceededException, self).__init__(msg)
+        super().__init__(msg)
 
 
-class RequestToken(object):
+class RequestToken:
     """A token to pass as an identifier when consuming from the LeakyBucket"""
     pass
 
 
-class TimeUtils(object):
+class TimeUtils:
     def time(self):
         """Get the current time back
 
@@ -60,7 +60,7 @@ class TimeUtils(object):
         return time.sleep(value)
 
 
-class BandwidthLimiter(object):
+class BandwidthLimiter:
     def __init__(self, leaky_bucket, time_utils=None):
         """Limits bandwidth for shared S3 transfers
 
@@ -97,7 +97,7 @@ class BandwidthLimiter(object):
         return stream
 
 
-class BandwidthLimitedStream(object):
+class BandwidthLimitedStream:
     def __init__(self, fileobj, leaky_bucket, transfer_coordinator,
                  time_utils=None, bytes_threshold=256 * 1024):
         """Limits bandwidth for reads on a wrapped stream
@@ -203,7 +203,7 @@ class BandwidthLimitedStream(object):
         self.close()
 
 
-class LeakyBucket(object):
+class LeakyBucket:
     def __init__(self, max_rate, time_utils=None, rate_tracker=None,
                  consumption_scheduler=None):
         """A leaky bucket abstraction to limit bandwidth consumption
@@ -285,7 +285,7 @@ class LeakyBucket(object):
         return amt
 
 
-class ConsumptionScheduler(object):
+class ConsumptionScheduler:
     def __init__(self):
         """Schedules when to consume a desired amount"""
         self._tokens_to_scheduled_consumption = {}
@@ -338,7 +338,7 @@ class ConsumptionScheduler(object):
             self._total_wait - scheduled_retry['time_to_consume'], 0)
 
 
-class BandwidthRateTracker(object):
+class BandwidthRateTracker:
     def __init__(self, alpha=0.8):
         """Tracks the rate of bandwidth consumption
 

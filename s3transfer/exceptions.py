@@ -15,7 +15,7 @@ from concurrent.futures import CancelledError
 
 class RetriesExceededError(Exception):
     def __init__(self, last_exception, msg='Max Retries Exceeded'):
-        super(RetriesExceededError, self).__init__(msg)
+        super().__init__(msg)
         self.last_exception = last_exception
 
 

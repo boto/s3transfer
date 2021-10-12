@@ -10,13 +10,11 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from botocore.compat import six
-
 from s3transfer.compat import accepts_kwargs
 from s3transfer.exceptions import InvalidSubscriberMethodError
 
 
-class BaseSubscriber(object):
+class BaseSubscriber:
     """The base subscriber class
 
     It is recommended that all subscriber implementations subclass and then
@@ -30,13 +28,13 @@ class BaseSubscriber(object):
 
     def __new__(cls, *args, **kwargs):
         cls._validate_subscriber_methods()
-        return super(BaseSubscriber, cls).__new__(cls)
+        return super().__new__(cls)
 
     @classmethod
     def _validate_subscriber_methods(cls):
         for subscriber_type in cls.VALID_SUBSCRIBER_TYPES:
             subscriber_method = getattr(cls, 'on_' + subscriber_type)
-            if not six.callable(subscriber_method):
+            if not callable(subscriber_method):
                 raise InvalidSubscriberMethodError(
                     'Subscriber method %s must be callable.' %
                     subscriber_method)

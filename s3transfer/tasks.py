@@ -18,7 +18,7 @@ from s3transfer.utils import get_callbacks
 logger = logging.getLogger(__name__)
 
 
-class Task(object):
+class Task:
     """A task associated to a TransferFuture request
 
     This is a base class for other classes to subclass from. All subclassed
@@ -84,7 +84,7 @@ class Task(object):
         ]
         main_kwargs_to_display = self._get_kwargs_with_params_to_include(
             self._main_kwargs, params_to_display)
-        return '%s(transfer_id=%s, %s)' % (
+        return '{}(transfer_id={}, {})'.format(
             self.__class__.__name__, self._transfer_coordinator.transfer_id,
             main_kwargs_to_display)
 
@@ -143,7 +143,7 @@ class Task(object):
             kwargs, params_to_exclude)
         # Log what is about to be executed.
         logger.debug(
-            "Executing task %s with kwargs %s" % (self, kwargs_to_display)
+            f"Executing task {self} with kwargs {kwargs_to_display}"
         )
 
         return_value = self._main(**kwargs)

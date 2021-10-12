@@ -14,8 +14,6 @@ import heapq
 import logging
 import threading
 
-from botocore.compat import six
-
 from s3transfer.compat import seekable
 from s3transfer.exceptions import RetriesExceededError
 from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG
@@ -35,7 +33,7 @@ from s3transfer.utils import (
 logger = logging.getLogger(__name__)
 
 
-class DownloadOutputManager(object):
+class DownloadOutputManager:
     """Base manager class for handling various types of files for downloads
 
     This class is typically used for the DownloadSubmissionTask class to help
@@ -150,7 +148,7 @@ class DownloadOutputManager(object):
 
 class DownloadFilenameOutputManager(DownloadOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor):
-        super(DownloadFilenameOutputManager, self).__init__(
+        super().__init__(
             osutil, transfer_coordinator, io_executor)
         self._final_filename = None
         self._temp_filename = None
@@ -158,7 +156,7 @@ class DownloadFilenameOutputManager(DownloadOutputManager):
 
     @classmethod
     def is_compatible(cls, download_target, osutil):
-        return isinstance(download_target, six.string_types)
+        return isinstance(download_target, str)
 
     def get_fileobj_for_io_writes(self, transfer_future):
         fileobj = transfer_future.meta.call_args.fileobj
@@ -207,7 +205,7 @@ class DownloadSeekableOutputManager(DownloadOutputManager):
 class DownloadNonSeekableOutputManager(DownloadOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor,
                  defer_queue=None):
-        super(DownloadNonSeekableOutputManager, self).__init__(
+        super().__init__(
             osutil, transfer_coordinator, io_executor)
         if defer_queue is None:
             defer_queue = DeferQueue()
@@ -233,11 +231,13 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
             writes = self._defer_queue.request_writes(offset, data)
             for write in writes:
                 data = write['data']
-                logger.debug("Queueing IO offset %s for fileobj: %s",
-                             write['offset'], fileobj)
-                super(
-                    DownloadNonSeekableOutputManager, self).queue_file_io_task(
-                        fileobj, data, offset)
+                logger.debug(
+                    "Queueing IO offset %s for fileobj: %s",
+                    write['offset'],
+                    fileobj
+                )
+                super().queue_file_io_task(
+                    fileobj, data, offset)
 
     def get_io_write_task(self, fileobj, data, offset):
         return IOStreamingWriteTask(
@@ -252,14 +252,14 @@ class DownloadNonSeekableOutputManager(DownloadOutputManager):
 class DownloadSpecialFilenameOutputManager(DownloadNonSeekableOutputManager):
     def __init__(self, osutil, transfer_coordinator, io_executor,
                  defer_queue=None):
-        super(DownloadSpecialFilenameOutputManager, self).__init__(
+        super().__init__(
             osutil, transfer_coordinator, io_executor, defer_queue)
         self._fileobj = None
 
     @classmethod
     def is_compatible(cls, download_target, osutil):
         return (
-            isinstance(download_target, six.string_types)
+            isinstance(download_target, str)
             and osutil.is_special_file(download_target)
         )
 
@@ -304,7 +304,7 @@ class DownloadSubmissionTask(SubmissionTask):
             if download_manager_cls.is_compatible(fileobj, osutil):
                 return download_manager_cls
         raise RuntimeError(
-            'Output %s of type: %s is not supported.' % (
+            'Output {} of type: {} is not supported.'.format(
                 fileobj, type(fileobj)))
 
     def _submit(self, client, config, osutil, request_executor, io_executor,
@@ -479,7 +479,7 @@ class DownloadSubmissionTask(SubmissionTask):
             end_range = ''
         else:
             end_range = start_range + part_size - 1
-        range_param = 'bytes=%s-%s' % (start_range, end_range)
+        range_param = f'bytes={start_range}-{end_range}'
         return range_param
 
 
@@ -620,7 +620,7 @@ class CompleteDownloadNOOPTask(Task):
     def __init__(self, transfer_coordinator, main_kwargs=None,
                  pending_main_kwargs=None, done_callbacks=None,
                  is_final=True):
-        super(CompleteDownloadNOOPTask, self).__init__(
+        super().__init__(
             transfer_coordinator=transfer_coordinator,
             main_kwargs=main_kwargs,
             pending_main_kwargs=pending_main_kwargs,
@@ -632,7 +632,7 @@ class CompleteDownloadNOOPTask(Task):
         pass
 
 
-class DownloadChunkIterator(object):
+class DownloadChunkIterator:
     def __init__(self, body, chunksize):
         """Iterator to chunk out a downloaded S3 stream
 
@@ -662,7 +662,7 @@ class DownloadChunkIterator(object):
     next = __next__
 
 
-class DeferQueue(object):
+class DeferQueue:
     """IO queue that defers write requests until they are queued sequentially.
 
     This class is used to track IO data for a *single* fileobj.

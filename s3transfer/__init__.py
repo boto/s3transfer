@@ -128,12 +128,13 @@ import functools
 import logging
 import math
 import os
+import queue
 import random
 import socket
 import string
 import threading
 
-from botocore.compat import six
+from botocore.compat import six  # noqa: F401
 from botocore.exceptions import IncompleteReadError
 from botocore.vendored.requests.packages.urllib3.exceptions import (
     ReadTimeoutError,
@@ -153,8 +154,6 @@ class NullHandler(logging.Handler):
 
 logger = logging.getLogger(__name__)
 logger.addHandler(NullHandler())
-
-queue = six.moves.queue
 
 MB = 1024 * 1024
 SHUTDOWN_SENTINEL = object()
@@ -180,7 +179,7 @@ class QueueShutdownError(Exception):
     pass
 
 
-class ReadFileChunk(object):
+class ReadFileChunk:
     def __init__(self, fileobj, start_byte, chunk_size, full_file_size,
                  callback=None, enable_callback=True):
         """
@@ -312,7 +311,7 @@ class ReadFileChunk(object):
         return iter([])
 
 
-class StreamReaderProgress(object):
+class StreamReaderProgress:
     """Wrapper for a read only stream that adds progress callbacks."""
     def __init__(self, stream, callback=None):
         self._stream = stream
@@ -325,7 +324,7 @@ class StreamReaderProgress(object):
         return value
 
 
-class OSUtils(object):
+class OSUtils:
     def get_file_size(self, filename):
         return os.path.getsize(filename)
 
@@ -350,7 +349,7 @@ class OSUtils(object):
         s3transfer.compat.rename_file(current_filename, new_filename)
 
 
-class MultipartUploader(object):
+class MultipartUploader:
     # These are the extra_args that need to be forwarded onto
     # subsequent upload_parts.
     UPLOAD_PART_ARGS = [
@@ -389,7 +388,7 @@ class MultipartUploader(object):
             self._client.abort_multipart_upload(
                 Bucket=bucket, Key=key, UploadId=upload_id)
             raise S3UploadFailedError(
-                "Failed to upload %s to %s: %s" % (
+                "Failed to upload {} to {}: {}".format(
                     filename, '/'.join([bucket, key]), e))
         self._client.complete_multipart_upload(
             Bucket=bucket, Key=key, UploadId=upload_id,
@@ -457,7 +456,7 @@ class ShutdownQueue(queue.Queue):
         return queue.Queue.put(self, item)
 
 
-class MultipartDownloader(object):
+class MultipartDownloader:
     def __init__(self, client, config, osutil,
                  executor_cls=concurrent.futures.ThreadPoolExecutor):
         self._client = client
@@ -509,7 +508,7 @@ class MultipartDownloader(object):
             end_range = ''
         else:
             end_range = start_range + part_size - 1
-        range_param = 'bytes=%s-%s' % (start_range, end_range)
+        range_param = f'bytes={start_range}-{end_range}'
         return range_param
 
     def _download_range(self, bucket, key, filename,
@@ -534,8 +533,7 @@ class MultipartDownloader(object):
                         self._ioqueue.put((current_index, chunk))
                         current_index += len(chunk)
                     return
-                except (socket.timeout, socket.error,
-                        ReadTimeoutError, IncompleteReadError) as e:
+                except (socket.timeout, OSError, ReadTimeoutError, IncompleteReadError) as e:
                     logger.debug("Retrying exception caught (%s), "
                                  "retrying request, (attempt %s / %s)", e, i,
                                  max_attempts, exc_info=True)
@@ -565,7 +563,7 @@ class MultipartDownloader(object):
                         raise
 
 
-class TransferConfig(object):
+class TransferConfig:
     def __init__(self,
                  multipart_threshold=8 * MB,
                  max_concurrency=10,
@@ -579,7 +577,7 @@ class TransferConfig(object):
         self.max_io_queue = max_io_queue
 
 
-class S3Transfer(object):
+class S3Transfer:
 
     ALLOWED_DOWNLOAD_ARGS = [
         'VersionId',
@@ -712,8 +710,7 @@ class S3Transfer(object):
             try:
                 return self._do_get_object(bucket, key, filename,
                                            extra_args, callback)
-            except (socket.timeout, socket.error,
-                    ReadTimeoutError, IncompleteReadError) as e:
+            except (socket.timeout, OSError, ReadTimeoutError, IncompleteReadError) as e:
                 # TODO: we need a way to reset the callback if the
                 # download failed.
                 logger.debug("Retrying exception caught (%s), "

@@ -54,3 +54,7 @@ This will automatically perform simple updates (such as white space clean up)
 and provide a list of any failing flake8 checks. After these are addressed,
 you can commit the changes prior to publishing the PR.
 These checks are also included in our CI setup under the "Lint" workflow which will provide output on Github for anything missed locally.
+
+See the `flake8` section of the
+`setup.cfg <https://github.com/boto/s3transfer/blob/develop/setup.cfg>`__ for the
+currently enforced rules.

@@ -117,7 +117,7 @@ class Task(object):
             # Gather up all of the main keyword arguments for main().
             # This includes the immediately provided main_kwargs and
             # the values for pending_main_kwargs that source from the return
-            # values from the task's depenent futures.
+            # values from the task's dependent futures.
             kwargs = self._get_all_main_kwargs()
             # If the task is not done (really only if some other related
             # task to the TransferFuture had failed) then execute the task's
@@ -175,7 +175,7 @@ class Task(object):
             # If the pending main keyword arg is a list then extend the list.
             if isinstance(future, list):
                 futures_to_wait_on.extend(future)
-            # If the pending main keword arg is a future append it to the list.
+            # If the pending main keyword arg is a future append it to the list.
             else:
                 futures_to_wait_on.append(future)
         # Now wait for all of the futures to complete.
@@ -198,7 +198,7 @@ class Task(object):
                 future.result()
             except Exception:
                 # result() can also produce exceptions. We want to ignore
-                # these to be deffered to error handling down the road.
+                # these to be deferred to error handling down the road.
                 pass
         logger.debug('%s done waiting for dependent futures', self)
 
@@ -260,7 +260,7 @@ class SubmissionTask(Task):
             # the first place so we need to account accordingly.
             #
             # Note that BaseException is caught, instead of Exception, because
-            # for some implmentations of executors, specifically the serial
+            # for some implementations of executors, specifically the serial
             # implementation, the SubmissionTask is directly exposed to
             # KeyboardInterupts and so needs to cleanup and signal done
             # for those as well.
@@ -269,7 +269,7 @@ class SubmissionTask(Task):
             self._log_and_set_exception(e)
 
             # Wait for all possibly associated futures that may have spawned
-            # from this submission task have finished before we anounce the
+            # from this submission task have finished before we announce the
             # transfer done.
             self._wait_for_all_submitted_futures_to_complete()
 
@@ -278,7 +278,7 @@ class SubmissionTask(Task):
             self._transfer_coordinator.announce_done()
 
     def _submit(self, transfer_future, **kwargs):
-        """The submition method to be implemented
+        """The submission method to be implemented
 
         :type transfer_future: s3transfer.futures.TransferFuture
         :param transfer_future: The transfer future associated with the

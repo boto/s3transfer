@@ -89,7 +89,7 @@ class TestDownload(BaseTransferManagerIntegTest):
                     raise RuntimeError(
                         "Download transfer did not start after waiting for "
                         "%s seconds." % timeout)
-                # Raise an exception which should cause the preceeding
+                # Raise an exception which should cause the preceding
                 # download to cancel and exit quickly
                 start_time = time.time()
                 raise KeyboardInterrupt()
@@ -146,7 +146,7 @@ class TestDownload(BaseTransferManagerIntegTest):
                 for filename in filenames:
                     futures.append(transfer_manager.download(
                         self.bucket_name, '1mb.txt', filename))
-                # Raise an exception which should cause the preceeding
+                # Raise an exception which should cause the preceding
                 # transfer to cancel and exit quickly
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:

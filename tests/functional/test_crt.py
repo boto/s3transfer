@@ -98,7 +98,7 @@ class TestCRTTransferManager(unittest.TestCase):
         on_done(error=None)
 
     def _simulate_file_download(self, recv_filepath):
-        self.files.create_file(recv_filepath, "fake resopnse")
+        self.files.create_file(recv_filepath, "fake response")
 
     def _simulate_make_request_side_effect(self, **kwargs):
         if kwargs.get('recv_filepath'):

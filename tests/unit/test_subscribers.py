@@ -62,7 +62,7 @@ class TestSubscribers(unittest.TestCase):
 
     def test_can_subclass_and_override_method_from_base_subscriber(self):
         subscriber = OverrideMethodSubscriber()
-        # Make sure that the overriden method is called
+        # Make sure that the overridden method is called
         self.assertEqual(subscriber.on_queued(foo='bar'), {'foo': 'bar'})
 
     def test_can_subclass_and_override_constructor_from_base_class(self):

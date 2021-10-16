@@ -80,7 +80,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
     def create_stubbed_responses(self):
         # We want to make sure the beginning of the stream is always used
-        # incase this gets called twice.
+        # in case this gets called twice.
         self.stream.seek(0)
         return [
             {
@@ -278,7 +278,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
             recorder_subscriber.calculate_bytes_seen(), len(self.content))
 
         # Also ensure that the second progress invocation was negative three
-        # becasue a retry happened on the second read of the stream and we
+        # because a retry happened on the second read of the stream and we
         # know that the chunk size for each read is 3.
         progress_byte_amts = [
             call['bytes_transferred'] for call in
@@ -319,7 +319,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
     @skip_if_windows('Windows does not support UNIX special files')
     @skip_if_using_serial_implementation(
-        'A seperate thread is needed to read from the fifo')
+        'A separate thread is needed to read from the fifo')
     def test_download_for_fifo_file(self):
         self.add_head_object_response()
         self.add_successful_get_object_responses()

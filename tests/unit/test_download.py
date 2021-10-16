@@ -77,7 +77,7 @@ class CancelledStreamWrapper(object):
     Forces the transfer coordinator to cancel after a certain amount of reads
     :param stream: The underlying stream to read from
     :param transfer_coordinator: The coordinator for the transfer
-    :param num_reads: On which read to sigal a cancellation. 0 is the first
+    :param num_reads: On which read to signal a cancellation. 0 is the first
         read.
     """
     def __init__(self, stream, transfer_coordinator, num_reads=0):

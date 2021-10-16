@@ -59,7 +59,7 @@ class TransferConfig(object):
                  max_in_memory_upload_chunks=10,
                  max_in_memory_download_chunks=10,
                  max_bandwidth=None):
-        """Configurations for the transfer mangager
+        """Configurations for the transfer manager
 
         :param multipart_threshold: The threshold for which multipart
             transfers occur.
@@ -97,7 +97,7 @@ class TransferConfig(object):
 
         :param num_download_attempts: The number of download attempts that
             will be tried upon errors with downloading an object in S3. Note
-            that these retries account for errors that occur when streamming
+            that these retries account for errors that occur when streaming
             down the data from s3 (i.e. socket errors and read timeouts that
             occur after receiving an OK response from s3).
             Other retryable exceptions such as throttling errors and 5xx errors
@@ -123,7 +123,7 @@ class TransferConfig(object):
 
         :param max_in_memory_download_chunks: The number of chunks that can
             be buffered in memory and **not** in the io queue at a time for all
-            ongoing dowload requests. This pertains specifically to file-like
+            ongoing download requests. This pertains specifically to file-like
             objects that cannot be seeked. The total maximum memory footprint
             due to a in-memory download chunks is roughly equal to:
 
@@ -671,7 +671,7 @@ class TransferCoordinatorController(object):
     def wait(self):
         """Wait until there are no more inprogress transfers
 
-        This will not stop when failures are encountered and not propogate any
+        This will not stop when failures are encountered and not propagate any
         of these errors from failed transfers, but it can be interrupted with
         a KeyboardInterrupt.
         """

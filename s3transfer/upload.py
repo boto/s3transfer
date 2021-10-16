@@ -167,7 +167,7 @@ class UploadInputManager(object):
 
         :rtype: boolean
         :returns: True, if the upload should be multipart based on
-            configuartion and size. False, otherwise.
+            configuration and size. False, otherwise.
         """
         raise NotImplementedError('must implement requires_multipart_upload()')
 

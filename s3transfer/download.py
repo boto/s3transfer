@@ -655,7 +655,7 @@ class DownloadChunkIterator(object):
         elif self._num_reads == 1:
             # Even though the response may have not had any
             # content, we still want to account for an empty object's
-            # existance so return the empty chunk for that initial
+            # existence so return the empty chunk for that initial
             # read.
             return chunk
         raise StopIteration()

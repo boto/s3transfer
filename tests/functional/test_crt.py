@@ -10,8 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import fnmatch
 import threading
-import re
+import time
 from concurrent.futures import Future
 
 from botocore.session import Session
@@ -134,8 +135,11 @@ class TestCRTTransferManager(unittest.TestCase):
         callargs_kwargs = callargs[1]
         # the recv_filepath will be set to a temporary file path with some
         # random suffix
-        self.assertTrue(re.match(self.filename + ".*",
-                                 callargs_kwargs["recv_filepath"]))
+        self.assertTrue(
+            fnmatch.fnmatch(
+                callargs_kwargs["recv_filepath"], f'{self.filename}.*',
+            )
+        )
         self.assertIsNone(callargs_kwargs["send_filepath"])
         self.assertEqual(callargs_kwargs["type"],
                          awscrt.s3.S3RequestType.GET_OBJECT)
@@ -176,6 +180,9 @@ class TestCRTTransferManager(unittest.TestCase):
             thread = submitThread(self.transfer_manager, futures, callargs)
             thread.start()
             threads.append(thread)
+        # Sleep until the expected max requests has been reached
+        while len(futures) < max_request_processes:
+            time.sleep(0.05)
         self.assertLessEqual(
             self.s3_crt_client.make_request.call_count,
             max_request_processes)

@@ -1,1 +1,1 @@
--e git://github.com/boto/botocore.git@develop#egg=botocore
+-e git+https://github.com/boto/botocore.git@develop#egg=botocore

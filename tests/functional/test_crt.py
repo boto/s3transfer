@@ -146,7 +146,7 @@ class TestCRTTransferManager(unittest.TestCase):
         self._assert_subscribers_called(future)
         with open(self.filename, 'rb') as f:
             # Check the fake response overwrites the file because of download
-            self.assertEqual(f.read(), b'fake resopnse')
+            self.assertEqual(f.read(), b'fake response')
 
     def test_delete(self):
         self.s3_crt_client.make_request.side_effect = self._simulate_make_request_side_effect

@@ -159,7 +159,7 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # Make sure the status of the future is failed
         self.assertEqual(self.transfer_coordinator.status, 'failed')
 
-        # Make sure the future propogates the exception encountered in the
+        # Make sure the future propagates the exception encountered in the
         # submission task.
         with self.assertRaises(TaskFailureException):
             self.transfer_future.result()
@@ -216,7 +216,7 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
     def test_cleanups_only_ran_once_on_exception(self):
         # We want to be able to handle the case where the final task completes
         # and anounces done but there is an error in the submission task
-        # which will cause it to need to anounce done as well. In this case,
+        # which will cause it to need to announce done as well. In this case,
         # we do not want the done callbacks to be invoke more than once.
 
         final_task = self.get_task(FailureTask, is_final=True)
@@ -247,7 +247,7 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
     def test_done_callbacks_only_ran_once_on_exception(self):
         # We want to be able to handle the case where the final task completes
         # and anounces done but there is an error in the submission task
-        # which will cause it to need to anounce done as well. In this case,
+        # which will cause it to need to announce done as well. In this case,
         # we do not want the failure cleanups to be invoked more than once.
 
         final_task = self.get_task(FailureTask, is_final=True)
@@ -268,7 +268,7 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # Make sure the task failed to start
         self.assertEqual(self.transfer_coordinator.status, 'failed')
 
-        # Make sure the cleanup was called only onece.
+        # Make sure the cleanup was called only once.
         self.assertEqual(invocations_of_cleanup, ['cleanup happened'])
 
     def test_handles_cleanups_submitted_in_other_tasks(self):

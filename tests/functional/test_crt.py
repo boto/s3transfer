@@ -99,7 +99,7 @@ class TestCRTTransferManager(unittest.TestCase):
         on_done(error=None)
 
     def _simulate_file_download(self, recv_filepath):
-        self.files.create_file(recv_filepath, "fake resopnse")
+        self.files.create_file(recv_filepath, "fake response")
 
     def _simulate_make_request_side_effect(self, **kwargs):
         if kwargs.get('recv_filepath'):
@@ -150,7 +150,7 @@ class TestCRTTransferManager(unittest.TestCase):
         self._assert_subscribers_called(future)
         with open(self.filename, 'rb') as f:
             # Check the fake response overwrites the file because of download
-            self.assertEqual(f.read(), b'fake resopnse')
+            self.assertEqual(f.read(), b'fake response')
 
     def test_delete(self):
         self.s3_crt_client.make_request.side_effect = self._simulate_make_request_side_effect

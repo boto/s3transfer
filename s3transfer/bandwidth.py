@@ -156,7 +156,7 @@ class BandwidthLimitedStream(object):
         return self._fileobj.read(amount)
 
     def _consume_through_leaky_bucket(self):
-        # NOTE: If the read amonut on the stream are high, it will result
+        # NOTE: If the read amount on the stream are high, it will result
         # in large bursty behavior as there is not an interface for partial
         # reads. However given the read's on this abstraction are at most 256KB
         # (via downloads), it reduces the burstiness to be small KB bursts at

@@ -129,7 +129,7 @@ def main():
         '--output-file',
         help=(
             'The file to output the data collected to. The default '
-            'location performace.csv'
+            'location performance.csv'
         )
     )
     args = parser.parse_args()

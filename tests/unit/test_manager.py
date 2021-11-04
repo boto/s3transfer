@@ -105,7 +105,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
 
         sleep_time = 0.02
         with ThreadPoolExecutor(max_workers=1) as executor:
-            # In a seperate thread sleep and then set the transfer coordinator
+            # In a separate thread sleep and then set the transfer coordinator
             # to done after sleeping.
             start_time = time.time()
             executor.submit(
@@ -116,7 +116,7 @@ class TestTransferCoordinatorController(unittest.TestCase):
             end_time = time.time()
             wait_time = end_time - start_time
         # The time waited should not be less than the time it took to sleep in
-        # the seperate thread because the wait ending should be dependent on
+        # the separate thread because the wait ending should be dependent on
         # the sleeping thread announcing that the transfer coordinator is done.
         self.assertTrue(sleep_time <= wait_time)
 

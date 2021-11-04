@@ -27,7 +27,7 @@ class ErrorRaisingSeekWrapper(object):
     """An object wrapper that throws an error when seeked on
 
     :param fileobj: The fileobj that it wraps
-    :param execption: The exception to raise when seeked on.
+    :param exception: The exception to raise when seeked on.
     """
     def __init__(self, fileobj, exception):
         self._fileobj = fileobj
@@ -53,7 +53,7 @@ class TestSeekable(unittest.TestCase):
             self.assertTrue(seekable(f))
 
     def test_non_file_like_obj(self):
-        # Fails becase there is no seekable(), seek(), nor tell()
+        # Fails because there is no seekable(), seek(), nor tell()
         self.assertFalse(seekable(object()))
 
     def test_non_seekable_ioerror(self):

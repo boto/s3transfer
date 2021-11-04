@@ -442,7 +442,7 @@ class TestMultipartUpload(BaseUploadTest):
         # we limit the in memory upload chunks to one, the stubber will
         # raise exceptions for mismatching parameters for partNumber when
         # once the upload() method is called on the transfer manager.
-        # If there is a mismatch, the stubber error will propogate on
+        # If there is a mismatch, the stubber error will propagate on
         # the future.result()
         self.add_create_multipart_response_with_default_expected_params()
         self.add_upload_part_responses_with_default_expected_params()
@@ -494,7 +494,7 @@ class TestMultipartUpload(BaseUploadTest):
         )
 
         future = self.manager.upload(self.filename, self.bucket, self.key)
-        # The exception should get propogated to the future and not be
+        # The exception should get propagated to the future and not be
         # a cancelled error or something.
         with self.assertRaises(ClientError):
             future.result()

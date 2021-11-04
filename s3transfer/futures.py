@@ -102,7 +102,7 @@ class TransferFuture(BaseTransferFuture):
         try:
             # Usually the result() method blocks until the transfer is done,
             # however if a KeyboardInterrupt is raised we want want to exit
-            # out of this and propogate the exception.
+            # out of this and propagate the exception.
             return self._coordinator.result()
         except KeyboardInterrupt as e:
             self.cancel()
@@ -393,7 +393,7 @@ class TransferCoordinator(object):
         try:
             callback()
         # We do not want a callback interrupting the process, especially
-        # in the failure cleanups. So log and catch, the excpetion.
+        # in the failure cleanups. So log and catch, the exception.
         except Exception:
             logger.debug("Exception raised in %s." % callback, exc_info=True)
 
@@ -403,7 +403,7 @@ class BoundedExecutor(object):
 
     def __init__(self, max_size, max_num_threads, tag_semaphores=None,
                  executor_cls=None):
-        """An executor implentation that has a maximum queued up tasks
+        """An executor implementation that has a maximum queued up tasks
 
         The executor will block if the number of tasks that have been
         submitted and is currently working on is past its maximum.
@@ -449,7 +449,7 @@ class BoundedExecutor(object):
             False, if not to wait and raise an error if not able to submit
             a task.
 
-        :returns: The future assocaited to the submitted task
+        :returns: The future associated to the submitted task
         """
         semaphore = self._semaphore
         # If a tag was provided, use the semaphore associated to that

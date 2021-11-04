@@ -212,7 +212,7 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.set_exception(exception_result)
         self.transfer_coordinator.announce_done()
         # Setting an exception should result in a failed state and the return
-        # value should be the rasied exception
+        # value should be the raised exception
         self.assertEqual(self.transfer_coordinator.status, 'failed')
         self.assertEqual(self.transfer_coordinator.exception, exception_result)
         with self.assertRaises(exception_result):
@@ -275,7 +275,7 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.set_result('foo')
         self.transfer_coordinator.cancel()
         # It status should be success even after cancel is called because
-        # succes is a done state.
+        # success is a done state.
         self.assertEqual(self.transfer_coordinator.status, 'success')
 
     def test_set_result_can_override_cancel(self):

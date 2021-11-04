@@ -453,7 +453,7 @@ class TestMultipartDownloader(unittest.TestCase):
         downloader = MultipartDownloader(client, TransferConfig(),
                                          os_layer, SequentialExecutor)
         # We're verifying that the exception raised from the IO future
-        # propogates back up via download_file().
+        # propagates back up via download_file().
         with self.assertRaisesRegex(Exception, "fake IO error"):
             downloader.download_file('bucket', 'key', 'filename',
                                      len(response_body), {})
@@ -563,7 +563,7 @@ class TestS3Transfer(unittest.TestCase):
                                    callback=callback)
 
             downloader.return_value.download_file.assert_called_with(
-                # Note how we're downloading to a temorary random file.
+                # Note how we're downloading to a temporary random file.
                 'bucket', 'key', 'filename.RANDOM', over_multipart_threshold,
                 {}, callback)
 
@@ -633,7 +633,7 @@ class TestS3Transfer(unittest.TestCase):
         self.client.head_object.return_value = {
             'ContentLength': below_threshold}
         # Here we're raising an exception every single time, which
-        # will exhaust our retry count and propogate a
+        # will exhaust our retry count and propagate a
         # RetriesExceededError.
         self.client.get_object.side_effect = socket.error("fake error")
         with self.assertRaises(RetriesExceededError):

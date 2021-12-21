@@ -494,7 +494,7 @@ class ExecutorFuture(object):
     def add_done_callback(self, fn):
         """Adds a callback to be completed once future is done
 
-        :parm fn: A callable that takes no arguments. Note that is different
+        :param fn: A callable that takes no arguments. Note that is different
             than concurrent.futures.Future.add_done_callback that requires
             a single argument for the future.
         """

@@ -157,6 +157,7 @@ class TransferManager(object):
 
     ALLOWED_UPLOAD_ARGS = [
         'ACL',
+        'BucketKeyEnabled',
         'CacheControl',
         'ContentDisposition',
         'ContentEncoding',

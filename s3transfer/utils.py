@@ -533,9 +533,7 @@ class ReadFileChunk:
     def seek(self, where, whence=0):
         if whence not in (0, 1, 2):
             # Mimic io's error for invalid whence values
-            raise ValueError(
-                "invalid whence (%s, should be 0, 1 or 2)" % whence
-            )
+            raise ValueError(f"invalid whence ({whence}, should be 0, 1 or 2)")
 
         # Recalculate where based on chunk attributes so seek from file
         # start (whence=0) is always used

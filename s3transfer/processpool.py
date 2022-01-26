@@ -406,10 +406,10 @@ class ProcessPoolDownloader:
     def _validate_all_known_args(self, provided):
         for kwarg in provided:
             if kwarg not in ALLOWED_DOWNLOAD_ARGS:
+                download_args = ', '.join(ALLOWED_DOWNLOAD_ARGS)
                 raise ValueError(
-                    "Invalid extra_args key '%s', "
-                    "must be one of: %s"
-                    % (kwarg, ', '.join(ALLOWED_DOWNLOAD_ARGS))
+                    f"Invalid extra_args key '{kwarg}', "
+                    f"must be one of: {download_args}"
                 )
 
     def _get_transfer_future(self, transfer_id, call_args):
@@ -830,7 +830,7 @@ class GetObjectSubmitter(BaseS3TransferProcess):
             expected_size = self._client.head_object(
                 Bucket=download_file_request.bucket,
                 Key=download_file_request.key,
-                **download_file_request.extra_args
+                **download_file_request.extra_args,
             )['ContentLength']
         return expected_size
 

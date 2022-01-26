@@ -145,10 +145,7 @@ class TransferConfig:
         self._validate_attrs_are_nonzero()
 
     def _validate_attrs_are_nonzero(self):
-        for (
-            attr,
-            attr_val,
-        ) in self.__dict__.items():
+        for attr, attr_val in self.__dict__.items():
             if attr_val is not None and attr_val <= 0:
                 raise ValueError(
                     'Provided parameter %s of value %s must be greater than '

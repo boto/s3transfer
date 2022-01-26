@@ -97,17 +97,8 @@ def run_benchmark(pid, output_file, data_interval):
 
             # Save all of the data into a CSV file.
             f.write(
-                ','.join(
-                    str(val)
-                    for val in [
-                        current_time,
-                        memory_used,
-                        cpu_percent,
-                        sent_rate,
-                        recv_rate,
-                    ]
-                )
-                + '\n'
+                f"{current_time},{memory_used},{cpu_percent},"
+                f"{sent_rate},{recv_rate}\n"
             )
             f.flush()
     return 0

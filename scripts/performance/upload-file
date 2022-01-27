@@ -17,11 +17,13 @@ To upload a file::
 import argparse
 
 from botocore.session import get_session
+
 from s3transfer.manager import TransferManager
 
 
-class NonSeekableReader(object):
+class NonSeekableReader:
     """A wrapper to hide the ability to seek for a fileobj"""
+
     def __init__(self, fileobj):
         self._fileobj = fileobj
 
@@ -29,7 +31,7 @@ class NonSeekableReader(object):
         return self._fileobj.read(amt)
 
 
-class Uploader(object):
+class Uploader:
     def upload(self, args):
         session = get_session()
         client = session.create_client('s3')
@@ -38,7 +40,8 @@ class Uploader(object):
             session.set_debug_logger('')
         with TransferManager(client) as manager:
             getattr(self, 'upload_' + file_type)(
-                manager, args.file_name, args.s3_bucket, args.s3_key)
+                manager, args.file_name, args.s3_bucket, args.s3_key
+            )
 
     def upload_filename(self, manager, filename, bucket, s3_key):
         manager.upload(filename, bucket, s3_key)
@@ -50,8 +53,7 @@ class Uploader(object):
 
     def upload_nonseekable(self, manager, filename, bucket, s3_key):
         with open(filename, 'rb') as f:
-            future = manager.upload(
-                NonSeekableReader(f), bucket, s3_key)
+            future = manager.upload(NonSeekableReader(f), bucket, s3_key)
             future.result()
 
 
@@ -59,15 +61,22 @@ def main():
     parser = argparse.ArgumentParser(usage=__doc__)
     parser.add_argument('--file-name', required=True, help='The name of file')
     parser.add_argument(
-        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
-        required=True, help='The way to represent the file when uploading')
+        '--file-type',
+        choices=['filename', 'seekable', 'nonseekable'],
+        required=True,
+        help='The way to represent the file when uploading',
+    )
     parser.add_argument(
-        '--s3-bucket', required=True,
-        help='The S3 bucket to upload the file to')
+        '--s3-bucket',
+        required=True,
+        help='The S3 bucket to upload the file to',
+    )
     parser.add_argument('--s3-key', required=True, help='The key to upload to')
     parser.add_argument(
-        '--debug', action='store_true',
-        help='Whether to turn debugging on. This will get printed to stderr')
+        '--debug',
+        action='store_true',
+        help='Whether to turn debugging on. This will get printed to stderr',
+    )
     args = parser.parse_args()
     Uploader().upload(args)
 

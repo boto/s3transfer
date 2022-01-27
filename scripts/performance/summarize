@@ -83,17 +83,13 @@ def human_readable_size(value):
         return '%d Bytes' % bytes_int
 
     for i, suffix in enumerate(hummanize_suffixes):
-        unit = base ** (i+2)
+        unit = base ** (i + 2)
         if round((bytes_int / unit) * base) < base:
-            return '%.1f %s' % ((base * bytes_int / unit), suffix)
+            return f'{(base * bytes_int / unit):.1f} {suffix}'
 
 
-class Summarizer(object):
-    DATA_INDEX_IN_ROW = {
-        'time': 0,
-        'memory': 1,
-        'cpu': 2
-    }
+class Summarizer:
+    DATA_INDEX_IN_ROW = {'time': 0, 'memory': 1, 'cpu': 2}
 
     def __init__(self):
         self.total_files = 0
@@ -110,12 +106,8 @@ class Summarizer(object):
         self._averages = {
             'memory': 0.0,
             'cpu': 0.0,
-
         }
-        self._maximums = {
-            'memory': 0.0,
-            'cpu': 0.0
-        }
+        self._maximums = {'memory': 0.0, 'cpu': 0.0}
 
     @property
     def total_time(self):
@@ -158,13 +150,13 @@ class Summarizer(object):
         return self._standard_deviation_across_all_files('average_memory')
 
     def _average_across_all_files(self, name):
-        return sum(self._totals[name])/len(self._totals[name])
+        return sum(self._totals[name]) / len(self._totals[name])
 
     def _standard_deviation_across_all_files(self, name):
         mean = self._average_across_all_files(name)
         differences = [total - mean for total in self._totals[name]]
         sq_differences = [difference ** 2 for difference in differences]
-        return sqrt(sum(sq_differences)/len(self._totals[name]))
+        return sqrt(sum(sq_differences) / len(self._totals[name]))
 
     def summarize_as_table(self):
         """Formats the processed data as pretty printed table.
@@ -173,24 +165,36 @@ class Summarizer(object):
         """
         h = human_readable_size
         table = [
-            ['Total Time (seconds)', '%.3f' % self.total_time,
-             self.std_dev_total_time],
+            [
+                'Total Time (seconds)',
+                '%.3f' % self.total_time,
+                self.std_dev_total_time,
+            ],
             ['Maximum Memory', h(self.max_memory), h(self.std_dev_max_memory)],
-            ['Maximum CPU (percent)', '%.1f' % self.max_cpu,
-             self.std_dev_max_cpu],
-            ['Average Memory', h(self.average_memory),
-             h(self.std_dev_average_memory)],
-            ['Average CPU (percent)', '%.1f' % self.average_cpu,
-             self.std_dev_average_cpu],
+            [
+                'Maximum CPU (percent)',
+                '%.1f' % self.max_cpu,
+                self.std_dev_max_cpu,
+            ],
+            [
+                'Average Memory',
+                h(self.average_memory),
+                h(self.std_dev_average_memory),
+            ],
+            [
+                'Average CPU (percent)',
+                '%.1f' % self.average_cpu,
+                self.std_dev_average_cpu,
+            ],
         ]
         return tabulate(
             table,
             headers=[
                 'Metric over %s run(s)' % (self.total_files),
                 'Mean',
-                'Standard Deviation'
+                'Standard Deviation',
             ],
-            tablefmt="grid"
+            tablefmt="grid",
         )
 
     def summarize_as_json(self):
@@ -198,16 +202,19 @@ class Summarizer(object):
 
         :return: str of formatted JSON
         """
-        return json.dumps({
-            'total_time': self.total_time,
-            'std_dev_total_time': self.std_dev_total_time,
-            'max_memory': self.max_memory,
-            'std_dev_max_memory': self.std_dev_max_memory,
-            'average_memory': self.average_memory,
-            'std_dev_average_memory': self.std_dev_average_memory,
-            'average_cpu': self.average_cpu,
-            'std_dev_average_cpu': self.std_dev_average_cpu,
-        }, indent=2)
+        return json.dumps(
+            {
+                'total_time': self.total_time,
+                'std_dev_total_time': self.std_dev_total_time,
+                'max_memory': self.max_memory,
+                'std_dev_max_memory': self.std_dev_max_memory,
+                'average_memory': self.average_memory,
+                'std_dev_average_memory': self.std_dev_average_memory,
+                'average_cpu': self.average_cpu,
+                'std_dev_average_cpu': self.std_dev_average_cpu,
+            },
+            indent=2,
+        )
 
     def process(self, args):
         """Processes the data from the CSV file"""
@@ -216,7 +223,7 @@ class Summarizer(object):
             self.total_files += 1
 
     def process_individual_file(self, benchmark_file):
-        with open(benchmark_file, 'r') as f:
+        with open(benchmark_file) as f:
             reader = csv.reader(f)
             # Process each row from the CSV file
             row = None
@@ -231,7 +238,8 @@ class Summarizer(object):
         if not row:
             raise RuntimeError(
                 'Row: %s could not be processed. The CSV file (%s) may be '
-                'empty.' % (row, filename))
+                'empty.' % (row, filename)
+            )
 
     def process_data_row(self, row):
         # If the row is the first row collect the start time.
@@ -256,9 +264,11 @@ class Summarizer(object):
         self._totals['max_cpu'].append(self._maximums['cpu'])
         self._totals['max_memory'].append(self._maximums['memory'])
         self._totals['average_cpu'].append(
-            self._averages['cpu']/self._num_rows)
+            self._averages['cpu'] / self._num_rows
+        )
         self._totals['average_memory'].append(
-            self._averages['memory']/self._num_rows)
+            self._averages['memory'] / self._num_rows
+        )
 
         # Reset some of the data needed to be tracked for each specific
         # file.
@@ -280,20 +290,24 @@ class Summarizer(object):
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
     parser.add_argument(
-        'benchmark_files', nargs='+',
+        'benchmark_files',
+        nargs='+',
         help=(
             'The CSV output file from the benchmark script. If you provide'
             'more than one of these files, it will give you the average '
             'across all of the files for each metric.'
-        )
+        ),
     )
     parser.add_argument(
-        '-f', '--output-format', default='table', choices=['table', 'json'],
+        '-f',
+        '--output-format',
+        default='table',
+        choices=['table', 'json'],
         help=(
             'Specify what output format to use for displaying results. '
             'By default, a pretty printed table is used, but you can also '
             'specify "json" to display pretty printed JSON.'
-        )
+        ),
     )
     args = parser.parse_args()
     summarizer = Summarizer()

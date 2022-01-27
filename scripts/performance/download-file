@@ -17,11 +17,13 @@ To download a file::
 import argparse
 
 from botocore.session import get_session
+
 from s3transfer.manager import TransferManager
 
 
-class NonSeekableWriter(object):
+class NonSeekableWriter:
     """A wrapper to hide the ability to seek for a fileobj"""
+
     def __init__(self, fileobj):
         self._fileobj = fileobj
 
@@ -29,7 +31,7 @@ class NonSeekableWriter(object):
         return self._fileobj.write(b)
 
 
-class Downloader(object):
+class Downloader:
     def download(self, args):
         session = get_session()
         client = session.create_client('s3')
@@ -38,7 +40,8 @@ class Downloader(object):
             session.set_debug_logger('')
         with TransferManager(client) as manager:
             getattr(self, 'download_' + file_type)(
-                manager, args.file_name, args.s3_bucket, args.s3_key)
+                manager, args.file_name, args.s3_bucket, args.s3_key
+            )
 
     def download_filename(self, manager, filename, bucket, s3_key):
         manager.download(bucket, s3_key, filename)
@@ -50,8 +53,7 @@ class Downloader(object):
 
     def download_nonseekable(self, manager, filename, bucket, s3_key):
         with open(filename, 'wb') as f:
-            future = manager.download(
-                bucket, s3_key, NonSeekableWriter(f))
+            future = manager.download(bucket, s3_key, NonSeekableWriter(f))
             future.result()
 
 
@@ -59,16 +61,24 @@ def main():
     parser = argparse.ArgumentParser(usage=__doc__)
     parser.add_argument('--file-name', required=True, help='The name of file')
     parser.add_argument(
-        '--file-type', choices=['filename', 'seekable', 'nonseekable'],
-        required=True, help='The way to represent the file when downloading')
+        '--file-type',
+        choices=['filename', 'seekable', 'nonseekable'],
+        required=True,
+        help='The way to represent the file when downloading',
+    )
     parser.add_argument(
-        '--s3-bucket', required=True,
-        help='The S3 bucket to download the file to')
+        '--s3-bucket',
+        required=True,
+        help='The S3 bucket to download the file to',
+    )
     parser.add_argument(
-        '--s3-key', required=True, help='The key to download to')
+        '--s3-key', required=True, help='The key to download to'
+    )
     parser.add_argument(
-        '--debug', action='store_true',
-        help='Whether to turn debugging on. This will get printed to stderr')
+        '--debug',
+        action='store_true',
+        help='Whether to turn debugging on. This will get printed to stderr',
+    )
     args = parser.parse_args()
     Downloader().download(args)
 

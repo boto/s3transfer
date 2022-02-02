@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 import os
 import re
-import sys
 
-from setuptools import setup, find_packages
-
+from setuptools import find_packages, setup
 
 ROOT = os.path.dirname(__file__)
 VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
@@ -13,6 +11,7 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 requires = [
     'botocore>=1.12.36,<2.0a.0',
 ]
+
 
 def get_version():
     init = open(os.path.join(ROOT, 's3transfer', '__init__.py')).read()
@@ -45,5 +44,7 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
 )

@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.5.1
+=====
+
+* enhancement:Python: Officially add Python 3.10 support
+
+
 0.5.0
 =====
 

@@ -12,25 +12,27 @@
 # language governing permissions and limitations under the License.
 import glob
 import os
-import time
 import threading
-
+import time
 from concurrent.futures import CancelledError
 
-from tests import assert_files_equal
-from tests import skip_if_windows
-from tests import skip_if_using_serial_implementation
-from tests import RecordingSubscriber
-from tests import NonSeekableWriter
-from tests.integration import BaseTransferManagerIntegTest
-from tests.integration import WaitForTransferStart
 from s3transfer.manager import TransferConfig
-from s3transfer.subscribers import BaseSubscriber
+from tests import (
+    NonSeekableWriter,
+    RecordingSubscriber,
+    assert_files_equal,
+    skip_if_using_serial_implementation,
+    skip_if_windows,
+)
+from tests.integration import (
+    BaseTransferManagerIntegTest,
+    WaitForTransferStart,
+)
 
 
 class TestDownload(BaseTransferManagerIntegTest):
     def setUp(self):
-        super(TestDownload, self).setUp()
+        super().setUp()
         self.multipart_threshold = 5 * 1024 * 1024
         self.config = TransferConfig(
             multipart_threshold=self.multipart_threshold
@@ -40,12 +42,14 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '1mb.txt')
         future = transfer_manager.download(
-            self.bucket_name, '1mb.txt', download_path)
+            self.bucket_name, '1mb.txt', download_path
+        )
         future.result()
         assert_files_equal(filename, download_path)
 
@@ -53,12 +57,14 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
+            'foo.txt', filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
         future = transfer_manager.download(
-            self.bucket_name, '20mb.txt', download_path)
+            self.bucket_name, '20mb.txt', download_path
+        )
         future.result()
         assert_files_equal(filename, download_path)
 
@@ -72,7 +78,8 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=60 * 1024 * 1024)
+            'foo.txt', filesize=60 * 1024 * 1024
+        )
         self.upload_file(filename, '60mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '60mb.txt')
@@ -82,15 +89,18 @@ class TestDownload(BaseTransferManagerIntegTest):
         try:
             with transfer_manager:
                 future = transfer_manager.download(
-                    self.bucket_name, '60mb.txt', download_path,
-                    subscribers=[subscriber]
+                    self.bucket_name,
+                    '60mb.txt',
+                    download_path,
+                    subscribers=[subscriber],
                 )
                 if not bytes_transferring.wait(timeout):
                     future.cancel()
                     raise RuntimeError(
                         "Download transfer did not start after waiting for "
-                        "%s seconds." % timeout)
-                # Raise an exception which should cause the preceeding
+                        "%s seconds." % timeout
+                    )
+                # Raise an exception which should cause the preceding
                 # download to cancel and exit quickly
                 start_time = time.time()
                 raise KeyboardInterrupt()
@@ -103,13 +113,15 @@ class TestDownload(BaseTransferManagerIntegTest):
         max_allowed_exit_time = 5
         actual_time_to_exit = end_time - start_time
         self.assertLess(
-            actual_time_to_exit, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
-                max_allowed_exit_time, actual_time_to_exit)
+            actual_time_to_exit,
+            max_allowed_exit_time,
+            "Failed to exit under {}. Instead exited in {}.".format(
+                max_allowed_exit_time, actual_time_to_exit
+            ),
         )
 
         # Make sure the future was cancelled because of the KeyboardInterrupt
-        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
+        with self.assertRaisesRegex(CancelledError, 'KeyboardInterrupt()'):
             future.result()
 
         # Make sure the actual file and the temporary do not exist
@@ -132,22 +144,25 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         filenames = []
         futures = []
         for i in range(10):
-            filenames.append(
-                os.path.join(self.files.rootdir, 'file'+str(i)))
+            filenames.append(os.path.join(self.files.rootdir, 'file' + str(i)))
 
         try:
             with transfer_manager:
                 start_time = time.time()
                 for filename in filenames:
-                    futures.append(transfer_manager.download(
-                        self.bucket_name, '1mb.txt', filename))
-                # Raise an exception which should cause the preceeding
+                    futures.append(
+                        transfer_manager.download(
+                            self.bucket_name, '1mb.txt', filename
+                        )
+                    )
+                # Raise an exception which should cause the preceding
                 # transfer to cancel and exit quickly
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
@@ -157,13 +172,15 @@ class TestDownload(BaseTransferManagerIntegTest):
         # This means that it should take less than a couple seconds to exit.
         max_allowed_exit_time = 5
         self.assertLess(
-            end_time - start_time, max_allowed_exit_time,
-            "Failed to exit under %s. Instead exited in %s." % (
-                max_allowed_exit_time, end_time - start_time)
+            end_time - start_time,
+            max_allowed_exit_time,
+            "Failed to exit under {}. Instead exited in {}.".format(
+                max_allowed_exit_time, end_time - start_time
+            ),
         )
 
         # Make sure at least one of the futures got cancelled
-        with self.assertRaisesRegexp(CancelledError, 'KeyboardInterrupt()'):
+        with self.assertRaisesRegex(CancelledError, 'KeyboardInterrupt()'):
             for future in futures:
                 future.result()
 
@@ -177,14 +194,18 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
+            'foo.txt', filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
 
         future = transfer_manager.download(
-            self.bucket_name, '20mb.txt', download_path,
-            subscribers=[subscriber])
+            self.bucket_name,
+            '20mb.txt',
+            download_path,
+            subscribers=[subscriber],
+        )
         future.result()
         self.assertEqual(subscriber.calculate_bytes_seen(), 20 * 1024 * 1024)
 
@@ -192,13 +213,13 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '1mb.txt')
         with open(download_path, 'wb') as f:
-            future = transfer_manager.download(
-                self.bucket_name, '1mb.txt', f)
+            future = transfer_manager.download(self.bucket_name, '1mb.txt', f)
             future.result()
         assert_files_equal(filename, download_path)
 
@@ -206,13 +227,13 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
+            'foo.txt', filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
         with open(download_path, 'wb') as f:
-            future = transfer_manager.download(
-                self.bucket_name, '20mb.txt', f)
+            future = transfer_manager.download(self.bucket_name, '20mb.txt', f)
             future.result()
         assert_files_equal(filename, download_path)
 
@@ -220,13 +241,15 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '1mb.txt')
         with open(download_path, 'wb') as f:
             future = transfer_manager.download(
-                self.bucket_name, '1mb.txt', NonSeekableWriter(f))
+                self.bucket_name, '1mb.txt', NonSeekableWriter(f)
+            )
             future.result()
         assert_files_equal(filename, download_path)
 
@@ -234,13 +257,15 @@ class TestDownload(BaseTransferManagerIntegTest):
         transfer_manager = self.create_transfer_manager(self.config)
 
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=20 * 1024 * 1024)
+            'foo.txt', filesize=20 * 1024 * 1024
+        )
         self.upload_file(filename, '20mb.txt')
 
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
         with open(download_path, 'wb') as f:
             future = transfer_manager.download(
-                self.bucket_name, '20mb.txt', NonSeekableWriter(f))
+                self.bucket_name, '20mb.txt', NonSeekableWriter(f)
+            )
             future.result()
         assert_files_equal(filename, download_path)
 
@@ -248,13 +273,16 @@ class TestDownload(BaseTransferManagerIntegTest):
     def test_download_to_special_file(self):
         transfer_manager = self.create_transfer_manager(self.config)
         filename = self.files.create_file_with_size(
-            'foo.txt', filesize=1024 * 1024)
+            'foo.txt', filesize=1024 * 1024
+        )
         self.upload_file(filename, '1mb.txt')
         future = transfer_manager.download(
-            self.bucket_name, '1mb.txt', '/dev/null')
+            self.bucket_name, '1mb.txt', '/dev/null'
+        )
         try:
             future.result()
         except Exception as e:
             self.fail(
                 'Should have been able to download to /dev/null but received '
-                'following exception %s' % e)
+                'following exception %s' % e
+            )

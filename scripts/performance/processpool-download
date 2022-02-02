@@ -20,7 +20,8 @@ import argparse
 import os
 
 import botocore.session
-from s3transfer.processpool import ProcessTransferConfig, ProcessPoolDownloader
+
+from s3transfer.processpool import ProcessPoolDownloader, ProcessTransferConfig
 
 MB = 1024 * 1024
 
@@ -28,18 +29,19 @@ MB = 1024 * 1024
 def download(bucket, key, filename, num_processes, mb_chunksize):
     config = ProcessTransferConfig(
         multipart_chunksize=mb_chunksize * MB,
-        max_request_processes=num_processes
+        max_request_processes=num_processes,
     )
     with ProcessPoolDownloader(config=config) as downloader:
         future = downloader.download_file(
-            bucket=bucket, key=key, filename=filename)
+            bucket=bucket, key=key, filename=filename
+        )
         future.result()
 
 
 def recursive_download(bucket, prefix, dirname, num_processes, mb_chunksize):
     config = ProcessTransferConfig(
         multipart_chunksize=mb_chunksize * MB,
-        max_request_processes=num_processes
+        max_request_processes=num_processes,
     )
     s3 = botocore.session.get_session().create_client('s3')
     with ProcessPoolDownloader(config=config) as downloader:
@@ -48,7 +50,7 @@ def recursive_download(bucket, prefix, dirname, num_processes, mb_chunksize):
             contents = response.get('Contents', [])
             for content in contents:
                 key = content['Key']
-                filename = os.path.join(dirname, key[len(prefix):])
+                filename = os.path.join(dirname, key[len(prefix) :])
                 parent_dirname = os.path.dirname(filename)
                 if not os.path.exists(parent_dirname):
                     os.makedirs(parent_dirname)
@@ -56,41 +58,64 @@ def recursive_download(bucket, prefix, dirname, num_processes, mb_chunksize):
                 # does not need to be made for each of these objects that
                 # get downloaded.
                 downloader.download_file(
-                    bucket, key, filename=filename,
-                    expected_size=content['Size'])
+                    bucket,
+                    key,
+                    filename=filename,
+                    expected_size=content['Size'],
+                )
 
 
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
-    parser.add_argument('-b', '--bucket', required=True,
-                        help='The S3 bucket to download from')
+    parser.add_argument(
+        '-b', '--bucket', required=True, help='The S3 bucket to download from'
+    )
     single_file_group = parser.add_argument_group('Single file downloads')
-    single_file_group.add_argument('-k', '--key',
-                                   help='The key to download from')
-    single_file_group.add_argument('-f', '--filename',
-                                   help='The name of file to download to')
+    single_file_group.add_argument(
+        '-k', '--key', help='The key to download from'
+    )
+    single_file_group.add_argument(
+        '-f', '--filename', help='The name of file to download to'
+    )
     recursive_file_group = parser.add_argument_group(
-        'Recursive file downloads')
-    recursive_file_group.add_argument('-p', '--prefix',
-                                      help='The prefix to download from')
-    recursive_file_group.add_argument('-d', '--dirname',
-                                      help='The directory to download to')
+        'Recursive file downloads'
+    )
+    recursive_file_group.add_argument(
+        '-p', '--prefix', help='The prefix to download from'
+    )
+    recursive_file_group.add_argument(
+        '-d', '--dirname', help='The directory to download to'
+    )
     parser.add_argument(
-        '-n', '--num-processes', type=int, default=10,
-        help='The number of processes to run the download. 10 by default.')
+        '-n',
+        '--num-processes',
+        type=int,
+        default=10,
+        help='The number of processes to run the download. 10 by default.',
+    )
     parser.add_argument(
-        '-c', '--mb-chunksize', type=int, default=8,
-        help='The part size in MB to use for the download. 8 MB by default.')
+        '-c',
+        '--mb-chunksize',
+        type=int,
+        default=8,
+        help='The part size in MB to use for the download. 8 MB by default.',
+    )
     args = parser.parse_args()
     if args.filename and args.key:
         download(
-            args.bucket, args.key, args.filename, args.num_processes,
-            args.mb_chunksize
+            args.bucket,
+            args.key,
+            args.filename,
+            args.num_processes,
+            args.mb_chunksize,
         )
     elif args.prefix and args.dirname:
         recursive_download(
-            args.bucket, args.prefix, args.dirname, args.num_processes,
-            args.mb_chunksize
+            args.bucket,
+            args.prefix,
+            args.dirname,
+            args.num_processes,
+            args.mb_chunksize,
         )
     else:
         raise ValueError(

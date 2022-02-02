@@ -10,22 +10,20 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import mock
-import unittest
+import fnmatch
 import threading
-import re
+import time
 from concurrent.futures import Future
 
 from botocore.session import Session
 
 from s3transfer.subscribers import BaseSubscriber
-
-from tests import FileCreator
-from tests import requires_crt, HAS_CRT
+from tests import HAS_CRT, FileCreator, mock, requires_crt, unittest
 
 if HAS_CRT:
-    import s3transfer.crt
     import awscrt
+
+    import s3transfer.crt
 
 
 class submitThread(threading.Thread):
@@ -72,10 +70,12 @@ class TestCRTTransferManager(unittest.TestCase):
         self.session = Session()
         self.session.set_config_variable('region', self.region)
         self.request_serializer = s3transfer.crt.BotocoreCRTRequestSerializer(
-            self.session)
+            self.session
+        )
         self.transfer_manager = s3transfer.crt.CRTTransferManager(
             crt_s3_client=self.s3_crt_client,
-            crt_request_serializer=self.request_serializer)
+            crt_request_serializer=self.request_serializer,
+        )
         self.record_subscriber = RecordingSubscriber()
 
     def tearDown(self):
@@ -86,11 +86,11 @@ class TestCRTTransferManager(unittest.TestCase):
         self.assertTrue(self.record_subscriber.on_done_called)
         if expected_future:
             self.assertIs(
-                self.record_subscriber.on_queued_future,
-                expected_future)
+                self.record_subscriber.on_queued_future, expected_future
+            )
             self.assertIs(
-                self.record_subscriber.on_done_future,
-                expected_future)
+                self.record_subscriber.on_done_future, expected_future
+            )
 
     def _invoke_done_callbacks(self, **kwargs):
         callargs = self.s3_crt_client.make_request.call_args
@@ -99,7 +99,7 @@ class TestCRTTransferManager(unittest.TestCase):
         on_done(error=None)
 
     def _simulate_file_download(self, recv_filepath):
-        self.files.create_file(recv_filepath, "fake resopnse")
+        self.files.create_file(recv_filepath, "fake response")
 
     def _simulate_make_request_side_effect(self, **kwargs):
         if kwargs.get('recv_filepath'):
@@ -108,17 +108,21 @@ class TestCRTTransferManager(unittest.TestCase):
         return mock.DEFAULT
 
     def test_upload(self):
-        self.s3_crt_client.make_request.side_effect = self._simulate_make_request_side_effect
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
         future = self.transfer_manager.upload(
-            self.filename, self.bucket, self.key, {}, [self.record_subscriber])
+            self.filename, self.bucket, self.key, {}, [self.record_subscriber]
+        )
         future.result()
 
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
         self.assertEqual(callargs_kwargs["send_filepath"], self.filename)
         self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertEqual(callargs_kwargs["type"],
-                         awscrt.s3.S3RequestType.PUT_OBJECT)
+        self.assertEqual(
+            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
+        )
         crt_request = callargs_kwargs["request"]
         self.assertEqual("PUT", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)
@@ -126,20 +130,28 @@ class TestCRTTransferManager(unittest.TestCase):
         self._assert_subscribers_called(future)
 
     def test_download(self):
-        self.s3_crt_client.make_request.side_effect = self._simulate_make_request_side_effect
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
         future = self.transfer_manager.download(
-            self.bucket, self.key, self.filename, {}, [self.record_subscriber])
+            self.bucket, self.key, self.filename, {}, [self.record_subscriber]
+        )
         future.result()
 
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
         # the recv_filepath will be set to a temporary file path with some
         # random suffix
-        self.assertTrue(re.match(self.filename + ".*",
-                                 callargs_kwargs["recv_filepath"]))
+        self.assertTrue(
+            fnmatch.fnmatch(
+                callargs_kwargs["recv_filepath"],
+                f'{self.filename}.*',
+            )
+        )
         self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertEqual(callargs_kwargs["type"],
-                         awscrt.s3.S3RequestType.GET_OBJECT)
+        self.assertEqual(
+            callargs_kwargs["type"], awscrt.s3.S3RequestType.GET_OBJECT
+        )
         crt_request = callargs_kwargs["request"]
         self.assertEqual("GET", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)
@@ -147,20 +159,24 @@ class TestCRTTransferManager(unittest.TestCase):
         self._assert_subscribers_called(future)
         with open(self.filename, 'rb') as f:
             # Check the fake response overwrites the file because of download
-            self.assertEqual(f.read(), b'fake resopnse')
+            self.assertEqual(f.read(), b'fake response')
 
     def test_delete(self):
-        self.s3_crt_client.make_request.side_effect = self._simulate_make_request_side_effect
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
         future = self.transfer_manager.delete(
-            self.bucket, self.key, {}, [self.record_subscriber])
+            self.bucket, self.key, {}, [self.record_subscriber]
+        )
         future.result()
 
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
         self.assertIsNone(callargs_kwargs["send_filepath"])
         self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertEqual(callargs_kwargs["type"],
-                         awscrt.s3.S3RequestType.DEFAULT)
+        self.assertEqual(
+            callargs_kwargs["type"], awscrt.s3.S3RequestType.DEFAULT
+        )
         crt_request = callargs_kwargs["request"]
         self.assertEqual("DELETE", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)
@@ -177,9 +193,12 @@ class TestCRTTransferManager(unittest.TestCase):
             thread = submitThread(self.transfer_manager, futures, callargs)
             thread.start()
             threads.append(thread)
+        # Sleep until the expected max requests has been reached
+        while len(futures) < max_request_processes:
+            time.sleep(0.05)
         self.assertLessEqual(
-            self.s3_crt_client.make_request.call_count,
-            max_request_processes)
+            self.s3_crt_client.make_request.call_count, max_request_processes
+        )
         # Release lock
         callargs = self.s3_crt_client.make_request.call_args
         callargs_kwargs = callargs[1]
@@ -188,13 +207,14 @@ class TestCRTTransferManager(unittest.TestCase):
         for thread in threads:
             thread.join()
         self.assertEqual(
-            self.s3_crt_client.make_request.call_count,
-            all_concurrent)
+            self.s3_crt_client.make_request.call_count, all_concurrent
+        )
 
     def _cancel_function(self):
         self.cancel_called = True
         self.s3_request.finished_future.set_exception(
-            awscrt.exceptions.from_code(0))
+            awscrt.exceptions.from_code(0)
+        )
         self._invoke_done_callbacks()
 
     def test_cancel(self):
@@ -204,7 +224,8 @@ class TestCRTTransferManager(unittest.TestCase):
         try:
             with self.transfer_manager:
                 future = self.transfer_manager.upload(
-                    self.filename, self.bucket, self.key, {}, [])
+                    self.filename, self.bucket, self.key, {}, []
+                )
                 raise KeyboardInterrupt()
         except KeyboardInterrupt:
             pass
@@ -214,28 +235,33 @@ class TestCRTTransferManager(unittest.TestCase):
         self.assertTrue(self.cancel_called)
 
     def test_serializer_error_handling(self):
-
         class SerializationException(Exception):
             pass
 
-        class ExceptionRaisingSerializer(s3transfer.crt.BaseCRTRequestSerializer):
+        class ExceptionRaisingSerializer(
+            s3transfer.crt.BaseCRTRequestSerializer
+        ):
             def serialize_http_request(self, transfer_type, future):
                 raise SerializationException()
 
         not_impl_serializer = ExceptionRaisingSerializer()
         transfer_manager = s3transfer.crt.CRTTransferManager(
             crt_s3_client=self.s3_crt_client,
-            crt_request_serializer=not_impl_serializer)
+            crt_request_serializer=not_impl_serializer,
+        )
         future = transfer_manager.upload(
-            self.filename, self.bucket, self.key, {}, [])
+            self.filename, self.bucket, self.key, {}, []
+        )
 
         with self.assertRaises(SerializationException):
             future.result()
 
     def test_crt_s3_client_error_handling(self):
-        self.s3_crt_client.make_request.side_effect = awscrt.exceptions.from_code(
-            0)
+        self.s3_crt_client.make_request.side_effect = (
+            awscrt.exceptions.from_code(0)
+        )
         future = self.transfer_manager.upload(
-            self.filename, self.bucket, self.key, {}, [])
+            self.filename, self.bucket, self.key, {}, []
+        )
         with self.assertRaises(awscrt.exceptions.AwsCrtError):
             future.result()

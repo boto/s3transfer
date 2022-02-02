@@ -10,22 +10,19 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-from tests import RecordingSubscriber
 from tests.integration import BaseTransferManagerIntegTest
-from s3transfer.manager import TransferConfig
 
 
 class TestDeleteObject(BaseTransferManagerIntegTest):
-
     def test_can_delete_object(self):
         key_name = 'mykey'
-        self.client.put_object(Bucket=self.bucket_name,
-                               Key=key_name, Body=b'hello world')
+        self.client.put_object(
+            Bucket=self.bucket_name, Key=key_name, Body=b'hello world'
+        )
         self.assertTrue(self.object_exists(key_name))
 
         transfer_manager = self.create_transfer_manager()
-        future = transfer_manager.delete(bucket=self.bucket_name,
-                                         key=key_name)
+        future = transfer_manager.delete(bucket=self.bucket_name, key=key_name)
         future.result()
 
         self.assertTrue(self.object_not_exists(key_name))

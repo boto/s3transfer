@@ -10,26 +10,23 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import multiprocessing.managers
 import os
-import tempfile
 import shutil
 import signal
+import tempfile
+from io import BytesIO
 
-from botocore.compat import six
-
-from tests import unittest
-from tests import skip_if_windows
-from s3transfer.compat import seekable, readable
-from s3transfer.compat import BaseManager
+from s3transfer.compat import BaseManager, readable, seekable
+from tests import skip_if_windows, unittest
 
 
-class ErrorRaisingSeekWrapper(object):
+class ErrorRaisingSeekWrapper:
     """An object wrapper that throws an error when seeked on
 
     :param fileobj: The fileobj that it wraps
-    :param execption: The exception to raise when seeked on.
+    :param exception: The exception to raise when seeked on.
     """
+
     def __init__(self, fileobj, exception):
         self._fileobj = fileobj
         self._exception = exception
@@ -54,7 +51,7 @@ class TestSeekable(unittest.TestCase):
             self.assertTrue(seekable(f))
 
     def test_non_file_like_obj(self):
-        # Fails becase there is no seekable(), seek(), nor tell()
+        # Fails because there is no seekable(), seek(), nor tell()
         self.assertFalse(seekable(object()))
 
     def test_non_seekable_ioerror(self):
@@ -74,7 +71,7 @@ class TestReadable(unittest.TestCase):
             self.assertTrue(readable(f))
 
     def test_readable_file_like_obj(self):
-        self.assertTrue(readable(six.BytesIO()))
+        self.assertTrue(readable(BytesIO()))
 
     def test_non_file_like_obj(self):
         self.assertFalse(readable(object()))

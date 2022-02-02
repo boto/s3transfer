@@ -15,8 +15,8 @@ To use the script, run::
 """
 import argparse
 import os
-import sys
 import subprocess
+import sys
 import time
 
 import psutil
@@ -67,14 +67,15 @@ def run_script(args):
 
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument('script', help='The script to run for benchmarking')
     parser.add_argument(
-        'script', help='The script to run for benchmarking')
-    parser.add_argument(
-        '--timeout-after', required=True, type=float,
+        '--timeout-after',
+        required=True,
+        type=float,
         help=(
             'The length of time in seconds allowed for the script to run '
             'before it time\'s out.'
-        )
+        ),
     )
     args = parser.parse_args()
     return timeout(args)

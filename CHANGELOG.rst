@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.5.1
+=====
+
+* enhancement:Python: Officially add Python 3.10 support
+
+
 0.5.0
 =====
 
@@ -78,7 +84,7 @@ CHANGELOG
 0.2.1
 =====
 
-* enhancement:``ProcessPool``: Adds user agent suffix.
+* enhancment:ProcessPool: Adds user agent suffix.
 
 
 0.2.0
@@ -96,7 +102,7 @@ CHANGELOG
 0.1.12
 ======
 
-* enhancement:``max_bandwidth``: Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads.
+* enhancement:``max_bandwidth``: Add ability to set maximum bandwidth consumption for streaming of S3 uploads and downloads
 
 
 0.1.11
@@ -182,3 +188,4 @@ CHANGELOG
 =====
 
 * feature:manager: Add boto3 s3 transfer logic to package. (`issue 2 <https://github.com/boto/s3transfer/pull/2>`__)
+

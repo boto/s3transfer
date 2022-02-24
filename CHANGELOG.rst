@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.5.2
+=====
+
+* enhancement:``s3``: Added support for flexible checksums when uploading or downloading objects.
+
+
 0.5.1
 =====
 

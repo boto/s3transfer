@@ -227,17 +227,24 @@ class TestNonMultipartCopy(BaseCopyTest):
 
     def test_copy_maps_extra_args_to_head_object(self):
         self.extra_args['CopySourceSSECustomerAlgorithm'] = 'AES256'
+        self.extra_args[
+            'ExpectedSourceBucketOwner'
+        ] = 'expectedsourcebucketowner'
+        self.extra_args['ExpectedBucketOwner'] = 'expectedbucketowner'
 
         expected_head_params = {
             'Bucket': 'mysourcebucket',
             'Key': 'mysourcekey',
             'SSECustomerAlgorithm': 'AES256',
+            'ExpectedBucketOwner': 'expectedsourcebucketowner',
         }
         expected_copy_object = {
             'Bucket': self.bucket,
             'Key': self.key,
             'CopySource': self.copy_source,
             'CopySourceSSECustomerAlgorithm': 'AES256',
+            'ExpectedSourceBucketOwner': 'expectedsourcebucketowner',
+            'ExpectedBucketOwner': 'expectedbucketowner',
         }
 
         self.add_head_object_response(expected_params=expected_head_params)
@@ -423,9 +430,10 @@ class TestMultipartCopy(BaseCopyTest):
         # This extra argument should be added to the head object,
         # the create multipart upload, and upload part copy.
         self.extra_args['RequestPayer'] = 'requester'
+        self.extra_args['ExpectedBucketOwner'] = 'expectedbucketowner'
 
         head_params, add_copy_kwargs = self._get_expected_params()
-        head_params.update(self.extra_args)
+        head_params['RequestPayer'] = 'requester'
         self.add_head_object_response(expected_params=head_params)
 
         self._add_params_to_expected_params(
@@ -444,8 +452,17 @@ class TestMultipartCopy(BaseCopyTest):
     def test_copy_blacklists_args_to_create_multipart(self):
         # This argument can never be used for multipart uploads
         self.extra_args['MetadataDirective'] = 'COPY'
+        self.extra_args[
+            'ExpectedSourceBucketOwner'
+        ] = 'expectedsourcebucketowner'
 
         head_params, add_copy_kwargs = self._get_expected_params()
+        head_params['ExpectedBucketOwner'] = 'expectedsourcebucketowner'
+        self._add_params_to_expected_params(
+            add_copy_kwargs,
+            ['copy'],
+            {'ExpectedSourceBucketOwner': 'expectedsourcebucketowner'},
+        )
         self.add_head_object_response(expected_params=head_params)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
@@ -493,12 +510,16 @@ class TestMultipartCopy(BaseCopyTest):
 
     def test_copy_maps_extra_args_to_head_object(self):
         self.extra_args['CopySourceSSECustomerAlgorithm'] = 'AES256'
+        self.extra_args[
+            'ExpectedSourceBucketOwner'
+        ] = 'expectedsourcebucketowner'
 
         head_params, add_copy_kwargs = self._get_expected_params()
 
         # The CopySourceSSECustomerAlgorithm needs to get mapped to
         # SSECustomerAlgorithm for HeadObject
         head_params['SSECustomerAlgorithm'] = 'AES256'
+        head_params['ExpectedBucketOwner'] = 'expectedsourcebucketowner'
         self.add_head_object_response(expected_params=head_params)
 
         # However, it needs to remain the same for UploadPartCopy.

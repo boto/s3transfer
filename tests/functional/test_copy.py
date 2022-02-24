@@ -227,6 +227,7 @@ class TestNonMultipartCopy(BaseCopyTest):
 
     def test_copy_maps_extra_args_to_head_object(self):
         self.extra_args['CopySourceSSECustomerAlgorithm'] = 'AES256'
+        self.extra_args['ExpectedBucketOwner'] = 'expectedbucketowner'
 
         expected_head_params = {
             'Bucket': 'mysourcebucket',
@@ -238,6 +239,7 @@ class TestNonMultipartCopy(BaseCopyTest):
             'Key': self.key,
             'CopySource': self.copy_source,
             'CopySourceSSECustomerAlgorithm': 'AES256',
+            'ExpectedBucketOwner': 'expectedbucketowner',
         }
 
         self.add_head_object_response(expected_params=expected_head_params)

@@ -39,7 +39,7 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerAlgorithm': 'SSECustomerAlgorithm',
         'CopySourceSSECustomerKeyMD5': 'SSECustomerKeyMD5',
         'RequestPayer': 'RequestPayer',
-        'ExpectedBucketOwner': 'ExpectedBucketOwner',
+        'ExpectedSourceBucketOwner': 'ExpectedBucketOwner',
     }
 
     UPLOAD_PART_COPY_ARGS = [

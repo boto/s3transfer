@@ -155,7 +155,7 @@ class Summarizer:
     def _standard_deviation_across_all_files(self, name):
         mean = self._average_across_all_files(name)
         differences = [total - mean for total in self._totals[name]]
-        sq_differences = [difference ** 2 for difference in differences]
+        sq_differences = [difference**2 for difference in differences]
         return sqrt(sum(sq_differences) / len(self._totals[name]))
 
     def summarize_as_table(self):

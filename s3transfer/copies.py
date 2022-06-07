@@ -352,7 +352,8 @@ class CopyPartTask(Task):
             {'Etag': etag_value, 'PartNumber': part_number}
 
             This value can be appended to a list to be used to complete
-            the multipart upload.
+            the multipart upload. if checksum is in the response, it will be included
+            in such dictionary
         """
         response = client.upload_part_copy(
             CopySource=copy_source,
@@ -365,4 +366,14 @@ class CopyPartTask(Task):
         for callback in callbacks:
             callback(bytes_transferred=size)
         etag = response['CopyPartResult']['ETag']
-        return {'ETag': etag, 'PartNumber': part_number}
+        part = {'ETag': etag, 'PartNumber': part_number}
+        checksums = [
+            'ChecksumCRC32',
+            'ChecksumCRC32C',
+            'ChecksumSHA1',
+            'ChecksumSHA256',
+        ]
+        for checksum in checksums:
+            if checksum in response['CopyPartResult']:
+                part[checksum] = response['CopyPartResult'][checksum]
+        return part

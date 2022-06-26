@@ -377,11 +377,17 @@ class CompleteMultipartUploadTask(Task):
             ``UploadPartTask.main()``.
         :param extra_args:  A dictionary of any extra arguments that may be
             used in completing the multipart transfer.
+        :returns: A dictionary representing metadata information about the
+            upload, such as the ETag for the uploaded entity.
         """
-        client.complete_multipart_upload(
+        response = client.complete_multipart_upload(
             Bucket=bucket,
             Key=key,
             UploadId=upload_id,
             MultipartUpload={'Parts': parts},
             **extra_args,
         )
+        metadata = dict()
+        if 'ETag' in response:
+            metadata['ETag'] = response['ETag']
+        return metadata

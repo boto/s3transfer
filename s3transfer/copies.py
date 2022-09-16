@@ -309,13 +309,15 @@ class CopyObjectTask(Task):
         :param size: The size of the transfer. This value is passed into
             the callbacks
 
+        :rtype: dict
+        :returns: A dictionary containing client response
         """
-        client.copy_object(
+        resp = client.copy_object(
             CopySource=copy_source, Bucket=bucket, Key=key, **extra_args
         )
         for callback in callbacks:
             callback(bytes_transferred=size)
-
+        return resp
 
 class CopyPartTask(Task):
     """Task to upload a part in a multipart copy"""

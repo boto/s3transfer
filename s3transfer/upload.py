@@ -753,9 +753,12 @@ class PutObjectTask(Task):
         :param key: The name of the key to upload to
         :param extra_args: A dictionary of any extra arguments that may be
             used in the upload.
+
+        :rtype: dict
+        :returns: A dictionary containing client response
         """
         with fileobj as body:
-            client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
+            return client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
 
 
 class UploadPartTask(Task):

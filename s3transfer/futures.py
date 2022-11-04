@@ -281,14 +281,13 @@ class TransferCoordinator:
         """
         with self._lock:
             if not self.done():
-                should_announce_done = False
                 logger.debug('%s cancel(%s) called', self, msg)
                 self._exception = exc_type(msg)
-                if self._status == TransferCoordinator.NOT_STARTED_STATUS:
-                    should_announce_done = True
+                started = (
+                    self._status != TransferCoordinator.NOT_STARTED_STATUS
+                )
                 self._status = TransferCoordinator.CANCELLED_STATUS
-                if should_announce_done:
-                    self.announce_done()
+                self.announce_done(started)
 
     def set_status_to_queued(self):
         """Sets the TransferFutrue's status to running"""
@@ -372,17 +371,25 @@ class TransferCoordinator:
                 FunctionContainer(function, *args, **kwargs)
             )
 
-    def announce_done(self):
+    def announce_done(self, started=True):
         """Announce that future is done running and run associated callbacks
 
         This will run any failure cleanups if the transfer failed if not
         they have not been run, allows the result() to be unblocked, and will
         run any done callbacks associated to the TransferFuture if they have
         not already been ran.
+
+        :param started: Has the transfer started yet.  If not started the
+            transfer can be canceled immediately and failure cleanups will not
+            be called.
         """
-        if self.status != TransferCoordinator.SUCCESS_STATUS:
+        # Only run failure cleanups if the transfer has started.  If a transfer
+        # is in the not-started state when cancel() is called the transfer is
+        # not considered a failure.
+        if started and self.status != TransferCoordinator.SUCCESS_STATUS:
             self._run_failure_cleanups()
         self._done_event.set()
+        # Done callbacks are run even if the transfer has not been started
         self._run_done_callbacks()
 
     def _run_done_callbacks(self):

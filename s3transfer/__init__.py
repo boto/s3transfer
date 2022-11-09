@@ -534,6 +534,11 @@ class MultipartDownloader:
     def download_file(
         self, bucket, key, filename, object_size, extra_args, callback=None
     ):
+        self.download_versioned_file(bucket, key, filename, object_size, None, extra_args, callback=callback)
+
+    def download_versioned_file(
+        self, bucket, key, filename, object_size, object_version, extra_args, callback=None
+    ):
         with self._executor_cls(max_workers=2) as controller:
             # 1 thread for the future that manages the uploading of files
             # 1 thread for the future that manages IO writes.
@@ -543,6 +548,7 @@ class MultipartDownloader:
                 key,
                 filename,
                 object_size,
+                object_version,
                 callback,
             )
             parts_future = controller.submit(download_parts_handler)
@@ -563,7 +569,7 @@ class MultipartDownloader:
             future.result()
 
     def _download_file_as_future(
-        self, bucket, key, filename, object_size, callback
+        self, bucket, key, filename, object_size, object_version, callback
     ):
         part_size = self._config.multipart_chunksize
         num_parts = int(math.ceil(object_size / float(part_size)))
@@ -573,6 +579,7 @@ class MultipartDownloader:
             bucket,
             key,
             filename,
+            object_version,
             part_size,
             num_parts,
             callback,
@@ -593,7 +600,7 @@ class MultipartDownloader:
         return range_param
 
     def _download_range(
-        self, bucket, key, filename, part_size, num_parts, callback, part_index
+        self, bucket, key, filename, object_version, part_size, num_parts, callback, part_index
     ):
         try:
             range_param = self._calculate_range_param(
@@ -605,9 +612,10 @@ class MultipartDownloader:
             for i in range(max_attempts):
                 try:
                     logger.debug("Making get_object call.")
-                    response = self._client.get_object(
-                        Bucket=bucket, Key=key, Range=range_param
-                    )
+                    kwargs = {'Bucket': bucket, 'Key': key, 'Range': range_param}
+                    if object_version is not None:
+                        kwargs['VersionId'] = object_version
+                    response = self._client.get_object(**kwargs)
                     streaming_body = StreamReaderProgress(
                         response['Body'], callback
                     )
@@ -781,11 +789,23 @@ class S3Transfer:
         if extra_args is None:
             extra_args = {}
         self._validate_all_known_args(extra_args, self.ALLOWED_DOWNLOAD_ARGS)
-        object_size = self._object_size(bucket, key, extra_args)
+        object_meta = self._object_meta(bucket, key, extra_args)
+        object_size = object_meta['ContentLength']
+
+        # If the latest version of the file changes during a multipart download and we make
+        # multiple concurrent ranged downloads, then each download may see a different version.
+        # To avoid this, we specify a common version for all. If the bucket does not have
+        # version, then there is nothing that can be done, and we specify no version.
+        object_version = object_meta.get('VersionId')
+        if object_version is not None:
+            logger.debug("Using version ID %s for %s/%s", object_version, bucket, key)
+        else:
+            logger.debug("Not using version ID for %s/%s", bucket, key)
+
         temp_filename = filename + os.extsep + random_file_extension()
         try:
             self._download_file(
-                bucket, key, temp_filename, object_size, extra_args, callback
+                bucket, key, temp_filename, object_size, object_version, extra_args, callback
             )
         except Exception:
             logger.debug(
@@ -800,11 +820,11 @@ class S3Transfer:
             self._osutil.rename_file(temp_filename, filename)
 
     def _download_file(
-        self, bucket, key, filename, object_size, extra_args, callback
+        self, bucket, key, filename, object_size, object_version, extra_args, callback
     ):
         if object_size >= self._config.multipart_threshold:
             self._ranged_download(
-                bucket, key, filename, object_size, extra_args, callback
+                bucket, key, filename, object_size, object_version, extra_args, callback
             )
         else:
             self._get_object(bucket, key, filename, extra_args, callback)
@@ -818,13 +838,13 @@ class S3Transfer:
                 )
 
     def _ranged_download(
-        self, bucket, key, filename, object_size, extra_args, callback
+        self, bucket, key, filename, object_size, object_version, extra_args, callback
     ):
         downloader = MultipartDownloader(
             self._client, self._config, self._osutil
         )
-        downloader.download_file(
-            bucket, key, filename, object_size, extra_args, callback
+        downloader.download_versioned_file(
+            bucket, key, filename, object_size, object_version, extra_args, callback
         )
 
     def _get_object(self, bucket, key, filename, extra_args, callback):
@@ -865,10 +885,8 @@ class S3Transfer:
             for chunk in iter(lambda: streaming_body.read(8192), b''):
                 f.write(chunk)
 
-    def _object_size(self, bucket, key, extra_args):
-        return self._client.head_object(Bucket=bucket, Key=key, **extra_args)[
-            'ContentLength'
-        ]
+    def _object_meta(self, bucket, key, extra_args):
+        return self._client.head_object(Bucket=bucket, Key=key, **extra_args)
 
     def _multipart_upload(self, filename, bucket, key, callback, extra_args):
         uploader = MultipartUploader(self._client, self._config, self._osutil)

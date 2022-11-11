@@ -670,6 +670,30 @@ class TestS3Transfer(unittest.TestCase):
             SSECustomerKey='foo',
         )
 
+    def test_mutlipart_download_file_fowards_extra_args(self):
+        extra_args = {
+            'SSECustomerKey': 'foo',
+            'SSECustomerAlgorithm': 'AES256',
+        }
+        osutil = InMemoryOSLayer({})
+        over_multipart_threshold = 100 * 1024 * 1024
+        transfer = S3Transfer(self.client, osutil=osutil)
+        self.client.head_object.return_value = {
+            'ContentLength': over_multipart_threshold
+        }
+        self.client.get_object.return_value = {'Body': BytesIO(b'foobar')}
+
+        transfer.download_file(
+            'bucket', 'key', 'filename', extra_args=extra_args
+        )
+
+        self.client.get_object.assert_called_with(
+            Bucket='bucket',
+            Key='key',
+            Range=self.client.get_object.call_args.kwargs['Range'],
+            **extra_args
+        )
+
     def test_get_object_stream_is_retried_and_succeeds(self):
         below_threshold = 20
         osutil = InMemoryOSLayer({'smallfile': b'hello world'})

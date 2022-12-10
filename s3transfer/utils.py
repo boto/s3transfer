@@ -65,7 +65,7 @@ def calculate_num_parts(size, part_size):
 
 
 def calculate_range_parameter(
-    part_size, part_index, num_parts, total_size=None
+    part_size, part_index, num_parts, total_size=None, offset=0
 ):
     """Calculate the range parameter for multipart downloads/copies
 
@@ -79,11 +79,17 @@ def calculate_range_parameter(
     :type num_parts: int
     :param num_parts: The total number of parts in the transfer
 
+    :type total_size: int
+    :param total_size: The total size of the object be transferred
+
+    :type offset: int
+    :param offset: The offset from the beginning of the object to start the range
+
     :returns: The value to use for Range parameter on downloads or
         the CopySourceRange parameter for copies
     """
     # Used to calculate the Range parameter
-    start_range = part_index * part_size
+    start_range = part_index * part_size + offset
     if part_index == num_parts - 1:
         end_range = ''
         if total_size is not None:

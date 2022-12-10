@@ -335,7 +335,15 @@ class TransferManager:
         )
 
     def download(
-        self, bucket, key, fileobj, extra_args=None, subscribers=None
+        self,
+        bucket,
+        key,
+        fileobj,
+        extra_args=None,
+        subscribers=None,
+        *,
+        range_start=0,
+        range_end=None
     ):
         """Downloads a file from S3
 
@@ -359,6 +367,14 @@ class TransferManager:
             order provided based on the event emit during the process of
             the transfer request.
 
+        :type range_start: int
+        :param range_start: The start of the range to download from the object.
+
+        :type range_end: int
+        :param range_end: The end of the range to download from the object.  Default is
+            the length of the object minus one.  Total length is of the download is
+            `range_end - range_start + 1`
+
         :rtype: s3transfer.futures.TransferFuture
         :returns: Transfer future representing the download
         """
@@ -374,6 +390,8 @@ class TransferManager:
             fileobj=fileobj,
             extra_args=extra_args,
             subscribers=subscribers,
+            range_start=range_start,
+            range_end=range_end,
         )
         extra_main_kwargs = {'io_executor': self._io_executor}
         if self._bandwidth_limiter:

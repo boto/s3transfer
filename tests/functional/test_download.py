@@ -456,14 +456,41 @@ class TestRangedDownload(BaseDownloadTest):
     # from the general test base class, which we do not want ran.
     __test__ = True
 
+    CHUNKSIZE = 4
+
     def setUp(self):
         super().setUp()
         self.config = TransferConfig(
             max_request_concurrency=1,
             multipart_threshold=1,
-            multipart_chunksize=4,
+            multipart_chunksize=self.CHUNKSIZE,
         )
         self._manager = TransferManager(self.client, self.config)
+        self.get_object_responses = []
+
+    def generate_get_object_responses(self, range_start, range_end):
+        for start in range(range_start, range_end + 1, self.CHUNKSIZE):
+            end = min(start + self.CHUNKSIZE, range_end + 1)
+            yield {
+                'method': 'get_object',
+                'service_response': {'Body': BytesIO(self.content[start:end])},
+            }
+
+    def create_get_object_responses(self, range_start, range_end):
+        self.get_object_responses = [
+            r
+            for r in self.generate_get_object_responses(range_start, range_end)
+        ]
+
+    def generate_expected_ranges(self, range_start, range_end):
+        for start in range(range_start, range_end + 1, self.CHUNKSIZE):
+            end = min(start + self.CHUNKSIZE - 1, range_end)
+            yield f'bytes={start}-{end}'
+
+    def create_expected_ranges(self, range_start, range_end):
+        return [
+            r for r in self.generate_expected_ranges(range_start, range_end)
+        ]
 
     def create_stubbed_responses(self):
         return [
@@ -471,19 +498,7 @@ class TestRangedDownload(BaseDownloadTest):
                 'method': 'head_object',
                 'service_response': {'ContentLength': len(self.content)},
             },
-            {
-                'method': 'get_object',
-                'service_response': {'Body': BytesIO(self.content[0:4])},
-            },
-            {
-                'method': 'get_object',
-                'service_response': {'Body': BytesIO(self.content[4:8])},
-            },
-            {
-                'method': 'get_object',
-                'service_response': {'Body': BytesIO(self.content[8:])},
-            },
-        ]
+        ] + self.get_object_responses
 
     def create_expected_progress_callback_info(self):
         return [
@@ -494,12 +509,13 @@ class TestRangedDownload(BaseDownloadTest):
 
     def test_download(self):
         self.extra_args['RequestPayer'] = 'requester'
+        self.create_get_object_responses(0, len(self.content) - 1)
         expected_params = {
             'Bucket': self.bucket,
             'Key': self.key,
             'RequestPayer': 'requester',
         }
-        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        expected_ranges = self.create_expected_ranges(0, len(self.content) - 1)
         self.add_head_object_response(expected_params)
         self.add_successful_get_object_responses(
             expected_params, expected_ranges
@@ -516,12 +532,13 @@ class TestRangedDownload(BaseDownloadTest):
 
     def test_download_with_checksum_enabled(self):
         self.extra_args['ChecksumMode'] = 'ENABLED'
+        self.create_get_object_responses(0, len(self.content) - 1)
         expected_params = {
             'Bucket': self.bucket,
             'Key': self.key,
             'ChecksumMode': 'ENABLED',
         }
-        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        expected_ranges = self.create_expected_ranges(0, len(self.content) - 1)
         self.add_head_object_response(expected_params)
         self.add_successful_get_object_responses(
             expected_params, expected_ranges
@@ -535,3 +552,121 @@ class TestRangedDownload(BaseDownloadTest):
         # Ensure that the contents are correct
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
+
+    def test_download_range_clamped_to_size(self):
+        self.create_get_object_responses(0, len(self.content) - 1)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = self.create_expected_ranges(0, len(self.content) - 1)
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(
+            expected_params, expected_ranges
+        )
+
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            range_start=-1,
+            range_end=len(self.content) + 10,
+        )
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
+    def test_download_range_start(self):
+        range_start = 5
+        range_end = len(self.content) - 1
+        self.create_get_object_responses(range_start, range_end)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = self.create_expected_ranges(range_start, range_end)
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(
+            expected_params, expected_ranges
+        )
+
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            range_start=range_start,
+        )
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content[range_start:], f.read())
+
+    def test_download_range_end(self):
+        range_start = 0
+        range_end = 5
+        self.create_get_object_responses(range_start, range_end)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = self.create_expected_ranges(range_start, range_end)
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(
+            expected_params, expected_ranges
+        )
+
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            range_end=range_end,
+        )
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content[: range_end + 1], f.read())
+
+    def test_download_range_start_and_end(self):
+        range_start = 5
+        range_end = 5
+        self.create_get_object_responses(range_start, range_end)
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = self.create_expected_ranges(range_start, range_end)
+        self.add_head_object_response(expected_params)
+        self.add_successful_get_object_responses(
+            expected_params, expected_ranges
+        )
+
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            range_start=range_start,
+            range_end=range_end,
+        )
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+
+        # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(
+                self.content[range_start : range_end + 1], f.read()
+            )

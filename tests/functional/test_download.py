@@ -467,6 +467,7 @@ class TestRangedDownload(BaseDownloadTest):
         )
         self._manager = TransferManager(self.client, self.config)
         self.get_object_responses = []
+        self.create_get_object_responses(0, len(self.content) - 1)
 
     def generate_get_object_responses(self, range_start, range_end):
         for start in range(range_start, range_end + 1, self.CHUNKSIZE):

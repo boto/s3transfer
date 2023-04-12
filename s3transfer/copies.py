@@ -367,7 +367,7 @@ class CopyPartTask(Task):
             Key=key,
             UploadId=upload_id,
             PartNumber=part_number,
-            **extra_args
+            **extra_args,
         )
         for callback in callbacks:
             callback(bytes_transferred=size)
@@ -376,5 +376,7 @@ class CopyPartTask(Task):
         if checksum_algorithm:
             checksum_member = f'Checksum{checksum_algorithm.upper()}'
             if checksum_member in response['CopyPartResult']:
-                part_metadata[checksum_member] = response['CopyPartResult'][checksum_member]
+                part_metadata[checksum_member] = response['CopyPartResult'][
+                    checksum_member
+                ]
         return part_metadata

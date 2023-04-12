@@ -372,9 +372,9 @@ class CopyPartTask(Task):
         for callback in callbacks:
             callback(bytes_transferred=size)
         etag = response['CopyPartResult']['ETag']
-        part = {'ETag': etag, 'PartNumber': part_number}
+        part_metadata = {'ETag': etag, 'PartNumber': part_number}
         if checksum_algorithm:
             checksum_member = f'Checksum{checksum_algorithm.upper()}'
             if checksum_member in response['CopyPartResult']:
-                part[checksum_member] = response['CopyPartResult'][checksum_member]
-        return part
+                part_metadata[checksum_member] = response['CopyPartResult'][checksum_member]
+        return part_metadata

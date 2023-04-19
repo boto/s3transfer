@@ -59,7 +59,9 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
         cls.client.create_bucket(
             Bucket=cls.bucket_name,
             CreateBucketConfiguration={'LocationConstraint': cls.region},
+            ObjectOwnership='ObjectWriter',
         )
+        cls.client.delete_public_access_block(Bucket=cls.bucket_name)
 
     def setUp(self):
         self.files = FileCreator()

@@ -353,7 +353,7 @@ class TestMultipartCopy(BaseCopyTest):
         ]
 
     def add_get_head_response_with_default_expected_params(
-            self, extra_expected_params=None
+        self, extra_expected_params=None
     ):
         expected_params = {
             'Bucket': 'mysourcebucket',
@@ -399,7 +399,9 @@ class TestMultipartCopy(BaseCopyTest):
                     name = extra_expected_params['ChecksumAlgorithm']
                     checksum_member = 'Checksum%s' % name.upper()
                     response = upload_part_response['service_response']
-                    response['CopyPartResult'][checksum_member] = 'sum%s==' % (i + 1)
+                    response['CopyPartResult'][checksum_member] = 'sum%s==' % (
+                        i + 1
+                    )
                 else:
                     expected_params.update(extra_expected_params)
 
@@ -674,7 +676,7 @@ class TestMultipartCopy(BaseCopyTest):
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'UploadId': 'self.multipart_id',
+                'UploadId': self.multipart_id,
             },
         )
 

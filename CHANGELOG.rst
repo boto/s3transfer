@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.6.1
+=====
+
+* bugfix:copy: Added support for ``ChecksumAlgorithm`` when uploading copy data in parts.
+
+
 0.6.0
 =====
 

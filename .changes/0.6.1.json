@@ -1,0 +1,7 @@
+[
+  {
+    "category": "copy",
+    "description": "Added support for ``ChecksumAlgorithm`` when uploading copy data in parts.",
+    "type": "bugfix"
+  }
+]

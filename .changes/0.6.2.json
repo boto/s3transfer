@@ -1,0 +1,7 @@
+[
+  {
+    "category": "Python",
+    "description": "Added provisional Python 3.12 support to s3transfer",
+    "type": "enhancement"
+  }
+]

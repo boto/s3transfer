@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.7.0
+=====
+
+* feature:``SSE-C``: Pass SSECustomer* arguments to CompleteMultipartUpload for upload operations
+
+
 0.6.2
 =====
 

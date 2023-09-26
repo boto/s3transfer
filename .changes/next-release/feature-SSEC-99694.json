@@ -1,5 +1,5 @@
 {
-  "type": "bugfix",
+  "type": "feature",
   "category": "``SSE-C``",
   "description": "Pass SSECustomer* arguments to CompleteMultipartUpload for upload operations"
 }

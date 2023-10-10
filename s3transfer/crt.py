@@ -31,6 +31,7 @@ from botocore.compat import urlsplit
 from botocore.config import Config
 from botocore.exceptions import NoCredentialsError
 
+from s3transfer.compat import seekable
 from s3transfer.constants import GB, MB
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
@@ -359,7 +360,7 @@ class CRTTransferFuture(BaseTransferFuture):
 
 
 class BaseCRTRequestSerializer:
-    def serialize_http_request(self, transfer_type, future):
+    def serialize_http_request(self, transfer_type, future, fileobj):
         """Serialize CRT HTTP requests.
 
         :type transfer_type: string
@@ -428,19 +429,12 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
                 headers_list.append((name, str(value, 'utf-8')))
 
         crt_headers = awscrt.http.HttpHeaders(headers_list)
-        # CRT requires body (if it exists) to be an I/O stream.
-        crt_body_stream = None
-        if aws_request.body:
-            if hasattr(aws_request.body, 'seek'):
-                crt_body_stream = aws_request.body
-            else:
-                crt_body_stream = BytesIO(aws_request.body)
 
         crt_request = awscrt.http.HttpRequest(
             method=aws_request.method,
             path=crt_path,
             headers=crt_headers,
-            body_stream=crt_body_stream,
+            body_stream=aws_request.body,
         )
         return crt_request
 
@@ -556,22 +550,37 @@ class S3ClientArgsCreator:
         self, request_type, call_args, coordinator, future, on_done_after_calls
     ):
         recv_filepath = None
+        on_body = None
         send_filepath = None
         s3_meta_request_type = getattr(
             S3RequestType, request_type.upper(), S3RequestType.DEFAULT
         )
         on_done_before_calls = []
         if s3_meta_request_type == S3RequestType.GET_OBJECT:
-            final_filepath = call_args.fileobj
-            recv_filepath = self._os_utils.get_temp_filename(final_filepath)
-            file_ondone_call = RenameTempFileHandler(
-                coordinator, final_filepath, recv_filepath, self._os_utils
-            )
-            on_done_before_calls.append(file_ondone_call)
+            if isinstance(call_args.fileobj, str):
+                # fileobj is a filepath
+                final_filepath = call_args.fileobj
+                recv_filepath = self._os_utils.get_temp_filename(final_filepath)
+                file_ondone_call = RenameTempFileHandler(
+                    coordinator, final_filepath, recv_filepath, self._os_utils
+                )
+                on_done_before_calls.append(file_ondone_call)
+            else:
+                # fileobj is a file-like object
+                def _on_body(chunk, offset, **kwargs): # TODO: make helper class
+                    call_args.fileobj.write(chunk)
+                on_body = _on_body
+
         elif s3_meta_request_type == S3RequestType.PUT_OBJECT:
-            send_filepath = call_args.fileobj
-            data_len = self._os_utils.get_file_size(send_filepath)
-            call_args.extra_args["ContentLength"] = data_len
+            if isinstance(call_args.fileobj, str):
+                # fileobj is a filepath
+                send_filepath = call_args.fileobj
+                data_len = self._os_utils.get_file_size(send_filepath)
+                call_args.extra_args["ContentLength"] = data_len
+            else:
+                # fileobj is a file-like object
+                call_args.extra_args["Body"] = call_args.fileobj
+                call_args.extra_args["ContentMD5"] = "deleteme" # TODO: clean up hacks
 
         crt_request = self._request_serializer.serialize_http_request(
             request_type, future
@@ -582,6 +591,7 @@ class S3ClientArgsCreator:
             'type': s3_meta_request_type,
             'recv_filepath': recv_filepath,
             'send_filepath': send_filepath,
+            'on_body': on_body,
             'on_done': self.get_crt_callback(
                 future, 'done', on_done_before_calls, on_done_after_calls
             ),

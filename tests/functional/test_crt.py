@@ -117,6 +117,86 @@ class TestCRTTransferManager(unittest.TestCase):
         self._invoke_done_callbacks()
         return mock.DEFAULT
 
+    def _assert_expected_make_request_callargs_for_upload_helper(
+            self, expecting_filepath, expecting_content_length
+    ):
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        crt_request = call_kwargs["request"]
+
+        if expecting_filepath:
+            self.assertEqual(self.filename, call_kwargs.get("send_filepath"))
+            self.assertIsNone(crt_request.body_stream)
+        else:
+            self.assertIsNone(call_kwargs.get("send_filepath"))
+            self.assertIsNotNone(crt_request.body_stream)
+
+        self.assertIsNone(call_kwargs.get("recv_filepath"))
+        self.assertIsNone(call_kwargs.get("on_body"))
+        self.assertEqual(awscrt.s3.S3RequestType.PUT_OBJECT, call_kwargs.get("type"))
+        self.assertEqual("PUT", crt_request.method)
+        self.assertEqual(self.expected_path, crt_request.path)
+        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+
+        if expecting_content_length:
+            self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        else:
+            self.assertIsNone(crt_request.headers.get("content-length"))
+
+    def _assert_expected_make_request_callargs_for_upload_file(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=True,
+            expecting_content_length=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_upload_fileobj(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=False,
+            expecting_content_length=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_upload_nonseekable_fileobj(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=False,
+            expecting_content_length=False,
+        )
+
+    def _assert_expected_make_request_callargs_for_download_helper(
+            self, expecting_filepath
+    ):
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        crt_request = call_kwargs["request"]
+
+        if expecting_filepath:
+            # the recv_filepath will be set to a temporary file path with some
+            # random suffix
+            self.assertTrue(
+                fnmatch.fnmatch(
+                    call_kwargs.get("recv_filepath"),
+                    f'{self.filename}.*',
+                )
+            )
+            self.assertIsNone(call_kwargs.get("on_body"))
+        else:
+            self.assertIsNone(call_kwargs.get("recv_filepath"))
+            self.assertIsNotNone(call_kwargs.get("on_body"))
+
+        self.assertIsNone(call_kwargs.get("send_filepath"))
+        self.assertIsNone(crt_request.body_stream)
+        self.assertEqual(awscrt.s3.S3RequestType.GET_OBJECT, call_kwargs.get("type"))
+        self.assertEqual("GET", crt_request.method)
+        self.assertEqual(self.expected_path, crt_request.path)
+        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+
+    def _assert_expected_make_request_callargs_for_download_file(self):
+        self._assert_expected_make_request_callargs_for_download_helper(
+            expecting_filepath=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_download_fileobj(self):
+        self._assert_expected_make_request_callargs_for_download_helper(
+            expecting_filepath=False,
+        )
+
     def test_upload(self):
         self.s3_crt_client.make_request.side_effect = (
             self._simulate_make_request_side_effect
@@ -126,20 +206,7 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertEqual(callargs_kwargs["send_filepath"], self.filename)
-        self.assertIsNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertIsNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("PUT", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
-        self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        self._assert_expected_make_request_callargs_for_upload_file()
         self._assert_subscribers_called(future)
 
     def test_upload_for_fileobj(self):
@@ -152,20 +219,7 @@ class TestCRTTransferManager(unittest.TestCase):
             )
             future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertIsNotNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertIsNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("PUT", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
-        self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        self._assert_expected_make_request_callargs_for_upload_fileobj()
         self._assert_subscribers_called(future)
 
     def test_upload_for_seekable_filelike_obj(self):
@@ -178,20 +232,7 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertIsNotNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertIsNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("PUT", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
-        self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        self._assert_expected_make_request_callargs_for_upload_fileobj()
         self._assert_subscribers_called(future)
 
     def test_upload_for_non_seekable_filelike_obj(self):
@@ -204,20 +245,7 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertIsNotNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertIsNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("PUT", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
-        self.assertIsNone(crt_request.headers.get("content-length"))
+        self._assert_expected_make_request_callargs_for_upload_nonseekable_fileobj()
         self._assert_subscribers_called(future)
 
     def test_download(self):
@@ -229,26 +257,7 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        # the recv_filepath will be set to a temporary file path with some
-        # random suffix
-        self.assertTrue(
-            fnmatch.fnmatch(
-                callargs_kwargs["recv_filepath"],
-                f'{self.filename}.*',
-            )
-        )
-        self.assertIsNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertIsNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.GET_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("GET", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+        self._assert_expected_make_request_callargs_for_download_file()
         self._assert_subscribers_called(future)
 
     def test_download_for_fileobj(self):
@@ -261,19 +270,7 @@ class TestCRTTransferManager(unittest.TestCase):
             )
             future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertIsNone(callargs_kwargs["request"].body_stream)
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertIsNotNone(callargs_kwargs["on_body"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.GET_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("GET", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+        self._assert_expected_make_request_callargs_for_download_fileobj()
         self._assert_subscribers_called(future)
 
     def test_delete(self):

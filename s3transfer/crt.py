@@ -567,7 +567,7 @@ class S3ClientArgsCreator:
                 on_done_before_calls.append(file_ondone_call)
             else:
                 # fileobj is a file-like object
-                def _on_body(chunk, offset, **kwargs): # TODO: make helper class
+                def _on_body(chunk, offset, **kwargs):  # TODO: make helper class
                     call_args.fileobj.write(chunk)
                 on_body = _on_body
 
@@ -580,11 +580,13 @@ class S3ClientArgsCreator:
             else:
                 # fileobj is a file-like object
                 call_args.extra_args["Body"] = call_args.fileobj
-                call_args.extra_args["ContentMD5"] = "deleteme" # TODO: clean up hacks
+                call_args.extra_args["ContentMD5"] = "deleteme"  # TODO: clean up hacks
 
         crt_request = self._request_serializer.serialize_http_request(
             request_type, future
         )
+
+        # TODO: should content-length be getting passed for download & misc?
 
         return {
             'request': crt_request,

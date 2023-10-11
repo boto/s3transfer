@@ -445,8 +445,17 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
             # If host is not set, set it for the request before using CRT s3
             url_parts = urlsplit(botocore_http_request.url)
             crt_request.headers.set("host", url_parts.netloc)
+
         if crt_request.headers.get('Content-MD5') is not None:
             crt_request.headers.remove("Content-MD5")
+
+        # Explicitly set "Content-Length: 0" when there's no body.
+        # Botocore doesn't bother setting this, but CRT likes to know.
+        # Note that Content-Length SHOULD be absent if body is unseekable.
+        if crt_request.headers.get('Content-Length') is None:
+            if botocore_http_request.body is None:
+                crt_request.headers.add('Content-Length', "0")
+
         return crt_request
 
     def _capture_http_request(self, request, **kwargs):

@@ -130,17 +130,17 @@ class TestCRTTransferManager(unittest.TestCase):
             self.assertIsNone(call_kwargs.get("send_filepath"))
             self.assertIsNotNone(crt_request.body_stream)
 
+        if expecting_content_length:
+            self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        else:
+            self.assertIsNone(crt_request.headers.get("content-length"))
+
         self.assertIsNone(call_kwargs.get("recv_filepath"))
         self.assertIsNone(call_kwargs.get("on_body"))
         self.assertEqual(awscrt.s3.S3RequestType.PUT_OBJECT, call_kwargs.get("type"))
         self.assertEqual("PUT", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)
         self.assertEqual(self.expected_host, crt_request.headers.get("host"))
-
-        if expecting_content_length:
-            self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
-        else:
-            self.assertIsNone(crt_request.headers.get("content-length"))
 
     def _assert_expected_make_request_callargs_for_upload_file(self):
         self._assert_expected_make_request_callargs_for_upload_helper(
@@ -182,6 +182,7 @@ class TestCRTTransferManager(unittest.TestCase):
 
         self.assertIsNone(call_kwargs.get("send_filepath"))
         self.assertIsNone(crt_request.body_stream)
+        self.assertEqual("0", crt_request.headers.get("content-length"))
         self.assertEqual(awscrt.s3.S3RequestType.GET_OBJECT, call_kwargs.get("type"))
         self.assertEqual("GET", crt_request.method)
         self.assertEqual(self.expected_path, crt_request.path)

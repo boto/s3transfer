@@ -506,8 +506,8 @@ class NonSeekableReader(io.RawIOBase):
         # kind of error even though writeable returns False.
         raise io.UnsupportedOperation("write")
 
-    def read(self, n=-1):
-        return self._data.read(n)
+    def readinto(self, b):
+        return self._data.readinto(b)
 
 
 class NonSeekableWriter(io.RawIOBase):

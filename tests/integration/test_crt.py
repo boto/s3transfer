@@ -11,11 +11,12 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import glob
+from io import BytesIO
 import os
 
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
-from tests import HAS_CRT, assert_files_equal, requires_crt
+from tests import HAS_CRT, NonSeekableReader, assert_files_equal, requires_crt
 from tests.integration import BaseTransferManagerIntegTest
 
 if HAS_CRT:
@@ -40,8 +41,7 @@ class RecordingSubscriber(BaseSubscriber):
         self.on_done_called = True
 
 
-@requires_crt
-class TestCRTS3Transfers(BaseTransferManagerIntegTest):
+class BaseCRTS3TransfersTest(BaseTransferManagerIntegTest):
     """Tests for the high level s3transfer based on CRT implementation."""
 
     def _create_s3_transfer(self):
@@ -76,67 +76,98 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
                 expected_bytes_transferred,
             )
 
+
+@requires_crt
+class TestCRTUpload(BaseCRTS3TransfersTest):
+    def get_input_fileobj(self, name, contents):
+        # override this in subclasses to upload via fileobj instead of filepath
+        mode = 'w' if isinstance(contents, str) else 'wb'
+        return self.files.create_file(name, contents, mode)
+
+    def get_input_fileobj_with_size(self, name, size):
+        return self.get_input_fileobj(name, b'a' * size)
+
+    def _assert_object_exists(self, key, expected_content_length, extra_args={}):
+        self.assertTrue(self.object_exists(key, extra_args))
+        response = self.client.head_object(Bucket=self.bucket_name, Key=key, **extra_args)
+        self.assertEqual(response['ContentLength'], expected_content_length)
+
     def test_upload_below_multipart_chunksize(self):
         transfer = self._create_s3_transfer()
         file_size = 1024 * 1024
-        filename = self.files.create_file_with_size(
-            'foo.txt', filesize=file_size
-        )
-        self.addCleanup(self.delete_object, 'foo.txt')
+        key = '1mb.txt'
+        file = self.get_input_fileobj_with_size(key, file_size)
+        self.addCleanup(self.delete_object, key)
 
         with transfer:
             future = transfer.upload(
-                filename,
+                file,
                 self.bucket_name,
-                'foo.txt',
+                key,
                 subscribers=[self.record_subscriber],
             )
             future.result()
 
-        self.assertTrue(self.object_exists('foo.txt'))
+        self._assert_object_exists(key, file_size)
         self._assert_subscribers_called(file_size)
 
     def test_upload_above_multipart_chunksize(self):
         transfer = self._create_s3_transfer()
+        key = '20mb.txt'
         file_size = 20 * 1024 * 1024
-        filename = self.files.create_file_with_size(
-            '20mb.txt', filesize=file_size
-        )
-        self.addCleanup(self.delete_object, '20mb.txt')
+        file = self.get_input_fileobj_with_size(key, file_size)
+        self.addCleanup(self.delete_object, key)
 
         with transfer:
             future = transfer.upload(
-                filename,
+                file,
                 self.bucket_name,
-                '20mb.txt',
+                key,
                 subscribers=[self.record_subscriber],
             )
             future.result()
-        self.assertTrue(self.object_exists('20mb.txt'))
+        self._assert_object_exists(key, file_size)
+        self._assert_subscribers_called(file_size)
+
+    def test_upload_empty_file(self):
+        transfer = self._create_s3_transfer()
+        key = '0mb.txt'
+        file_size = 0
+        file = self.get_input_fileobj_with_size(key, file_size)
+        self.addCleanup(self.delete_object, key)
+
+        with transfer:
+            future = transfer.upload(
+                file,
+                self.bucket_name,
+                key,
+                subscribers=[self.record_subscriber],
+            )
+            future.result()
+        self._assert_object_exists(key, file_size)
         self._assert_subscribers_called(file_size)
 
     def test_upload_file_above_threshold_with_acl(self):
         transfer = self._create_s3_transfer()
+        key = '6mb.txt'
         file_size = 6 * 1024 * 1024
-        filename = self.files.create_file_with_size(
-            '6mb.txt', filesize=file_size
-        )
+        filename = self.get_input_fileobj_with_size(key, file_size)
         extra_args = {'ACL': 'public-read'}
-        self.addCleanup(self.delete_object, '6mb.txt')
+        self.addCleanup(self.delete_object, key)
 
         with transfer:
             future = transfer.upload(
                 filename,
                 self.bucket_name,
-                '6mb.txt',
+                key,
                 extra_args=extra_args,
                 subscribers=[self.record_subscriber],
             )
             future.result()
 
-        self.assertTrue(self.object_exists('6mb.txt'))
+        self._assert_object_exists(key, file_size)
         response = self.client.get_object_acl(
-            Bucket=self.bucket_name, Key='6mb.txt'
+            Bucket=self.bucket_name, Key=key
         )
         self._assert_has_public_read_acl(response)
         self._assert_subscribers_called(file_size)
@@ -147,17 +178,16 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             'SSECustomerKey': key_bytes,
             'SSECustomerAlgorithm': 'AES256',
         }
+        key = '6mb.txt'
         file_size = 6 * 1024 * 1024
         transfer = self._create_s3_transfer()
-        filename = self.files.create_file_with_size(
-            '6mb.txt', filesize=file_size
-        )
-        self.addCleanup(self.delete_object, '6mb.txt')
+        file = self.get_input_fileobj_with_size(key, file_size)
+        self.addCleanup(self.delete_object, key)
         with transfer:
             future = transfer.upload(
-                filename,
+                file,
                 self.bucket_name,
-                '6mb.txt',
+                key,
                 extra_args=extra_args,
                 subscribers=[self.record_subscriber],
             )
@@ -165,17 +195,72 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         # A head object will fail if it has a customer key
         # associated with it and it's not provided in the HeadObject
         # request so we can use this to verify our functionality.
-        oringal_extra_args = {
+        original_extra_args = {
             'SSECustomerKey': key_bytes,
             'SSECustomerAlgorithm': 'AES256',
         }
-        self.wait_object_exists('6mb.txt', oringal_extra_args)
+        self._assert_object_exists(key, file_size, original_extra_args)
         response = self.client.head_object(
-            Bucket=self.bucket_name, Key='6mb.txt', **oringal_extra_args
+            Bucket=self.bucket_name, Key=key, **original_extra_args
         )
         self.assertEqual(response['SSECustomerAlgorithm'], 'AES256')
         self._assert_subscribers_called(file_size)
 
+    def test_many_files_upload(self):
+        transfer = self._create_s3_transfer()
+        keys = []
+        file_size = 1024 * 1024
+        filenames = []
+        base_key = 'foo'
+        sufix = '.txt'
+        for i in range(10):
+            key = base_key + str(i) + sufix
+            keys.append(key)
+            filename = self.get_input_fileobj_with_size(key, file_size)
+            filenames.append(filename)
+            self.addCleanup(self.delete_object, key)
+        with transfer:
+            for filename, key in zip(filenames, keys):
+                transfer.upload(filename, self.bucket_name, key)
+
+        for key in keys:
+            self._assert_object_exists(key, file_size)
+
+    def test_upload_cancel(self):
+        transfer = self._create_s3_transfer()
+        key = '20mb.txt'
+        file_size = 20 * 1024 * 1024
+        file = self.get_input_fileobj_with_size(key, file_size)
+        future = None
+        try:
+            with transfer:
+                future = transfer.upload(file, self.bucket_name, key)
+                raise KeyboardInterrupt()
+        except KeyboardInterrupt:
+            pass
+
+        with self.assertRaises(AwsCrtError) as cm:
+            future.result()
+            self.assertEqual(cm.name, 'AWS_ERROR_S3_CANCELED')
+        self.assertTrue(self.object_not_exists('20mb.txt'))
+
+
+@requires_crt
+class TestCRTUploadSeekableStream(TestCRTUpload):
+    # Run all the upload tests again, but using seekable streams instead of filepath
+    def get_input_fileobj(self, name, contents):
+        return BytesIO(contents)
+
+
+@requires_crt
+class TestCRTUploadNonSeekableStream(TestCRTUpload):
+    # Run all the upload tests again, but using non-seekable streams instead of filepath
+    def get_input_fileobj(self, name, contents):
+        return NonSeekableReader(contents)
+
+
+@requires_crt
+class TestCRTS3Transfers(BaseCRTS3TransfersTest):
     def test_can_send_extra_params_on_download(self):
         # We're picking the customer provided sse feature
         # of S3 to test the extra_args functionality of
@@ -275,27 +360,6 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         for download_path in filenames:
             assert_files_equal(filename, download_path)
 
-    def test_many_files_upload(self):
-        transfer = self._create_s3_transfer()
-        keys = []
-        filenames = []
-        base_key = 'foo'
-        sufix = '.txt'
-        for i in range(10):
-            key = base_key + str(i) + sufix
-            keys.append(key)
-            filename = self.files.create_file_with_size(
-                key, filesize=1024 * 1024
-            )
-            filenames.append(filename)
-            self.addCleanup(self.delete_object, key)
-        with transfer:
-            for filename, key in zip(filenames, keys):
-                transfer.upload(filename, self.bucket_name, key)
-
-        for key in keys:
-            self.assertTrue(self.object_exists(key))
-
     def test_many_files_delete(self):
         transfer = self._create_s3_transfer()
         keys = []
@@ -314,26 +378,6 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
                 transfer.delete(self.bucket_name, key)
         for key in keys:
             self.assertTrue(self.object_not_exists(key))
-
-    def test_upload_cancel(self):
-        transfer = self._create_s3_transfer()
-        filename = self.files.create_file_with_size(
-            '20mb.txt', filesize=20 * 1024 * 1024
-        )
-        future = None
-        try:
-            with transfer:
-                future = transfer.upload(
-                    filename, self.bucket_name, '20mb.txt'
-                )
-                raise KeyboardInterrupt()
-        except KeyboardInterrupt:
-            pass
-
-        with self.assertRaises(AwsCrtError) as cm:
-            future.result()
-            self.assertEqual(cm.name, 'AWS_ERROR_S3_CANCELED')
-        self.assertTrue(self.object_not_exists('20mb.txt'))
 
     def test_download_cancel(self):
         transfer = self._create_s3_transfer()

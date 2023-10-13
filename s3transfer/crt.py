@@ -451,10 +451,15 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
 
         # Explicitly set "Content-Length: 0" when there's no body.
         # Botocore doesn't bother setting this, but CRT likes to know.
-        # Note that Content-Length SHOULD be absent if body is unseekable.
+        # Note that Content-Length SHOULD be absent if body is nonseekable.
         if crt_request.headers.get('Content-Length') is None:
             if botocore_http_request.body is None:
                 crt_request.headers.add('Content-Length', "0")
+
+        # Botocore sets "Transfer-Encoding: chunked" for nonseekable streams.
+        # TODO: CRT chokes on this header. It ought to simply discard it.
+        if crt_request.headers.get('Transfer-Encoding') is not None:
+            crt_request.headers.remove('Transfer-Encoding')
 
         return crt_request
 

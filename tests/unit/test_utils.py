@@ -43,7 +43,7 @@ from s3transfer.utils import (
     invoke_progress_callbacks,
     random_file_extension,
 )
-from tests import NonSeekableWriter, RecordingSubscriber, mock, unittest
+from tests import RecordingSubscriber, create_nonseekable_writer, mock, unittest
 
 
 class TestGetCallbacks(unittest.TestCase):
@@ -361,7 +361,7 @@ class TestDeferredOpenFile(BaseUtilsTest):
 
     def open_nonseekable(self, filename, mode):
         self.open_call_args.append((filename, mode))
-        return NonSeekableWriter(BytesIO(self.content))
+        return create_nonseekable_writer(BytesIO(self.content))
 
     def test_instantiation_does_not_open_file(self):
         DeferredOpenFile(

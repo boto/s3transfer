@@ -101,7 +101,7 @@ class TestCRTUpload(BaseCRTS3TransfersTest):
         response = self.client.head_object(Bucket=self.bucket_name, Key=key, **extra_args)
         self.assertEqual(response['ContentLength'], expected_content_length)
 
-    def _test_basic_upload(self, key, file_size):
+    def _test_basic_upload(self, key, file_size, extra_args=None):
         transfer = self._create_s3_transfer()
         file = self.get_input_fileobj_with_size(key, file_size)
         self.addCleanup(self.delete_object, key)
@@ -111,6 +111,7 @@ class TestCRTUpload(BaseCRTS3TransfersTest):
                 file,
                 self.bucket_name,
                 key,
+                extra_args,
                 subscribers=[self.record_subscriber],
             )
             future.result()
@@ -128,29 +129,15 @@ class TestCRTUpload(BaseCRTS3TransfersTest):
         self._test_basic_upload('0mb.txt', file_size=0)
 
     def test_file_above_threshold_with_acl(self):
-        transfer = self._create_s3_transfer()
         key = '6mb.txt'
         file_size = 6 * 1024 * 1024
-        file = self.get_input_fileobj_with_size(key, file_size)
         extra_args = {'ACL': 'public-read'}
-        self.addCleanup(self.delete_object, key)
+        self._test_basic_upload(key, file_size, extra_args)
 
-        with transfer:
-            future = transfer.upload(
-                file,
-                self.bucket_name,
-                key,
-                extra_args=extra_args,
-                subscribers=[self.record_subscriber],
-            )
-            future.result()
-
-        self._assert_object_exists(key, file_size)
         response = self.client.get_object_acl(
             Bucket=self.bucket_name, Key=key
         )
         self._assert_has_public_read_acl(response)
-        self._assert_subscribers_called(file_size)
 
     def test_file_above_threshold_with_ssec(self):
         key_bytes = os.urandom(32)
@@ -185,6 +172,17 @@ class TestCRTUpload(BaseCRTS3TransfersTest):
         )
         self.assertEqual(response['SSECustomerAlgorithm'], 'AES256')
         self._assert_subscribers_called(file_size)
+
+    def test_checksum_algorithm(self):
+        key = 'sha1.txt'
+        file_size = 1 * 1024 * 1024
+        extra_args = {'ChecksumAlgorithm': 'SHA1'}
+        self._test_basic_upload(key, file_size, extra_args)
+
+        response = self.client.head_object(
+            Bucket=self.bucket_name, Key=key, ChecksumMode='ENABLED',
+        )
+        self.assertIsNotNone(response.get('ChecksumSHA1'))
 
     def test_many_files(self):
         transfer = self._create_s3_transfer()

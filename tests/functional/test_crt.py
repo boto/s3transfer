@@ -30,7 +30,6 @@ from tests import (
 
 if HAS_CRT:
     import awscrt
-
     import s3transfer.crt
 
 
@@ -142,6 +141,12 @@ class TestCRTTransferManager(unittest.TestCase):
         self.assertEqual(self.expected_path, crt_request.path)
         self.assertEqual(self.expected_host, crt_request.headers.get("host"))
 
+        # The CRT should be doing checksums, and those settings are passed via checksum_config.
+        # Botocore should NOT be adding headers for checksums or Content-MD5.
+        self.assertIsNone(crt_request.headers.get("content-md5"))
+        self.assertIsNone(crt_request.headers.get("x-amz-sdk-checksum-algorithm"))
+        self.assertFalse(any([k.lower().startswith('x-amz-checksum') for k, v in crt_request.headers]))
+
     def _assert_expected_make_request_callargs_for_upload_file(self):
         self._assert_expected_make_request_callargs_for_upload_helper(
             expecting_filepath=True,
@@ -248,6 +253,31 @@ class TestCRTTransferManager(unittest.TestCase):
 
         self._assert_expected_make_request_callargs_for_upload_nonseekable_fileobj()
         self._assert_subscribers_called(future)
+
+    def test_upload_with_checksum_algorithm(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        extra_args = {
+            'ChecksumAlgorithm': 'SHA256',
+        }
+        future = self.transfer_manager.upload(
+            self.filename, self.bucket, self.key, extra_args, [self.record_subscriber]
+        )
+        future.result()
+
+        self._assert_expected_make_request_callargs_for_upload_file()
+        self._assert_subscribers_called(future)
+
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self.assertEqual(call_kwargs['checksum_config'].algorithm.name, 'SHA256')
+
+    def test_allowed_upload_args(self):
+        # assert that only ALLOWED_UPLOAD_ARGS are permitted
+        # (ContentMD5 is not currently in the list)
+        with self.assertRaises(ValueError) as cm:
+            extra_args = {'ContentMD5', 'e484175540065aec988a26593675785d'}
+            self.transfer_manager.upload(self.filename, self.bucket, self.key, extra_args)
 
     def test_download(self):
         self.s3_crt_client.make_request.side_effect = (

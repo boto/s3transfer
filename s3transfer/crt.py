@@ -25,7 +25,14 @@ from awscrt.io import (
     EventLoopGroup,
     TlsContextOptions,
 )
-from awscrt.s3 import S3Client, S3RequestTlsMode, S3RequestType
+from awscrt.s3 import (
+    S3ChecksumAlgorithm,
+    S3ChecksumConfig,
+    S3ChecksumLocation,
+    S3Client,
+    S3RequestTlsMode,
+    S3RequestType,
+)
 from botocore import UNSIGNED
 from botocore.compat import urlsplit
 from botocore.config import Config
@@ -35,6 +42,7 @@ from s3transfer.compat import seekable
 from s3transfer.constants import GB, MB
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
+from s3transfer.manager import TransferManager
 from s3transfer.utils import CallArgs, OSUtils, get_callbacks
 
 logger = logging.getLogger(__name__)
@@ -151,6 +159,11 @@ def create_s3_crt_client(
 
 
 class CRTTransferManager:
+
+    ALLOWED_DOWNLOAD_ARGS = TransferManager.ALLOWED_DOWNLOAD_ARGS
+    ALLOWED_UPLOAD_ARGS = TransferManager.ALLOWED_UPLOAD_ARGS
+    ALLOWED_DELETE_ARGS = TransferManager.ALLOWED_DELETE_ARGS
+
     def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
         """A transfer manager interface for Amazon S3 on CRT s3 client.
 
@@ -193,6 +206,8 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, TransferManager.ALLOWED_DOWNLOAD_ARGS)
+        # TODO: _validate_if_bucket_supported() ???
         callargs = CallArgs(
             bucket=bucket,
             key=key,
@@ -207,6 +222,7 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, TransferManager.ALLOWED_UPLOAD_ARGS)
         callargs = CallArgs(
             bucket=bucket,
             key=key,
@@ -221,6 +237,7 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, TransferManager.ALLOWED_DELETE_ARGS)
         callargs = CallArgs(
             bucket=bucket,
             key=key,
@@ -260,6 +277,14 @@ class CRTTransferManager:
 
     def _release_semaphore(self, **kwargs):
         self._semaphore.release()
+
+    def _validate_all_known_args(self, actual, allowed):
+        for kwarg in actual:
+            if kwarg not in allowed:
+                raise ValueError(
+                    "Invalid extra_args key '%s', "
+                    "must be one of: %s" % (kwarg, ', '.join(allowed))
+                )
 
     def _submit_transfer(self, request_type, call_args):
         on_done_after_calls = [self._release_semaphore]
@@ -446,6 +471,7 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
             url_parts = urlsplit(botocore_http_request.url)
             crt_request.headers.set("host", url_parts.netloc)
 
+        # Remove bogus Content-MD5 value (see comment elsewhere in file)
         if crt_request.headers.get('Content-MD5') is not None:
             crt_request.headers.remove("Content-MD5")
 
@@ -456,8 +482,9 @@ class BotocoreCRTRequestSerializer(BaseCRTRequestSerializer):
             if botocore_http_request.body is None:
                 crt_request.headers.add('Content-Length', "0")
 
-        # Botocore sets "Transfer-Encoding: chunked" for nonseekable streams.
-        # TODO: CRT chokes on this header. It ought to simply discard it.
+        # Remove "Transfer-Encoding: chunked".
+        # Botocore sets this on nonseekable streams,
+        # but CRT currently chokes on this header (TODO: fix this in CRT)
         if crt_request.headers.get('Transfer-Encoding') is not None:
             crt_request.headers.remove('Transfer-Encoding')
 
@@ -570,6 +597,8 @@ class S3ClientArgsCreator:
             S3RequestType, request_type.upper(), S3RequestType.DEFAULT
         )
         on_done_before_calls = []
+        checksum_config = S3ChecksumConfig()
+
         if s3_meta_request_type == S3RequestType.GET_OBJECT:
             if isinstance(call_args.fileobj, str):
                 # fileobj is a filepath
@@ -579,11 +608,16 @@ class S3ClientArgsCreator:
                     coordinator, final_filepath, recv_filepath, self._os_utils
                 )
                 on_done_before_calls.append(file_ondone_call)
-            else:
+
+            elif call_args.fileobj is not None:
                 # fileobj is a file-like object
-                def _on_body(chunk, offset, **kwargs):  # TODO: make helper class
-                    call_args.fileobj.write(chunk)
-                on_body = _on_body
+                response_handler = _FileobjResponseHandler(call_args.fileobj)
+                on_body = response_handler.on_body
+
+            # Only validate response checksums when downloading.
+            # (upload responses also have checksum headers, but they're just an
+            # echo of what was in the request, an upload response's body is empty)
+            checksum_config.validate_response = True
 
         elif s3_meta_request_type == S3RequestType.PUT_OBJECT:
             if isinstance(call_args.fileobj, str):
@@ -591,22 +625,34 @@ class S3ClientArgsCreator:
                 send_filepath = call_args.fileobj
                 data_len = self._os_utils.get_file_size(send_filepath)
                 call_args.extra_args["ContentLength"] = data_len
-            else:
+
+            elif call_args.fileobj is not None:
                 # fileobj is a file-like object
                 call_args.extra_args["Body"] = call_args.fileobj
-                call_args.extra_args["ContentMD5"] = "deleteme"  # TODO: clean up hacks
+
+            # We want the CRT S3Client to calculate checksums, not botocore.
+            # Default to CRC32.
+            if call_args.extra_args.get('ChecksumAlgorithm') is not None:
+                algorithm_name = call_args.extra_args.pop('ChecksumAlgorithm')
+                checksum_config.algorithm = S3ChecksumAlgorithm[algorithm_name]
+            else:
+                checksum_config.algorithm = S3ChecksumAlgorithm.CRC32
+            checksum_config.location = S3ChecksumLocation.TRAILER
+
+            # Suppress botocore's MD5 calculation by setting a bogus value.
+            # (this header gets removed before the request is passed to CRT)
+            call_args.extra_args["ContentMD5"] = "bogus value deleted later"
 
         crt_request = self._request_serializer.serialize_http_request(
             request_type, future
         )
-
-        # TODO: should content-length be getting passed for download & misc?
 
         return {
             'request': crt_request,
             'type': s3_meta_request_type,
             'recv_filepath': recv_filepath,
             'send_filepath': send_filepath,
+            'checksum_config': checksum_config,
             'on_body': on_body,
             'on_done': self.get_crt_callback(
                 future, 'done', on_done_before_calls, on_done_after_calls
@@ -668,3 +714,11 @@ class AfterDoneHandler:
 
     def __call__(self, **kwargs):
         self._coordinator.set_done_callbacks_complete()
+
+
+class _FileobjResponseHandler:
+    def __init__(self, fileobj):
+        self._fileobj = fileobj
+
+    def on_body(self, chunk: bytes, offset: int, **kwargs):
+        self._fileobj.write(chunk)

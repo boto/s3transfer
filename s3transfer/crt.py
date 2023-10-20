@@ -76,7 +76,7 @@ def create_s3_crt_client(
     region,
     botocore_credential_provider=None,
     num_threads=None,
-    target_throughput=5 * GB / 8,
+    target_throughput=5_000_000_000.0 / 8,
     part_size=8 * MB,
     use_ssl=True,
     verify=None,
@@ -95,8 +95,8 @@ def create_s3_crt_client(
         is the number of processors in the machine.
 
     :type target_throughput: Optional[int]
-    :param target_throughput: Throughput target in Bytes.
-        Default is 0.625 GB/s (which translates to 5 Gb/s).
+    :param target_throughput: Throughput target in bytes per second.
+        Default translates to 5.0 Gb/s or 0.582 GiB/s.
 
     :type part_size: Optional[int]
     :param part_size: Size, in Bytes, of parts that files will be downloaded
@@ -146,7 +146,7 @@ def create_s3_crt_client(
             credentails_provider_adapter
         )
 
-    target_gbps = target_throughput * 8 / GB
+    target_gigabits = target_throughput * 8 / 1_000_000_000.0
     return S3Client(
         bootstrap=bootstrap,
         region=region,
@@ -154,7 +154,7 @@ def create_s3_crt_client(
         part_size=part_size,
         tls_mode=tls_mode,
         tls_connection_options=tls_connection_options,
-        throughput_target_gbps=target_gbps,
+        throughput_target_gbps=target_gigabits,
     )
 
 

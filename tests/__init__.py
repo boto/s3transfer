@@ -506,26 +506,30 @@ class NonSeekableReader(io.RawIOBase):
         # kind of error even though writeable returns False.
         raise io.UnsupportedOperation("write")
 
-    def read(self, n=-1):
-        return self._data.read(n)
+    def readinto(self, b):
+        return self._data.readinto(b)
 
 
-class NonSeekableWriter(io.RawIOBase):
-    def __init__(self, fileobj):
-        super().__init__()
-        self._fileobj = fileobj
+def create_nonseekable_writer(fileobj):
 
     def seekable(self):
         return False
 
+    fileobj.seekable = seekable
+
     def writable(self):
         return True
+
+    fileobj.writable = writable
 
     def readable(self):
         return False
 
-    def write(self, b):
-        self._fileobj.write(b)
+    fileobj.readable = readable
 
     def read(self, n=-1):
         raise io.UnsupportedOperation("read")
+
+    fileobj.read = read
+
+    return fileobj

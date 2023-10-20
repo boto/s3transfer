@@ -26,10 +26,10 @@ from s3transfer.manager import TransferConfig, TransferManager
 from tests import (
     BaseGeneralInterfaceTest,
     FileSizeProvider,
-    NonSeekableWriter,
     RecordingOSUtils,
     RecordingSubscriber,
     StreamWithError,
+    create_nonseekable_writer,
     skip_if_using_serial_implementation,
     skip_if_windows,
 )
@@ -181,7 +181,7 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
 
         with open(self.filename, 'wb') as f:
             future = self.manager.download(
-                self.bucket, self.key, NonSeekableWriter(f), self.extra_args
+                self.bucket, self.key, create_nonseekable_writer(f), self.extra_args
             )
             future.result()
 

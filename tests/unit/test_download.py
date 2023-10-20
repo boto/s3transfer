@@ -41,9 +41,9 @@ from tests import (
     BaseSubmissionTaskTest,
     BaseTaskTest,
     FileCreator,
-    NonSeekableWriter,
     RecordingExecutor,
     StreamWithError,
+    create_nonseekable_writer,
     mock,
     unittest,
 )
@@ -539,7 +539,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
-            self.use_fileobj_in_call_args(NonSeekableWriter(f))
+            self.use_fileobj_in_call_args(create_nonseekable_writer(f))
             self.submission_task = self.get_download_submission_task()
             self.wait_and_assert_completed_successfully(self.submission_task)
 
@@ -554,7 +554,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
-            self.use_fileobj_in_call_args(NonSeekableWriter(f))
+            self.use_fileobj_in_call_args(create_nonseekable_writer(f))
             self.submission_task = self.get_download_submission_task()
             self.wait_and_assert_completed_successfully(self.submission_task)
 

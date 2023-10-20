@@ -14,15 +14,22 @@ import fnmatch
 import threading
 import time
 from concurrent.futures import Future
+from io import BytesIO
 
 from botocore.session import Session
 
 from s3transfer.subscribers import BaseSubscriber
-from tests import HAS_CRT, FileCreator, mock, requires_crt, unittest
+from tests import (
+    FileCreator,
+    HAS_CRT,
+    NonSeekableReader,
+    mock,
+    requires_crt,
+    unittest,
+)
 
 if HAS_CRT:
     import awscrt
-
     import s3transfer.crt
 
 
@@ -61,7 +68,8 @@ class TestCRTTransferManager(unittest.TestCase):
         self.bucket = "test_bucket"
         self.key = "test_key"
         self.files = FileCreator()
-        self.filename = self.files.create_file('myfile', 'my content')
+        self.content = b'my content'
+        self.filename = self.files.create_file('myfile', self.content, mode='wb')
         self.expected_path = "/" + self.bucket + "/" + self.key
         self.expected_host = "s3.%s.amazonaws.com" % (self.region)
         self.s3_request = mock.Mock(awscrt.s3.S3Request)
@@ -99,6 +107,7 @@ class TestCRTTransferManager(unittest.TestCase):
         on_done(error=None)
 
     def _simulate_file_download(self, recv_filepath):
+        # Create file that RenameTempFileHandler expects to be there
         self.files.create_file(recv_filepath, "fake response")
 
     def _simulate_make_request_side_effect(self, **kwargs):
@@ -106,6 +115,93 @@ class TestCRTTransferManager(unittest.TestCase):
             self._simulate_file_download(kwargs['recv_filepath'])
         self._invoke_done_callbacks()
         return mock.DEFAULT
+
+    def _assert_expected_make_request_callargs_for_upload_helper(
+            self, expecting_filepath, expecting_content_length
+    ):
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        crt_request = call_kwargs["request"]
+
+        if expecting_filepath:
+            self.assertEqual(self.filename, call_kwargs.get("send_filepath"))
+            self.assertIsNone(crt_request.body_stream)
+        else:
+            self.assertIsNone(call_kwargs.get("send_filepath"))
+            self.assertIsNotNone(crt_request.body_stream)
+
+        if expecting_content_length:
+            self.assertEqual(str(len(self.content)), crt_request.headers.get("content-length"))
+        else:
+            self.assertIsNone(crt_request.headers.get("content-length"))
+
+        self.assertIsNone(call_kwargs.get("recv_filepath"))
+        self.assertIsNone(call_kwargs.get("on_body"))
+        self.assertEqual(awscrt.s3.S3RequestType.PUT_OBJECT, call_kwargs.get("type"))
+        self.assertEqual("PUT", crt_request.method)
+        self.assertEqual(self.expected_path, crt_request.path)
+        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+
+        # The CRT should be doing checksums, and those settings are passed via checksum_config.
+        # Botocore should NOT be adding headers for checksums or Content-MD5.
+        self.assertIsNone(crt_request.headers.get("content-md5"))
+        self.assertIsNone(crt_request.headers.get("x-amz-sdk-checksum-algorithm"))
+        self.assertFalse(any([k.lower().startswith('x-amz-checksum') for k, v in crt_request.headers]))
+
+    def _assert_expected_make_request_callargs_for_upload_file(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=True,
+            expecting_content_length=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_upload_fileobj(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=False,
+            expecting_content_length=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_upload_nonseekable_fileobj(self):
+        self._assert_expected_make_request_callargs_for_upload_helper(
+            expecting_filepath=False,
+            expecting_content_length=False,
+        )
+
+    def _assert_expected_make_request_callargs_for_download_helper(
+            self, expecting_filepath
+    ):
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        crt_request = call_kwargs["request"]
+
+        if expecting_filepath:
+            # the recv_filepath will be set to a temporary file path with some
+            # random suffix
+            self.assertTrue(
+                fnmatch.fnmatch(
+                    call_kwargs.get("recv_filepath"),
+                    f'{self.filename}.*',
+                )
+            )
+            self.assertIsNone(call_kwargs.get("on_body"))
+        else:
+            self.assertIsNone(call_kwargs.get("recv_filepath"))
+            self.assertIsNotNone(call_kwargs.get("on_body"))
+
+        self.assertIsNone(call_kwargs.get("send_filepath"))
+        self.assertIsNone(crt_request.body_stream)
+        self.assertEqual("0", crt_request.headers.get("content-length"))
+        self.assertEqual(awscrt.s3.S3RequestType.GET_OBJECT, call_kwargs.get("type"))
+        self.assertEqual("GET", crt_request.method)
+        self.assertEqual(self.expected_path, crt_request.path)
+        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+
+    def _assert_expected_make_request_callargs_for_download_file(self):
+        self._assert_expected_make_request_callargs_for_download_helper(
+            expecting_filepath=True,
+        )
+
+    def _assert_expected_make_request_callargs_for_download_fileobj(self):
+        self._assert_expected_make_request_callargs_for_download_helper(
+            expecting_filepath=False,
+        )
 
     def test_upload(self):
         self.s3_crt_client.make_request.side_effect = (
@@ -116,18 +212,72 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        self.assertEqual(callargs_kwargs["send_filepath"], self.filename)
-        self.assertIsNone(callargs_kwargs["recv_filepath"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.PUT_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("PUT", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+        self._assert_expected_make_request_callargs_for_upload_file()
         self._assert_subscribers_called(future)
+
+    def test_upload_for_fileobj(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        with open(self.filename, 'rb') as f:
+            future = self.transfer_manager.upload(
+                f, self.bucket, self.key, {}, [self.record_subscriber]
+            )
+            future.result()
+
+        self._assert_expected_make_request_callargs_for_upload_fileobj()
+        self._assert_subscribers_called(future)
+
+    def test_upload_for_seekable_filelike_obj(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        bytes_io = BytesIO(self.content)
+        future = self.transfer_manager.upload(
+            bytes_io, self.bucket, self.key, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self._assert_expected_make_request_callargs_for_upload_fileobj()
+        self._assert_subscribers_called(future)
+
+    def test_upload_for_non_seekable_filelike_obj(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        body = NonSeekableReader(self.content)
+        future = self.transfer_manager.upload(
+            body, self.bucket, self.key, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self._assert_expected_make_request_callargs_for_upload_nonseekable_fileobj()
+        self._assert_subscribers_called(future)
+
+    def test_upload_with_checksum_algorithm(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        extra_args = {
+            'ChecksumAlgorithm': 'SHA256',
+        }
+        future = self.transfer_manager.upload(
+            self.filename, self.bucket, self.key, extra_args, [self.record_subscriber]
+        )
+        future.result()
+
+        self._assert_expected_make_request_callargs_for_upload_file()
+        self._assert_subscribers_called(future)
+
+        call_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self.assertEqual(call_kwargs['checksum_config'].algorithm.name, 'SHA256')
+
+    def test_allowed_upload_args(self):
+        # assert that only ALLOWED_UPLOAD_ARGS are permitted
+        # (ContentMD5 is not currently in the list)
+        with self.assertRaises(ValueError) as cm:
+            extra_args = {'ContentMD5', 'e484175540065aec988a26593675785d'}
+            self.transfer_manager.upload(self.filename, self.bucket, self.key, extra_args)
 
     def test_download(self):
         self.s3_crt_client.make_request.side_effect = (
@@ -138,28 +288,21 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         future.result()
 
-        callargs = self.s3_crt_client.make_request.call_args
-        callargs_kwargs = callargs[1]
-        # the recv_filepath will be set to a temporary file path with some
-        # random suffix
-        self.assertTrue(
-            fnmatch.fnmatch(
-                callargs_kwargs["recv_filepath"],
-                f'{self.filename}.*',
-            )
-        )
-        self.assertIsNone(callargs_kwargs["send_filepath"])
-        self.assertEqual(
-            callargs_kwargs["type"], awscrt.s3.S3RequestType.GET_OBJECT
-        )
-        crt_request = callargs_kwargs["request"]
-        self.assertEqual("GET", crt_request.method)
-        self.assertEqual(self.expected_path, crt_request.path)
-        self.assertEqual(self.expected_host, crt_request.headers.get("host"))
+        self._assert_expected_make_request_callargs_for_download_file()
         self._assert_subscribers_called(future)
-        with open(self.filename, 'rb') as f:
-            # Check the fake response overwrites the file because of download
-            self.assertEqual(f.read(), b'fake response')
+
+    def test_download_for_fileobj(self):
+        self.s3_crt_client.make_request.side_effect = (
+            self._simulate_make_request_side_effect
+        )
+        with open(self.filename, 'wb') as f:
+            future = self.transfer_manager.download(
+                self.bucket, self.key, f, {}, [self.record_subscriber]
+            )
+            future.result()
+
+        self._assert_expected_make_request_callargs_for_download_fileobj()
+        self._assert_subscribers_called(future)
 
     def test_delete(self):
         self.s3_crt_client.make_request.side_effect = (

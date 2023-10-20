@@ -18,9 +18,9 @@ from concurrent.futures import CancelledError
 
 from s3transfer.manager import TransferConfig
 from tests import (
-    NonSeekableWriter,
     RecordingSubscriber,
     assert_files_equal,
+    create_nonseekable_writer,
     skip_if_using_serial_implementation,
     skip_if_windows,
 )
@@ -248,7 +248,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         download_path = os.path.join(self.files.rootdir, '1mb.txt')
         with open(download_path, 'wb') as f:
             future = transfer_manager.download(
-                self.bucket_name, '1mb.txt', NonSeekableWriter(f)
+                self.bucket_name, '1mb.txt', create_nonseekable_writer(f)
             )
             future.result()
         assert_files_equal(filename, download_path)
@@ -264,7 +264,7 @@ class TestDownload(BaseTransferManagerIntegTest):
         download_path = os.path.join(self.files.rootdir, '20mb.txt')
         with open(download_path, 'wb') as f:
             future = transfer_manager.download(
-                self.bucket_name, '20mb.txt', NonSeekableWriter(f)
+                self.bucket_name, '20mb.txt', create_nonseekable_writer(f)
             )
             future.result()
         assert_files_equal(filename, download_path)

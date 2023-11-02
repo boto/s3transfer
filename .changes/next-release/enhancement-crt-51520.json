@@ -1,0 +1,5 @@
+{
+  "type": "enhancement",
+  "category": "``crt``",
+  "description": "Add support for uploading and downloading file-like objects using CRT transfer manager. It supports both seekable and non-seekable file-like objects."
+}

@@ -128,9 +128,11 @@ class TestCRTTransferManager(unittest.TestCase):
                 str(expected_content_length),
             )
         if expected_missing_headers is not None:
-            header_names = [header[0] for header in crt_http_request.headers]
+            header_names = [
+                header[0].lower() for header in crt_http_request.headers
+            ]
             for expected_missing_header in expected_missing_headers:
-                self.assertNotIn(expected_missing_header, header_names)
+                self.assertNotIn(expected_missing_header.lower(), header_names)
 
     def _assert_subscribers_called(self, expected_future=None):
         self.assertTrue(self.record_subscriber.on_queued_called)
@@ -142,6 +144,21 @@ class TestCRTTransferManager(unittest.TestCase):
             self.assertIs(
                 self.record_subscriber.on_done_future, expected_future
             )
+
+    def _get_expected_upload_checksum_config(self, **overrides):
+        checksum_config_kwargs = {
+            'algorithm': awscrt.s3.S3ChecksumAlgorithm.CRC32,
+            'location': awscrt.s3.S3ChecksumLocation.TRAILER,
+        }
+        checksum_config_kwargs.update(overrides)
+        return awscrt.s3.S3ChecksumConfig(**checksum_config_kwargs)
+
+    def _get_expected_download_checksum_config(self, **overrides):
+        checksum_config_kwargs = {
+            'validate_response': True,
+        }
+        checksum_config_kwargs.update(overrides)
+        return awscrt.s3.S3ChecksumConfig(**checksum_config_kwargs)
 
     def _invoke_done_callbacks(self, **kwargs):
         callargs = self.s3_crt_client.make_request.call_args
@@ -180,6 +197,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 'send_filepath': self.filename,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
+                'checksum_config': self._get_expected_upload_checksum_config(),
             },
         )
         self._assert_expected_crt_http_request(
@@ -206,6 +224,7 @@ class TestCRTTransferManager(unittest.TestCase):
                     'send_filepath': None,
                     'on_progress': mock.ANY,
                     'on_done': mock.ANY,
+                    'checksum_config': self._get_expected_upload_checksum_config(),
                 },
             )
             self._assert_expected_crt_http_request(
@@ -237,6 +256,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 'send_filepath': None,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
+                'checksum_config': self._get_expected_upload_checksum_config(),
             },
         )
         self._assert_expected_crt_http_request(
@@ -250,6 +270,90 @@ class TestCRTTransferManager(unittest.TestCase):
             ],
         )
         self._assert_subscribers_called(future)
+
+    def test_upload_override_checksum_algorithm(self):
+        future = self.transfer_manager.upload(
+            self.filename,
+            self.bucket,
+            self.key,
+            {'ChecksumAlgorithm': 'CRC32C'},
+            [self.record_subscriber],
+        )
+        future.result()
+
+        callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self.assertEqual(
+            callargs_kwargs,
+            {
+                'request': mock.ANY,
+                'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'send_filepath': self.filename,
+                'on_progress': mock.ANY,
+                'on_done': mock.ANY,
+                'checksum_config': self._get_expected_upload_checksum_config(
+                    algorithm=awscrt.s3.S3ChecksumAlgorithm.CRC32C
+                ),
+            },
+        )
+        self._assert_expected_crt_http_request(
+            callargs_kwargs["request"],
+            expected_http_method='PUT',
+            expected_content_length=len(self.expected_content),
+            expected_missing_headers=[
+                'Content-MD5',
+                'x-amz-sdk-checksum-algorithm',
+                'X-Amz-Trailer',
+            ],
+        )
+        self._assert_subscribers_called(future)
+
+    def test_upload_override_checksum_algorithm_accepts_lowercase(self):
+        future = self.transfer_manager.upload(
+            self.filename,
+            self.bucket,
+            self.key,
+            {'ChecksumAlgorithm': 'crc32c'},
+            [self.record_subscriber],
+        )
+        future.result()
+
+        callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self.assertEqual(
+            callargs_kwargs,
+            {
+                'request': mock.ANY,
+                'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'send_filepath': self.filename,
+                'on_progress': mock.ANY,
+                'on_done': mock.ANY,
+                'checksum_config': self._get_expected_upload_checksum_config(
+                    algorithm=awscrt.s3.S3ChecksumAlgorithm.CRC32C
+                ),
+            },
+        )
+        self._assert_expected_crt_http_request(
+            callargs_kwargs["request"],
+            expected_http_method='PUT',
+            expected_content_length=len(self.expected_content),
+            expected_missing_headers=[
+                'Content-MD5',
+                'x-amz-sdk-checksum-algorithm',
+                'X-Amz-Trailer',
+            ],
+        )
+        self._assert_subscribers_called(future)
+
+    def test_upload_throws_error_for_unsupported_checksum(self):
+        with self.assertRaisesRegex(
+            ValueError, 'ChecksumAlgorithm: UNSUPPORTED not supported'
+        ):
+            self.transfer_manager.upload(
+                self.filename,
+                self.bucket,
+                self.key,
+                {'ChecksumAlgorithm': 'UNSUPPORTED'},
+                [self.record_subscriber],
+            )
 
     def test_download(self):
         future = self.transfer_manager.download(
@@ -267,6 +371,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
                 'on_body': None,
+                'checksum_config': self._get_expected_download_checksum_config(),
             },
         )
         # the recv_filepath will be set to a temporary file path with some
@@ -304,6 +409,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
                 'on_body': mock.ANY,
+                'checksum_config': self._get_expected_download_checksum_config(),
             },
         )
         self._assert_expected_crt_http_request(
@@ -338,6 +444,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
                 'on_body': mock.ANY,
+                'checksum_config': self._get_expected_download_checksum_config(),
             },
         )
         self._assert_expected_crt_http_request(

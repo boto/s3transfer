@@ -1,0 +1,5 @@
+{
+  "type": "enhancement",
+  "category": "``crt``",
+  "description": "Automatically configure CRC32 checksums for uploads and checksum validation for downloads through the CRT transfer manager."
+}

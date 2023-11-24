@@ -511,3 +511,20 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         possible_matches = glob.glob('%s*' % download_path)
         self.assertEqual(possible_matches, [])
         self._assert_subscribers_called()
+
+    def test_exception_translation(self):
+        # Test that CRT's S3ResponseError translates to botocore error
+        transfer = self._create_s3_transfer()
+        download_path = os.path.join(
+            self.files.rootdir, 'obviously-no-such-key.txt'
+        )
+        with self.assertRaises(self.client.exceptions.NoSuchKey) as cm:
+            future = transfer.download(
+                self.bucket_name,
+                'obviously-no-such-key.txt',
+                download_path,
+                subscribers=[self.record_subscriber],
+            )
+            future.result()
+
+        self.assertEqual(cm.exception.response['Error']['Code'], 'NoSuchKey')

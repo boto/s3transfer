@@ -9,7 +9,7 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
 requires = [
-    'botocore>=1.12.36,<2.0a.0',
+    'botocore>=1.32.7,<2.0a.0',
 ]
 
 
@@ -30,7 +30,7 @@ setup(
     include_package_data=True,
     install_requires=requires,
     extras_require={
-        'crt': 'botocore[crt]>=1.20.29,<2.0a.0',
+        'crt': 'botocore[crt]>=1.32.7,<2.0a.0',
     },
     license="Apache License 2.0",
     python_requires=">= 3.7",

@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "category": "``crt``",
-  "description": "S3transfer now supports a wider range of CRT functionality for uploads to improve throughput in the CLI/Boto3."
-}

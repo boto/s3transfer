@@ -2,6 +2,16 @@
 CHANGELOG
 =========
 
+0.8.0
+=====
+
+* enhancement:``crt``: Automatically configure CRC32 checksums for uploads and checksum validation for downloads through the CRT transfer manager.
+* feature:``crt``: S3transfer now supports a wider range of CRT functionality for uploads to improve throughput in the CLI/Boto3.
+* enhancement:``Botocore``: S3Transfer now requires Botocore >=1.32.7
+* enhancement:``crt``: Update ``target_throughput`` defaults. If not configured, s3transfer will use the AWS CRT to attempt to determine a recommended target throughput to use based on the system. If there is no recommended throughput, s3transfer now falls back to ten gigabits per second.
+* enhancement:``crt``: Add support for uploading and downloading file-like objects using CRT transfer manager. It supports both seekable and non-seekable file-like objects.
+
+
 0.7.0
 =====
 

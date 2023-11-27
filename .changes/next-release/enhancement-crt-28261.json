@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``crt``",
-  "description": "Update ``target_throughput`` defaults. If not configured, s3transfer will use the AWS CRT to attempt to determine a recommended target throughput to use based on the system. If there is no recommended throughput, s3transfer now falls back to ten gigabits per second."
-}

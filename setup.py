@@ -33,7 +33,7 @@ setup(
         'crt': 'botocore[crt]>=1.33.2,<2.0a.0',
     },
     license="Apache License 2.0",
-    python_requires=">= 3.7",
+    python_requires=">= 3.8",
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -42,7 +42,6 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',

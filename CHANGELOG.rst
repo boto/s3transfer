@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.8.1
+=====
+
+* enhancement:``s3``: Added support for defaulting checksums to CRC32 for s3express.
+
+
 0.8.0
 =====
 

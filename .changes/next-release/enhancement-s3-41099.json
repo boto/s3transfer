@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``s3``",
-  "description": "Added support for defaulting checksums to CRC32 for s3express."
-}

@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.8.2
+=====
+
+* bugfix:Subscribers: Added caching for Subscribers to improve throughput by up to 24% in high volume transfer
+
+
 0.8.1
 =====
 

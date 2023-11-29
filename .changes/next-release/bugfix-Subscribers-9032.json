@@ -1,0 +1,5 @@
+{
+  "type": "bugfix",
+  "category": "Subscribers",
+  "description": "Added caching for Subscribers to improve throughput by up to 24% in high volume transfer"
+}

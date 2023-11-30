@@ -355,6 +355,29 @@ class TestCRTTransferManager(unittest.TestCase):
                 [self.record_subscriber],
             )
 
+    def test_upload_throws_error_for_unsupported_arg(self):
+        with self.assertRaisesRegex(
+            ValueError, "Invalid extra_args key 'ContentMD5'"
+        ):
+            self.transfer_manager.upload(
+                self.filename,
+                self.bucket,
+                self.key,
+                {'ContentMD5': '938c2cc0dcc05f2b68c4287040cfcf71'},
+                [self.record_subscriber],
+            )
+
+    def test_upload_throws_error_on_s3_object_lambda_resource(self):
+        s3_object_lambda_arn = (
+            'arn:aws:s3-object-lambda:us-west-2:123456789012:'
+            'accesspoint:my-accesspoint'
+        )
+        with self.assertRaisesRegex(ValueError, 'methods do not support'):
+            self.transfer_manager.upload(
+                self.filename,
+                s3_object_lambda_arn,
+                self.key)
+
     def test_download(self):
         future = self.transfer_manager.download(
             self.bucket, self.key, self.filename, {}, [self.record_subscriber]
@@ -457,6 +480,18 @@ class TestCRTTransferManager(unittest.TestCase):
             underlying_stream.getvalue(), self.expected_download_content
         )
 
+    def test_download_throws_error_for_unsupported_arg(self):
+        with self.assertRaisesRegex(
+            ValueError, "Invalid extra_args key 'Range'"
+        ):
+            self.transfer_manager.download(
+                self.bucket,
+                self.key,
+                self.filename,
+                {'Range': 'bytes:0-1023'},
+                [self.record_subscriber],
+            )
+
     def test_delete(self):
         future = self.transfer_manager.delete(
             self.bucket, self.key, {}, [self.record_subscriber]
@@ -479,6 +514,17 @@ class TestCRTTransferManager(unittest.TestCase):
             expected_content_length=0,
         )
         self._assert_subscribers_called(future)
+
+    def test_delete_throws_error_for_unsupported_arg(self):
+        with self.assertRaisesRegex(
+            ValueError, "Invalid extra_args key 'BypassGovernanceRetention'"
+        ):
+            self.transfer_manager.delete(
+                self.bucket,
+                self.key,
+                {'BypassGovernanceRetention': True},
+                [self.record_subscriber],
+            )
 
     def test_blocks_when_max_requests_processes_reached(self):
         self.s3_crt_client.make_request.return_value = self.s3_request

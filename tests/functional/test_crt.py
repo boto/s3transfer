@@ -374,9 +374,8 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, 'methods do not support'):
             self.transfer_manager.upload(
-                self.filename,
-                s3_object_lambda_arn,
-                self.key)
+                self.filename, s3_object_lambda_arn, self.key
+            )
 
     def test_download(self):
         future = self.transfer_manager.download(

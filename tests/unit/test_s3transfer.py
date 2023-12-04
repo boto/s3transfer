@@ -377,7 +377,6 @@ class TestMultipartUploader(unittest.TestCase):
 
 
 class TestMultipartDownloader(unittest.TestCase):
-
     maxDiff = None
 
     def test_multipart_download_uses_correct_client_calls(self):

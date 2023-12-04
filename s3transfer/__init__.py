@@ -681,7 +681,6 @@ class TransferConfig:
 
 
 class S3Transfer:
-
     ALLOWED_DOWNLOAD_ARGS = [
         'VersionId',
         'SSECustomerAlgorithm',

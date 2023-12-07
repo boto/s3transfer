@@ -84,7 +84,6 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
         expected_create_mpu_params=None,
         expected_complete_mpu_params=None,
     ):
-
         # Add all responses needed to do the copy of the object.
         # Should account for both ranged and nonranged downloads.
         stubbed_responses = self.create_stubbed_responses()[1:]
@@ -497,7 +496,6 @@ class TestMultipartCopy(BaseCopyTest):
     def _add_params_to_expected_params(
         self, add_copy_kwargs, operation_types, new_params
     ):
-
         expected_params_to_update = []
         for operation_type in operation_types:
             add_copy_kwargs_key = 'expected_' + operation_type + '_params'

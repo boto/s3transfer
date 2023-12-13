@@ -30,7 +30,7 @@ class BaseSubscriber:
         return super().__new__(cls)
 
     @classmethod
-    @lru_cache
+    @lru_cache()
     def _validate_subscriber_methods(cls):
         for subscriber_type in cls.VALID_SUBSCRIBER_TYPES:
             subscriber_method = getattr(cls, 'on_' + subscriber_type)

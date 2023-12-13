@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.9.0
+=====
+
+* feature:Python: End of support for Python 3.7
+
+
 0.8.2
 =====
 

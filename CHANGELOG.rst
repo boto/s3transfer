@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.10.0
+======
+
+* feature:``s3``: Added CRT support for S3 Express One Zone
+
+
 0.9.0
 =====
 

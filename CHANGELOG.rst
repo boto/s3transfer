@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.10.1
+======
+
+* bugfix:``urllib3``: Fixed retry handling for IncompleteRead exception raised by urllib3 2.x during data transfer
+
+
 0.10.0
 ======
 

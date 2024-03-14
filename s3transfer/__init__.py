@@ -135,7 +135,7 @@ import string
 import threading
 
 from botocore.compat import six  # noqa: F401
-from botocore.exceptions import IncompleteReadError
+from botocore.exceptions import IncompleteReadError, ResponseStreamingError
 from botocore.vendored.requests.packages.urllib3.exceptions import (
     ReadTimeoutError,
 )
@@ -144,7 +144,7 @@ import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.10.0'
+__version__ = '0.10.1'
 
 
 class NullHandler(logging.Handler):
@@ -624,6 +624,7 @@ class MultipartDownloader:
                     OSError,
                     ReadTimeoutError,
                     IncompleteReadError,
+                    ResponseStreamingError,
                 ) as e:
                     logger.debug(
                         "Retrying exception caught (%s), "
@@ -840,6 +841,7 @@ class S3Transfer:
                 OSError,
                 ReadTimeoutError,
                 IncompleteReadError,
+                ResponseStreamingError,
             ) as e:
                 # TODO: we need a way to reset the callback if the
                 # download failed.

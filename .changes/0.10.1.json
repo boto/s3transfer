@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``urllib3``",
+    "description": "Fixed retry handling for IncompleteRead exception raised by urllib3 2.x during data transfer",
+    "type": "bugfix"
+  }
+]

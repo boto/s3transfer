@@ -21,7 +21,11 @@ import string
 import threading
 from collections import defaultdict
 
-from botocore.exceptions import IncompleteReadError, ReadTimeoutError, ResponseStreamingError
+from botocore.exceptions import (
+    IncompleteReadError,
+    ReadTimeoutError,
+    ResponseStreamingError,
+)
 from botocore.httpchecksum import AwsChunkedWrapper
 from botocore.utils import is_s3express_bucket
 

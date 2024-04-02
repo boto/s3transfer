@@ -79,6 +79,14 @@ class TestReadable(unittest.TestCase):
 
 class TestBaseManager(unittest.TestCase):
     def create_pid_manager(self):
+        if sys.platform == "darwin":
+            # Starting in Python 3.8, the default multiprocessing
+            # moved from `fork` to `spawn` to account for how macOS
+            # handles (or doesn't) forking. Users who are hitting this
+            # issue _may_ consider changing the start_method after
+            # reviewing this issue.
+            # https://github.com/python/cpython/issues/77906
+            multiprocessing.set_start_method("fork")
         class PIDManager(BaseManager):
             pass
 

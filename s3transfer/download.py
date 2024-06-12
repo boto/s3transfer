@@ -561,6 +561,10 @@ class GetObjectTask(Task):
             content of the key to.
         :param bandwidth_limiter: The bandwidth limiter to use when throttling
             the downloading of data in streams.
+
+        :rtype: dict
+        :returns: A dictionary containing client response stripped of the
+        response Body
         """
         last_exception = None
         for i in range(max_attempts):
@@ -570,7 +574,7 @@ class GetObjectTask(Task):
                     Bucket=bucket, Key=key, **extra_args
                 )
                 streaming_body = StreamReaderProgress(
-                    response['Body'], callbacks
+                    response.pop('Body'), callbacks
                 )
                 if bandwidth_limiter:
                     streaming_body = (
@@ -593,8 +597,8 @@ class GetObjectTask(Task):
                         )
                         current_index += len(chunk)
                     else:
-                        return
-                return
+                        return response
+                return response
             except S3_RETRYABLE_DOWNLOAD_ERRORS as e:
                 logger.debug(
                     "Retrying exception caught (%s), "

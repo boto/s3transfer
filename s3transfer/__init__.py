@@ -543,6 +543,7 @@ class MultipartDownloader:
                 key,
                 filename,
                 object_size,
+                extra_args,
                 callback,
             )
             parts_future = controller.submit(download_parts_handler)
@@ -563,7 +564,7 @@ class MultipartDownloader:
             future.result()
 
     def _download_file_as_future(
-        self, bucket, key, filename, object_size, callback
+        self, bucket, key, filename, object_size, extra_args, callback
     ):
         part_size = self._config.multipart_chunksize
         num_parts = int(math.ceil(object_size / float(part_size)))
@@ -575,6 +576,7 @@ class MultipartDownloader:
             filename,
             part_size,
             num_parts,
+            extra_args,
             callback,
         )
         try:
@@ -593,7 +595,15 @@ class MultipartDownloader:
         return range_param
 
     def _download_range(
-        self, bucket, key, filename, part_size, num_parts, callback, part_index
+        self,
+        bucket,
+        key,
+        filename,
+        part_size,
+        num_parts,
+        extra_args,
+        callback,
+        part_index,
     ):
         try:
             range_param = self._calculate_range_param(
@@ -606,7 +616,7 @@ class MultipartDownloader:
                 try:
                     logger.debug("Making get_object call.")
                     response = self._client.get_object(
-                        Bucket=bucket, Key=key, Range=range_param
+                        Bucket=bucket, Key=key, Range=range_param, **extra_args
                     )
                     streaming_body = StreamReaderProgress(
                         response['Body'], callback

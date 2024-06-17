@@ -25,7 +25,7 @@ import psutil
 
 class TimeoutException(Exception):
     def __init__(self, timeout_len):
-        msg = 'Script failed to complete within %s seconds' % timeout_len
+        msg = f'Script failed to complete within {timeout_len} seconds'
         Exception.__init__(self, msg)
 
 

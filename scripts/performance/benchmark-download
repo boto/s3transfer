@@ -19,6 +19,7 @@ To benchmark with your own s3 key:
         --s3-bucket mybucket
 
 """
+
 import argparse
 import os
 import shutil

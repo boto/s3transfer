@@ -116,9 +116,9 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
                     expected_params
                 )
                 if expected_ranges:
-                    stubbed_response['expected_params'][
-                        'Range'
-                    ] = expected_ranges[i]
+                    stubbed_response['expected_params']['Range'] = (
+                        expected_ranges[i]
+                    )
             self.stubber.add_response(**stubbed_response)
 
     def add_n_retryable_get_object_responses(self, n, num_reads=0):

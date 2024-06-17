@@ -191,9 +191,7 @@ class FunctionContainer:
         self._kwargs = kwargs
 
     def __repr__(self):
-        return 'Function: {} with args {} and kwargs {}'.format(
-            self._func, self._args, self._kwargs
-        )
+        return f'Function: {self._func} with args {self._args} and kwargs {self._kwargs}'
 
     def __call__(self):
         return self._func(*self._args, **self._kwargs)

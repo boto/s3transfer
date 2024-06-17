@@ -96,9 +96,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         self.assertLess(
             end_time - start_time,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {end_time - start_time}.",
         )
 
         # Make sure the actual file and the temporary do not exist
@@ -138,9 +136,7 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         self.assertLess(
             end_time - start_time,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {end_time - start_time}.",
         )
 
         # For the transfer that did get cancelled, make sure the temporary

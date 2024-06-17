@@ -13,6 +13,7 @@ To use the script, run::
     ./timeout "./my-script-to-run" --timeout-after 5
 
 """
+
 import argparse
 import os
 import subprocess

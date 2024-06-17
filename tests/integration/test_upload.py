@@ -101,9 +101,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         self.assertLess(
             actual_time_to_exit,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, actual_time_to_exit
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {actual_time_to_exit}.",
         )
 
         try:
@@ -163,9 +161,7 @@ class TestUpload(BaseTransferManagerIntegTest):
         self.assertLess(
             end_time - start_time,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {end_time - start_time}.",
         )
 
         # Make sure at least one of the futures got cancelled

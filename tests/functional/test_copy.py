@@ -96,9 +96,9 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 
         # Add the expected create multipart upload params.
         if expected_create_mpu_params:
-            stubbed_responses[0][
-                'expected_params'
-            ] = expected_create_mpu_params
+            stubbed_responses[0]['expected_params'] = (
+                expected_create_mpu_params
+            )
 
         # Add any expected copy parameters.
         if expected_copy_params:
@@ -110,9 +110,9 @@ class BaseCopyTest(BaseGeneralInterfaceTest):
 
         # Add the expected complete multipart upload params.
         if expected_complete_mpu_params:
-            stubbed_responses[-1][
-                'expected_params'
-            ] = expected_complete_mpu_params
+            stubbed_responses[-1]['expected_params'] = (
+                expected_complete_mpu_params
+            )
 
         # Add the responses to the stubber.
         for stubbed_response in stubbed_responses:

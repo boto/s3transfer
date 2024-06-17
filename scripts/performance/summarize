@@ -63,6 +63,7 @@ summary as JSON instead of a pretty printed table::
     }
 
 """
+
 import argparse
 import csv
 import json

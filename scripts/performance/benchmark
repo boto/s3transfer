@@ -18,6 +18,7 @@ To use the script, run::
 If no ``--output-file`` was provided, the data will be saved to
 ``performance.csv``
 """
+
 import argparse
 import os
 import subprocess

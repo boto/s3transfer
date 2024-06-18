@@ -290,8 +290,8 @@ class CRTTransferManager:
                 match = pattern.match(bucket)
                 if match:
                     raise ValueError(
-                        'TransferManager methods do not support %s '
-                        'resource. Use direct client calls instead.' % resource
+                        f'TransferManager methods do not support {resource} '
+                        'resource. Use direct client calls instead.'
                     )
 
     def _validate_all_known_args(self, actual, allowed):

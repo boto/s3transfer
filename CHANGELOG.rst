@@ -2,6 +2,24 @@
 CHANGELOG
 =========
 
+0.10.1
+======
+
+* bugfix:``urllib3``: Fixed retry handling for IncompleteRead exception raised by urllib3 2.x during data transfer
+
+
+0.10.0
+======
+
+* feature:``s3``: Added CRT support for S3 Express One Zone
+
+
+0.9.0
+=====
+
+* feature:Python: End of support for Python 3.7
+
+
 0.8.2
 =====
 

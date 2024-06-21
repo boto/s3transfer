@@ -412,7 +412,9 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         # Test that CRT exceptions translate properly into the botocore exceptions.
         transfer = self._create_s3_transfer()
         with self.assertRaises(ClientError) as ctx:
-            future = transfer.delete(f"{self.bucket_name}-NONEXISTENT-{uuid4()}", "foo.txt")
+            future = transfer.delete(
+                f"{self.bucket_name}-NONEXISTENT-{uuid4()}", "foo.txt"
+            )
             future.result()
         self.assertEqual(ctx.exception.__class__.__name__, 'NoSuchBucket')
 

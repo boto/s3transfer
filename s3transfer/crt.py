@@ -826,7 +826,9 @@ class S3ClientArgsCreator:
         # So transform string like "delete_object" -> "DeleteObject".
         operation_name = None
         if crt_request_type == S3RequestType.DEFAULT:
-            operation_name = ''.join(x.title() for x in request_type.split('_'))
+            operation_name = ''.join(
+                x.title() for x in request_type.split('_')
+            )
 
         make_request_args = {
             'request': self._request_serializer.serialize_http_request(

@@ -818,13 +818,22 @@ class S3ClientArgsCreator:
         on_done_before_calls,
         on_done_after_calls,
     ):
+        crt_request_type = getattr(
+            S3RequestType, request_type.upper(), S3RequestType.DEFAULT
+        )
+
+        # For DEFAULT requests, CRT requires the official S3 operation name.
+        # So transform string like "delete_object" -> "DeleteObject".
+        operation_name = None
+        if crt_request_type == S3RequestType.DEFAULT:
+            operation_name = ''.join(x.title() for x in request_type.split('_'))
+
         make_request_args = {
             'request': self._request_serializer.serialize_http_request(
                 request_type, future
             ),
-            'type': getattr(
-                S3RequestType, request_type.upper(), S3RequestType.DEFAULT
-            ),
+            'type': crt_request_type,
+            'operation_name': operation_name,
             'on_done': self.get_crt_callback(
                 future, 'done', on_done_before_calls, on_done_after_calls
             ),

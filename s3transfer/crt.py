@@ -818,29 +818,26 @@ class S3ClientArgsCreator:
         on_done_before_calls,
         on_done_after_calls,
     ):
-        crt_request_type = getattr(
-            S3RequestType, request_type.upper(), S3RequestType.DEFAULT
-        )
-
-        # For DEFAULT requests, CRT requires the official S3 operation name.
-        # So transform string like "delete_object" -> "DeleteObject".
-        operation_name = None
-        if crt_request_type == S3RequestType.DEFAULT:
-            operation_name = ''.join(
-                x.title() for x in request_type.split('_')
-            )
-
         make_request_args = {
             'request': self._request_serializer.serialize_http_request(
                 request_type, future
             ),
-            'type': crt_request_type,
-            'operation_name': operation_name,
+            'type': getattr(
+                S3RequestType, request_type.upper(), S3RequestType.DEFAULT
+            ),
             'on_done': self.get_crt_callback(
                 future, 'done', on_done_before_calls, on_done_after_calls
             ),
             'on_progress': self.get_crt_callback(future, 'progress'),
         }
+
+        # For DEFAULT requests, CRT requires the official S3 operation name.
+        # So transform string like "delete_object" -> "DeleteObject".
+        if make_request_args['type'] == S3RequestType.DEFAULT:
+            make_request_args['operation_name'] = ''.join(
+                x.title() for x in request_type.split('_')
+            )
+
         if is_s3express_bucket(call_args.bucket):
             make_request_args['signing_config'] = AwsSigningConfig(
                 algorithm=AwsSigningAlgorithm.V4_S3EXPRESS

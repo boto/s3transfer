@@ -40,6 +40,7 @@ from botocore.exceptions import NoCredentialsError
 from s3transfer.constants import MB
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.futures import BaseTransferFuture, BaseTransferMeta
+from s3transfer.manager import TransferManager
 from s3transfer.utils import (
     CallArgs,
     OSUtils,
@@ -181,6 +182,14 @@ def _get_crt_throughput_target_gbps(provided_throughput_target_bytes=None):
 
 
 class CRTTransferManager:
+    ALLOWED_DOWNLOAD_ARGS = TransferManager.ALLOWED_DOWNLOAD_ARGS
+    ALLOWED_UPLOAD_ARGS = TransferManager.ALLOWED_UPLOAD_ARGS
+    ALLOWED_DELETE_ARGS = TransferManager.ALLOWED_DELETE_ARGS
+
+    VALIDATE_SUPPORTED_BUCKET_VALUES = True
+
+    _UNSUPPORTED_BUCKET_PATTERNS = TransferManager._UNSUPPORTED_BUCKET_PATTERNS
+
     def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
         """A transfer manager interface for Amazon S3 on CRT s3 client.
 
@@ -226,6 +235,8 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, self.ALLOWED_DOWNLOAD_ARGS)
+        self._validate_if_bucket_supported(bucket)
         callargs = CallArgs(
             bucket=bucket,
             key=key,
@@ -240,6 +251,8 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, self.ALLOWED_UPLOAD_ARGS)
+        self._validate_if_bucket_supported(bucket)
         self._validate_checksum_algorithm_supported(extra_args)
         callargs = CallArgs(
             bucket=bucket,
@@ -255,6 +268,8 @@ class CRTTransferManager:
             extra_args = {}
         if subscribers is None:
             subscribers = {}
+        self._validate_all_known_args(extra_args, self.ALLOWED_DELETE_ARGS)
+        self._validate_if_bucket_supported(bucket)
         callargs = CallArgs(
             bucket=bucket,
             key=key,
@@ -265,6 +280,27 @@ class CRTTransferManager:
 
     def shutdown(self, cancel=False):
         self._shutdown(cancel)
+
+    def _validate_if_bucket_supported(self, bucket):
+        # s3 high level operations don't support some resources
+        # (eg. S3 Object Lambda) only direct API calls are available
+        # for such resources
+        if self.VALIDATE_SUPPORTED_BUCKET_VALUES:
+            for resource, pattern in self._UNSUPPORTED_BUCKET_PATTERNS.items():
+                match = pattern.match(bucket)
+                if match:
+                    raise ValueError(
+                        f'TransferManager methods do not support {resource} '
+                        'resource. Use direct client calls instead.'
+                    )
+
+    def _validate_all_known_args(self, actual, allowed):
+        for kwarg in actual:
+            if kwarg not in allowed:
+                raise ValueError(
+                    f"Invalid extra_args key '{kwarg}', "
+                    f"must be one of: {', '.join(allowed)}"
+                )
 
     def _validate_checksum_algorithm_supported(self, extra_args):
         checksum_algorithm = extra_args.get('ChecksumAlgorithm')
@@ -830,6 +866,14 @@ class S3ClientArgsCreator:
             ),
             'on_progress': self.get_crt_callback(future, 'progress'),
         }
+
+        # For DEFAULT requests, CRT requires the official S3 operation name.
+        # So transform string like "delete_object" -> "DeleteObject".
+        if make_request_args['type'] == S3RequestType.DEFAULT:
+            make_request_args['operation_name'] = ''.join(
+                x.title() for x in request_type.split('_')
+            )
+
         if is_s3express_bucket(call_args.bucket):
             make_request_args['signing_config'] = AwsSigningConfig(
                 algorithm=AwsSigningAlgorithm.V4_S3EXPRESS

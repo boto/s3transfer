@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``awscrt``",
+    "description": "Pass operation name to awscrt.s3 to improve error handling.",
+    "type": "bugfix"
+  }
+]

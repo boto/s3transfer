@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.10.2
+======
+
+* bugfix:``awscrt``: Pass operation name to awscrt.s3 to improve error handling.
+
+
 0.10.1
 ======
 

@@ -14,6 +14,7 @@ To upload a file::
         --s3-bucket mybucket --s3-key mykey
 
 """
+
 import argparse
 
 from botocore.session import get_session

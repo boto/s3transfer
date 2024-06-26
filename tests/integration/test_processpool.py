@@ -96,14 +96,12 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         self.assertLess(
             end_time - start_time,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {end_time - start_time}.",
         )
 
         # Make sure the actual file and the temporary do not exist
         # by globbing for the file and any of its extensions
-        possible_matches = glob.glob('%s*' % download_path)
+        possible_matches = glob.glob(f'{download_path}*')
         self.assertEqual(possible_matches, [])
 
     def test_many_files_exits_quickly_on_exception(self):
@@ -138,12 +136,10 @@ class TestProcessPoolDownloader(BaseTransferManagerIntegTest):
         self.assertLess(
             end_time - start_time,
             max_allowed_exit_time,
-            "Failed to exit under {}. Instead exited in {}.".format(
-                max_allowed_exit_time, end_time - start_time
-            ),
+            f"Failed to exit under {max_allowed_exit_time}. Instead exited in {end_time - start_time}.",
         )
 
         # For the transfer that did get cancelled, make sure the temporary
         # file got removed.
-        possible_matches = glob.glob('%s*' % base_filename)
+        possible_matches = glob.glob(f'{base_filename}*')
         self.assertEqual(possible_matches, [])

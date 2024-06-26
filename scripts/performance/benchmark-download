@@ -19,6 +19,7 @@ To benchmark with your own s3 key:
         --s3-bucket mybucket
 
 """
+
 import argparse
 import os
 import shutil
@@ -62,7 +63,7 @@ def human_readable_to_bytes(value):
         try:
             return int(value)
         except ValueError:
-            raise ValueError("Invalid size value: %s" % value)
+            raise ValueError(f"Invalid size value: {value}")
     else:
         multiplier = SIZE_SUFFIX[suffix]
         return int(value[: -len(suffix)]) * multiplier
@@ -96,8 +97,8 @@ def benchmark_download(args):
             upload_file(client, temp_file, args.s3_bucket)
 
         download_file_script = (
-            './download-file --file-name %s --file-type %s --s3-bucket %s '
-            '--s3-key %s' % (temp_file, args.file_type, args.s3_bucket, s3_key)
+            f'./download-file --file-name {temp_file} --file-type {args.file_type} --s3-bucket {args.s3_bucket} '
+            f'--s3-key {s3_key}'
         )
         benchmark_args = ['./benchmark', download_file_script]
         if args.output_file:

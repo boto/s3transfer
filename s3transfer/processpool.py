@@ -231,6 +231,8 @@ DownloadFileRequest = collections.namedtuple(
         'filename',  # The user-requested download location
         'extra_args',  # Extra arguments to provide to client calls
         'expected_size',  # The user-provided expected size of the download
+        'range_start',  # The user-provided start point for the download
+        'range_end',  # The user-provided end point for the download
     ],
 )
 
@@ -323,7 +325,15 @@ class ProcessPoolDownloader:
         self._workers = []
 
     def download_file(
-        self, bucket, key, filename, extra_args=None, expected_size=None
+        self,
+        bucket,
+        key,
+        filename,
+        extra_args=None,
+        expected_size=None,
+        *,
+        range_start=0,
+        range_end=None,
     ):
         """Downloads the object's contents to a file
 
@@ -346,6 +356,14 @@ class ProcessPoolDownloader:
             object's size and use the provided value instead. The size is
             needed to determine whether to do a multipart download.
 
+        :type range_start: int
+        :param range_start: The start of the range to download from the object.
+
+        :type range_end: int
+        :param range_end: The end of the range to download from the object.  Default is
+            the length of the object minus one.  Total length is of the download is
+            `range_end - range_start + 1`
+
         :rtype: s3transfer.futures.TransferFuture
         :returns: Transfer future representing the download
         """
@@ -361,6 +379,8 @@ class ProcessPoolDownloader:
             filename=filename,
             extra_args=extra_args,
             expected_size=expected_size,
+            range_start=range_start,
+            range_end=range_end,
         )
         logger.debug(
             'Submitting download file request: %s.', download_file_request
@@ -814,14 +834,27 @@ class GetObjectSubmitter(BaseS3TransferProcess):
 
     def _submit_get_object_jobs(self, download_file_request):
         size = self._get_size(download_file_request)
-        temp_filename = self._allocate_temp_file(download_file_request, size)
-        if size < self._transfer_config.multipart_threshold:
+        # Clamp range_start and range_end to the length of the object
+        range_start = download_file_request.range_start
+        if range_start < 0:
+            range_start = 0
+        range_end = download_file_request.range_end
+        if range_end is None or range_end >= size:
+            range_end = size - 1
+        temp_filename = self._allocate_temp_file(
+            download_file_request, range_end - range_start + 1
+        )
+        if (
+            size < self._transfer_config.multipart_threshold
+            and range_start == 0
+            and range_end == size - 1
+        ):
             self._submit_single_get_object_job(
                 download_file_request, temp_filename
             )
         else:
             self._submit_ranged_get_object_jobs(
-                download_file_request, temp_filename, size
+                download_file_request, temp_filename, range_start, range_end
             )
 
     def _get_size(self, download_file_request):
@@ -856,17 +889,19 @@ class GetObjectSubmitter(BaseS3TransferProcess):
         )
 
     def _submit_ranged_get_object_jobs(
-        self, download_file_request, temp_filename, size
+        self, download_file_request, temp_filename, range_start, range_end
     ):
         part_size = self._transfer_config.multipart_chunksize
-        num_parts = calculate_num_parts(size, part_size)
+        num_parts = calculate_num_parts(
+            max(range_end - range_start + 1, 0), part_size
+        )
         self._notify_jobs_to_complete(
             download_file_request.transfer_id, num_parts
         )
         for i in range(num_parts):
             offset = i * part_size
             range_parameter = calculate_range_parameter(
-                part_size, i, num_parts
+                part_size, i, num_parts, range_end + 1, range_start
             )
             get_object_kwargs = {'Range': range_parameter}
             get_object_kwargs.update(download_file_request.extra_args)

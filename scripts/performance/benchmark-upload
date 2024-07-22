@@ -19,6 +19,7 @@ To benchmark with your own local file::
         --s3-bucket mybucket
 
 """
+
 import argparse
 import os
 import shutil
@@ -60,7 +61,7 @@ def human_readable_to_bytes(value):
         try:
             return int(value)
         except ValueError:
-            raise ValueError("Invalid size value: %s" % value)
+            raise ValueError(f"Invalid size value: {value}")
     else:
         multiplier = SIZE_SUFFIX[suffix]
         return int(value[: -len(suffix)]) * multiplier
@@ -86,9 +87,8 @@ def benchmark_upload(args):
             create_file(source_file, args.file_size)
 
         upload_file_script = (
-            './upload-file --file-name %s --file-type %s --s3-bucket %s '
-            '--s3-key %s'
-            % (source_file, args.file_type, args.s3_bucket, TEMP_KEY)
+            f'./upload-file --file-name {source_file} --file-type {args.file_type} --s3-bucket {args.s3_bucket} '
+            f'--s3-key {TEMP_KEY}'
         )
         benchmark_args = ['./benchmark', upload_file_script]
         if args.output_file:

@@ -337,6 +337,8 @@ class TestGetObjectSubmitter(StubbedClientTest):
             'filename': self.filename,
             'extra_args': self.extra_args,
             'expected_size': self.expected_size,
+            'range_start': 0,
+            'range_end': None,
         }
         kwargs.update(override_kwargs)
         self.download_request_queue.put(DownloadFileRequest(**kwargs))
@@ -393,7 +395,7 @@ class TestGetObjectSubmitter(StubbedClientTest):
                     key=self.key,
                     temp_filename=self.temp_filename,
                     offset=2,
-                    extra_args={'Range': 'bytes=2-'},
+                    extra_args={'Range': 'bytes=2-3'},
                     filename=self.filename,
                 ),
             ]

@@ -631,6 +631,7 @@ class TestUploadSubmissionTask(BaseSubmissionTaskTest):
 class TestPutObjectTask(BaseUploadTest):
     def test_main(self):
         extra_args = {'Metadata': {'foo': 'bar'}}
+        etag = 'uploaded-etag'
         with open(self.filename, 'rb') as fileobj:
             task = self.get_task(
                 PutObjectTask,
@@ -644,7 +645,7 @@ class TestPutObjectTask(BaseUploadTest):
             )
             self.stubber.add_response(
                 method='put_object',
-                service_response={},
+                service_response={'ETag': etag},
                 expected_params={
                     'Body': ANY,
                     'Bucket': self.bucket,
@@ -652,7 +653,9 @@ class TestPutObjectTask(BaseUploadTest):
                     'Metadata': {'foo': 'bar'},
                 },
             )
-            task()
+            task_response = task()
+            self.assertIn("ETag", task_response)
+            self.assertEqual(task_response["ETag"], etag)
             self.stubber.assert_no_pending_responses()
             self.assertEqual(self.sent_bodies, [self.content])
 

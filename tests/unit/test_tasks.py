@@ -779,7 +779,8 @@ class TestCreateMultipartUploadTask(BaseMultipartTaskTest):
 class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
     def test_main(self):
         upload_id = 'my-id'
-        parts = [{'ETag': 'etag', 'PartNumber': 0}]
+        parts = [{'ETag': 'part-etag', 'PartNumber': 0}]
+        etag = 'uploaded-etag'
         task = self.get_task(
             CompleteMultipartUploadTask,
             main_kwargs={
@@ -793,7 +794,7 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
         )
         self.stubber.add_response(
             method='complete_multipart_upload',
-            service_response={},
+            service_response={'ETag': etag},
             expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
@@ -801,7 +802,9 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
                 'MultipartUpload': {'Parts': parts},
             },
         )
-        task()
+        task_response = task()
+        self.assertIn("ETag", task_response)
+        self.assertEqual(task_response["ETag"], etag)
         self.stubber.assert_no_pending_responses()
 
     def test_includes_extra_args(self):

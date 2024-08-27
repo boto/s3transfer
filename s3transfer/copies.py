@@ -39,7 +39,7 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerAlgorithm': 'SSECustomerAlgorithm',
         'CopySourceSSECustomerKeyMD5': 'SSECustomerKeyMD5',
         'RequestPayer': 'RequestPayer',
-        'ExpectedBucketOwner': 'ExpectedBucketOwner',
+        'ExpectedSourceBucketOwner': 'ExpectedBucketOwner',
     }
 
     UPLOAD_PART_COPY_ARGS = [
@@ -55,6 +55,7 @@ class CopySubmissionTask(SubmissionTask):
         'SSECustomerKeyMD5',
         'RequestPayer',
         'ExpectedBucketOwner',
+        'ExpectedSourceBucketOwner',
     ]
 
     CREATE_MULTIPART_ARGS_BLACKLIST = [
@@ -67,6 +68,7 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerKeyMD5',
         'MetadataDirective',
         'TaggingDirective',
+        'ExpectedSourceBucketOwner',
     ]
 
     COMPLETE_MULTIPART_ARGS = [

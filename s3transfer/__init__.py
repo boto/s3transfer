@@ -123,6 +123,7 @@ transfer.  For example:
 
 
 """
+
 import concurrent.futures
 import functools
 import logging
@@ -144,7 +145,7 @@ import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.10.2'
+__version__ = '0.10.3'
 
 
 class NullHandler(logging.Handler):
@@ -813,8 +814,8 @@ class S3Transfer:
         for kwarg in actual:
             if kwarg not in allowed:
                 raise ValueError(
-                    "Invalid extra_args key '%s', "
-                    "must be one of: %s" % (kwarg, ', '.join(allowed))
+                    f"Invalid extra_args key '{kwarg}', "
+                    f"must be one of: {', '.join(allowed)}"
                 )
 
     def _ranged_download(

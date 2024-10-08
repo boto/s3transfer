@@ -63,6 +63,7 @@ summary as JSON instead of a pretty printed table::
     }
 
 """
+
 import argparse
 import csv
 import json
@@ -167,13 +168,13 @@ class Summarizer:
         table = [
             [
                 'Total Time (seconds)',
-                '%.3f' % self.total_time,
+                f'{self.total_time:.3f}',
                 self.std_dev_total_time,
             ],
             ['Maximum Memory', h(self.max_memory), h(self.std_dev_max_memory)],
             [
                 'Maximum CPU (percent)',
-                '%.1f' % self.max_cpu,
+                f'{self.max_cpu:.1f}',
                 self.std_dev_max_cpu,
             ],
             [
@@ -183,14 +184,14 @@ class Summarizer:
             ],
             [
                 'Average CPU (percent)',
-                '%.1f' % self.average_cpu,
+                f'{self.average_cpu:.1f}',
                 self.std_dev_average_cpu,
             ],
         ]
         return tabulate(
             table,
             headers=[
-                'Metric over %s run(s)' % (self.total_files),
+                f'Metric over {self.total_files} run(s)',
                 'Mean',
                 'Standard Deviation',
             ],
@@ -237,8 +238,8 @@ class Summarizer:
     def _validate_row(self, row, filename):
         if not row:
             raise RuntimeError(
-                'Row: %s could not be processed. The CSV file (%s) may be '
-                'empty.' % (row, filename)
+                f'Row: {row} could not be processed. The CSV file ({filename}) may be '
+                'empty.'
             )
 
     def process_data_row(self, row):

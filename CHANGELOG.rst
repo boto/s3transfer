@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.10.3
+======
+
+* enhancement:Python: Added provisional Python 3.13 support to s3transfer
+
+
 0.10.2
 ======
 

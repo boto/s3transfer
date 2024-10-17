@@ -747,6 +747,7 @@ class S3Transfer:
             unique_id='s3upload-callback-enable',
         )
         if (
+            self._config.multipart_threshold is not None and
             self._osutil.get_file_size(filename)
             >= self._config.multipart_threshold
         ):
@@ -803,7 +804,7 @@ class S3Transfer:
     def _download_file(
         self, bucket, key, filename, object_size, extra_args, callback
     ):
-        if object_size >= self._config.multipart_threshold:
+        if self._config.multipart_threshold is not None and object_size >= self._config.multipart_threshold:
             self._ranged_download(
                 bucket, key, filename, object_size, extra_args, callback
             )

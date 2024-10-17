@@ -245,7 +245,7 @@ class UploadFilenameInputManager(UploadInputManager):
         )
 
     def requires_multipart_upload(self, transfer_future, config):
-        return transfer_future.meta.size >= config.multipart_threshold
+        return config.multipart_threshold is not None and transfer_future.meta.size >= config.multipart_threshold
 
     def get_put_object_body(self, transfer_future):
         # Get a file-like object for the given input
@@ -393,14 +393,14 @@ class UploadNonSeekableInputManager(UploadInputManager):
     def requires_multipart_upload(self, transfer_future, config):
         # If the user has set the size, we can use that.
         if transfer_future.meta.size is not None:
-            return transfer_future.meta.size >= config.multipart_threshold
+            return config.multipart_threshold is not None and transfer_future.meta.size >= config.multipart_threshold
 
         # This is tricky to determine in this case because we can't know how
         # large the input is. So to figure it out, we read data into memory
         # up until the threshold and compare how much data was actually read
         # against the threshold.
         fileobj = transfer_future.meta.call_args.fileobj
-        threshold = config.multipart_threshold
+        threshold = config.multipart_threshold or 8 * 1024 * 1024
         self._initial_data = self._read(fileobj, threshold, False)
         if len(self._initial_data) < threshold:
             return False

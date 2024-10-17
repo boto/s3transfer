@@ -130,7 +130,7 @@ class CopySubmissionTask(SubmissionTask):
 
         # If it is greater than threshold do a multipart copy, otherwise
         # do a regular copy object.
-        if transfer_future.meta.size < config.multipart_threshold:
+        if config.multipart_threshold is None or transfer_future.meta.size < config.multipart_threshold:
             self._submit_copy_request(
                 client, config, osutil, request_executor, transfer_future
             )

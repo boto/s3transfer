@@ -1,0 +1,5 @@
+{
+  "type": "bugfix",
+  "category": "performance",
+  "description": "Fixes a bug that occurs when the underlying Python process is a zombie.\""
+}

@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.10.4
+======
+
+* enhancement:``s3``: Added Multi-Region Access Points support to CRT transfers.
+
+
 0.10.3
 ======
 

@@ -67,5 +67,7 @@ class DeleteObjectTask(Task):
         :type extra_args: dict
         :param extra_args: Extra arguments to pass to the DeleteObject call.
 
+        :rtype: dict
+        :returns: A dictionary containing client response
         """
-        client.delete_object(Bucket=bucket, Key=key, **extra_args)
+        return client.delete_object(Bucket=bucket, Key=key, **extra_args)

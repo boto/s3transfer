@@ -159,6 +159,7 @@ class TransferManager:
 
     ALLOWED_UPLOAD_ARGS = [
         'ACL',
+        'BucketKeyEnabled',
         'CacheControl',
         'ChecksumAlgorithm',
         'ContentDisposition',

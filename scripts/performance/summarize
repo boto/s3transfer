@@ -190,30 +190,46 @@ class Summarizer:
         table = [
             [
                 'Total Time (seconds)',
-                *[f'{self._totals['time'][file]}' for file in range(0, self.total_files)],
+                *[
+                    f'{self._totals['time'][file]}'
+                    for file in range(0, self.total_files)
+                ],
                 f'{self.total_time:.3f}',
                 self.std_dev_total_time,
             ],
             [
                 'Maximum Memory',
-                *[f'{h(self._totals['max_memory'][file])}' for file in range(0, self.total_files)],
+                *[
+                    f'{h(self._totals['max_memory'][file])}'
+                    for file in range(0, self.total_files)
+                ],
                 h(self.max_memory),
-                h(self.std_dev_max_memory)],
+                h(self.std_dev_max_memory),
+            ],
             [
                 'Maximum CPU (percent)',
-                *[f'{self._totals['max_cpu'][file]}' for file in range(0, self.total_files)],
+                *[
+                    f'{self._totals['max_cpu'][file]}'
+                    for file in range(0, self.total_files)
+                ],
                 f'{self.max_cpu:.1f}',
                 self.std_dev_max_cpu,
             ],
             [
                 'Average Memory',
-                *[f'{h(self._totals['average_memory'][file])}' for file in range(0, self.total_files)],
+                *[
+                    f'{h(self._totals['average_memory'][file])}'
+                    for file in range(0, self.total_files)
+                ],
                 h(self.average_memory),
                 h(self.std_dev_average_memory),
             ],
             [
                 'Average CPU (percent)',
-                *[f'{self._totals['average_cpu'][file]}' for file in range(0, self.total_files)],
+                *[
+                    f'{self._totals['average_cpu'][file]}'
+                    for file in range(0, self.total_files)
+                ],
                 f'{self.average_cpu:.1f}',
                 self.std_dev_average_cpu,
             ],
@@ -222,7 +238,7 @@ class Summarizer:
             table,
             headers=[
                 f'Metric over {self.total_files} run(s)',
-                *[f'Run {n}' for n in range(1, self.total_files+1)],
+                *[f'Run {n}' for n in range(1, self.total_files + 1)],
                 'Mean',
                 'Standard Deviation',
             ],
@@ -244,7 +260,8 @@ class Summarizer:
                         'average_cpu': self._totals['average_cpu'][file],
                         'max_cpu': self._totals['max_cpu'][file],
                         'end_time': self._end_times[file],
-                    } for file in range(self.total_files)
+                    }
+                    for file in range(self.total_files)
                 ],
                 'aggregate_stats': {
                     'execution_time': self.total_time,
@@ -257,7 +274,7 @@ class Summarizer:
                     'std_dev_average_cpu': self.std_dev_average_cpu,
                     'max_cpu': self.max_cpu,
                     'std_dev_max_cpu': self.std_dev_max_cpu,
-                }
+                },
             },
             indent=2,
         )

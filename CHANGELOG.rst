@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.11.0
+======
+
+* feature:manager: Use CRC32 by default and support user provided full-object checksums.
+
+
 0.10.4
 ======
 

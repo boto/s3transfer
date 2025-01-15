@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "category": "manager",
-  "description": "Use CRC32 by default and support user provided full-object checksums."
-}

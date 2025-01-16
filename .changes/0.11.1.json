@@ -1,0 +1,7 @@
+[
+  {
+    "category": "Dependencies",
+    "description": "Update the floor version of botocore to 1.36.0 to match imports.",
+    "type": "bugfix"
+  }
+]

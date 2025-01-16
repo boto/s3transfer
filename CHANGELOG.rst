@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.11.1
+======
+
+* bugfix:Dependencies: Update the floor version of botocore to 1.36.0 to match imports.
+
+
 0.11.0
 ======
 

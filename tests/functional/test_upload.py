@@ -19,6 +19,7 @@ from io import BytesIO
 from botocore.awsrequest import AWSRequest
 from botocore.client import Config
 from botocore.exceptions import ClientError
+from botocore.httpchecksum import DEFAULT_CHECKSUM_ALGORITHM
 from botocore.stub import ANY
 
 from s3transfer.manager import TransferConfig, TransferManager
@@ -74,6 +75,16 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
             'before-parameter-build.s3.*', self.collect_body
         )
 
+        # A list to keep track of all of the headers sent over the wire
+        # and their order.
+        self.sent_headers = []
+        # collect_headers needs to be called before the stubber, or it
+        # won't be called at all. Note that we must specify the service
+        # as '*', otherwise the stubber short-circuits the event.
+        self.client.meta.events.register_first(
+            'before-call.*.*', self.collect_headers
+        )
+
     def tearDown(self):
         super().tearDown()
         shutil.rmtree(self.tempdir)
@@ -98,6 +109,9 @@ class BaseUploadTest(BaseGeneralInterfaceTest):
                 operation_name=model.name,
             )
             self.sent_bodies.append(self._stream_body(params['Body']))
+
+    def collect_headers(self, model, params, request_signer, context, **kwargs):
+        self.sent_headers.append(params['headers'])
 
     def _stream_body(self, body):
         read_amt = 8 * 1024
@@ -163,6 +177,9 @@ class TestNonMultipartUpload(BaseUploadTest):
     def assert_put_object_body_was_correct(self):
         self.assertEqual(self.sent_bodies, [self.content])
 
+    def assert_put_object_request_checksum_algorithm_was_correct(self):
+        self.assertEqual(self.sent_headers[0]['x-amz-sdk-checksum-algorithm'], DEFAULT_CHECKSUM_ALGORITHM)
+
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'
         self.add_put_object_response_with_default_expected_params(
@@ -174,6 +191,7 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_upload_with_checksum(self):
         self.extra_args['ChecksumAlgorithm'] = 'sha256'
@@ -186,6 +204,50 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assertEqual(self.sent_headers[0]['x-amz-sdk-checksum-algorithm'], 'sha256')
+
+    def test_upload_with_request_checksum_calculation_when_supported(self):
+        self.add_put_object_response_with_default_expected_params(
+            extra_expected_params={'ChecksumAlgorithm': DEFAULT_CHECKSUM_ALGORITHM}
+        )
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
+
+    def test_upload_with_request_checksum_calculation_when_required(self):
+        self.reset_stubber_with_new_client(
+            {'config': Config(request_checksum_calculation='when_required')}
+        )
+        self.client.meta.events.register(
+            'before-parameter-build.s3.*', self.collect_body
+        )
+        self.client.meta.events.register_first(
+            'before-call.*.*', self.collect_headers
+        )
+        self._manager = TransferManager(self.client, self.config)
+
+        # We need a custom response with no 'ChecksumAlgorithm' in the expected params
+        self.stubber.add_response(
+            method='put_object',
+            service_response={},
+            expected_params={
+                'Body': ANY,
+                'Bucket': self.bucket,
+                'Key': self.key,
+            },
+        )
+
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
+        self.assertNotIn('x-amz-sdk-checksum-algorithm', self.sent_headers[0])
 
     def test_upload_with_s3express_default_checksum(self):
         s3express_bucket = "mytestbucket--usw2-az6--x-s3"
@@ -200,6 +262,7 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_upload_for_fileobj(self):
         self.add_put_object_response_with_default_expected_params()
@@ -210,6 +273,7 @@ class TestNonMultipartUpload(BaseUploadTest):
             future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_upload_for_seekable_filelike_obj(self):
         self.add_put_object_response_with_default_expected_params()
@@ -220,6 +284,7 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_upload_for_seekable_filelike_obj_that_has_been_seeked(self):
         self.add_put_object_response_with_default_expected_params()
@@ -232,6 +297,7 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assertEqual(b''.join(self.sent_bodies), self.content[seek_pos:])
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_upload_for_non_seekable_filelike_obj(self):
         self.add_put_object_response_with_default_expected_params()
@@ -242,6 +308,7 @@ class TestNonMultipartUpload(BaseUploadTest):
         future.result()
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_sigv4_progress_callbacks_invoked_once(self):
         # Reset the client and manager to use sigv4
@@ -250,6 +317,9 @@ class TestNonMultipartUpload(BaseUploadTest):
         )
         self.client.meta.events.register(
             'before-parameter-build.s3.*', self.collect_body
+        )
+        self.client.meta.events.register_first(
+            'before-call.*.*', self.collect_headers
         )
         self._manager = TransferManager(self.client, self.config)
 
@@ -265,6 +335,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
         # The amount of bytes seen should be the same as the file size
         self.assertEqual(subscriber.calculate_bytes_seen(), len(self.content))
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_uses_provided_osutil(self):
         osutil = RecordingOSUtils()
@@ -316,6 +387,7 @@ class TestNonMultipartUpload(BaseUploadTest):
 
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
+        self.assert_put_object_request_checksum_algorithm_was_correct()
 
     def test_raise_exception_on_s3_object_lambda_resource(self):
         s3_object_lambda_arn = (
@@ -324,7 +396,6 @@ class TestNonMultipartUpload(BaseUploadTest):
         )
         with self.assertRaisesRegex(ValueError, 'methods do not support'):
             self.manager.upload(self.filename, s3_object_lambda_arn, self.key)
-
 
 class TestMultipartUpload(BaseUploadTest):
     __test__ = True

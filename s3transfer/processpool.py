@@ -816,7 +816,7 @@ class GetObjectSubmitter(BaseS3TransferProcess):
     def _submit_get_object_jobs(self, download_file_request):
         size = self._get_size(download_file_request)
         temp_filename = self._allocate_temp_file(download_file_request, size)
-        if size < self._transfer_config.multipart_threshold:
+        if self._transfer_config.multiparth_threshold is None or size < self._transfer_config.multipart_threshold:
             self._submit_single_get_object_job(
                 download_file_request, temp_filename
             )

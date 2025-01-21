@@ -1,5 +1,5 @@
 {
   "type": "bugfix",
   "category": "upload",
-  "description": "Do not set a default checksum if the ``request_checksum_calculation`` config is set to ``when_required``. Fixes `boto/s3transfer#327 <https://github.com/boto/boto3/issues/327>`__."
+  "description": "Do not set a default checksum if the ``request_checksum_calculation`` config is set to ``when_required``. Fixes `boto/s3transfer#327 <https://github.com/boto/s3transfer/issues/327>`__."
 }

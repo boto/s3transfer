@@ -211,6 +211,8 @@ class Summarizer:
                 'std_dev_max_memory': self.std_dev_max_memory,
                 'average_memory': self.average_memory,
                 'std_dev_average_memory': self.std_dev_average_memory,
+                'std_dev_max_cpu': self.std_dev_max_cpu,
+                'max_cpu': self.max_cpu,
                 'average_cpu': self.average_cpu,
                 'std_dev_average_cpu': self.std_dev_average_cpu,
             },

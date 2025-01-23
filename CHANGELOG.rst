@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.11.2
+======
+
+* bugfix:upload: Only set a default checksum if the ``request_checksum_calculation`` config is set to ``when_supported``. Fixes `boto/s3transfer#327 <https://github.com/boto/s3transfer/issues/327>`__.
+
+
 0.11.1
 ======
 

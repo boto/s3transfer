@@ -269,10 +269,14 @@ class Summarizer:
         }
         if self._compute_percentiles:
             output.update({
-                'p50_memory': self.p50_memory,
                 'p95_memory': self.p95_memory,
-                'p50_cpu': self.p50_cpu,
+                'std_dev_p95_memory': self.std_dev_p95_memory,
+                'p50_memory': self.p50_memory,
+                'std_dev_p50_memory': self.std_dev_p50_memory,
                 'p95_cpu': self.p95_cpu,
+                'std_dev_p95_cpu': self.std_dev_p95_cpu,
+                'p50_cpu': self.p50_cpu,
+                'std_dev_p50_cpu': self.std_dev_p50_cpu,
             })
         return json.dumps(output, indent=2)
 

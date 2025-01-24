@@ -62,9 +62,6 @@ summary as JSON instead of a pretty printed table::
       "max_memory": 58331136.0
     }
 
-You can also specify the ``--compute-percentiles`` flag to compute
-p50 and p95 of CPU and memory usage over all samples.
-
 """
 
 import argparse
@@ -101,7 +98,6 @@ class Summarizer:
         self._num_rows = 0
         self._start_time = None
         self._end_time = None
-        self._compute_percentiles = False
         self._totals = {
             'time': [],
             'average_memory': [],
@@ -222,6 +218,10 @@ class Summarizer:
                 f'{self.max_cpu:.1f}',
                 self.std_dev_max_cpu,
             ],
+            ['p95 Memory', h(self.p95_memory), h(self.std_dev_p95_memory)],
+            ['p95 CPU (percent)', f'{self.p95_cpu:.1f}', self.std_dev_p95_cpu],
+            ['p50 Memory', h(self.p50_memory), h(self.std_dev_p50_memory)],
+            ['p50 CPU (percent)', f'{self.p50_cpu:.1f}', self.std_dev_p50_cpu],
             [
                 'Average Memory',
                 h(self.average_memory),
@@ -233,13 +233,6 @@ class Summarizer:
                 self.std_dev_average_cpu,
             ],
         ]
-        if self._compute_percentiles:
-            table.extend([
-                ['p95 Memory', h(self.p95_memory), h(self.std_dev_p95_memory)],
-                ['p50 Memory', h(self.p50_memory), h(self.std_dev_p50_memory)],
-                ['p95 CPU (percent)', f'{self.p95_cpu:.1f}', self.std_dev_p95_cpu],
-                ['p50 CPU (percent)', f'{self.p50_cpu:.1f}', self.std_dev_p50_cpu],
-            ])
         return tabulate(
             table,
             headers=[
@@ -255,35 +248,29 @@ class Summarizer:
 
         :return: str of formatted JSON
         """
-        output = {
+        return json.dumps({
             'total_time': self.total_time,
             'std_dev_total_time': self.std_dev_total_time,
             'max_memory': self.max_memory,
             'std_dev_max_memory': self.std_dev_max_memory,
+            'p95_memory': self.p95_memory,
+            'std_dev_p95_memory': self.std_dev_p95_memory,
+            'p50_memory': self.p50_memory,
+            'std_dev_p50_memory': self.std_dev_p50_memory,
             'average_memory': self.average_memory,
             'std_dev_average_memory': self.std_dev_average_memory,
             'std_dev_max_cpu': self.std_dev_max_cpu,
             'max_cpu': self.max_cpu,
+            'p95_cpu': self.p95_cpu,
+            'std_dev_p95_cpu': self.std_dev_p95_cpu,
+            'p50_cpu': self.p50_cpu,
+            'std_dev_p50_cpu': self.std_dev_p50_cpu,
             'average_cpu': self.average_cpu,
             'std_dev_average_cpu': self.std_dev_average_cpu,
-        }
-        if self._compute_percentiles:
-            output.update({
-                'p95_memory': self.p95_memory,
-                'std_dev_p95_memory': self.std_dev_p95_memory,
-                'p50_memory': self.p50_memory,
-                'std_dev_p50_memory': self.std_dev_p50_memory,
-                'p95_cpu': self.p95_cpu,
-                'std_dev_p95_cpu': self.std_dev_p95_cpu,
-                'p50_cpu': self.p50_cpu,
-                'std_dev_p50_cpu': self.std_dev_p50_cpu,
-            })
-        return json.dumps(output, indent=2)
+        }, indent=2)
 
     def process(self, args):
         """Processes the data from the CSV file"""
-        if args.compute_percentiles:
-            self._compute_percentiles = True
         for benchmark_file in args.benchmark_files:
             self.process_individual_file(benchmark_file)
             self.total_files += 1
@@ -322,8 +309,7 @@ class Summarizer:
         data_point = float(row[index])
         self._add_to_average(name, data_point)
         self._account_for_maximum(name, data_point)
-        if self._compute_percentiles:
-            self._samples[name].append(data_point)
+        self._samples[name].append(data_point)
 
     def _finalize_processed_data_for_file(self):
         # Add numbers to the total, which keeps track of data over
@@ -337,13 +323,12 @@ class Summarizer:
         self._totals['average_memory'].append(
             self._averages['memory'] / self._num_rows
         )
-        if self._compute_percentiles:
-            self._samples['memory'].sort()
-            self._samples['cpu'].sort()
-            self._totals['memory_p50'].append(self._compute_metric_percentile(50, 'memory'))
-            self._totals['memory_p95'].append(self._compute_metric_percentile(95, 'memory'))
-            self._totals['cpu_p50'].append(self._compute_metric_percentile(50, 'cpu'))
-            self._totals['cpu_p95'].append(self._compute_metric_percentile(95, 'cpu'))
+        self._samples['memory'].sort()
+        self._samples['cpu'].sort()
+        self._totals['memory_p50'].append(self._compute_metric_percentile(50, 'memory'))
+        self._totals['memory_p95'].append(self._compute_metric_percentile(95, 'memory'))
+        self._totals['cpu_p50'].append(self._compute_metric_percentile(50, 'cpu'))
+        self._totals['cpu_p95'].append(self._compute_metric_percentile(95, 'cpu'))
 
         # Reset some of the data needed to be tracked for each specific
         # file.
@@ -389,15 +374,6 @@ def main():
             'Specify what output format to use for displaying results. '
             'By default, a pretty printed table is used, but you can also '
             'specify "json" to display pretty printed JSON.'
-        ),
-    )
-    parser.add_argument(
-        '-q',
-        '--compute-percentiles',
-        action='store_true',
-        help=(
-            'Enable computation of P50 and P95 percentiles for '
-            'CPU and memory utilization over all samples taken. '
         ),
     )
     args = parser.parse_args()

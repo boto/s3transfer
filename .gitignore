@@ -38,5 +38,13 @@ pip-log.txt
 .idea*
 src/
 
+
+# Virtualenvs
+.venv
+venv
+env
+env2
+env3
+
 # Completions Index
 completions.idx

@@ -346,7 +346,7 @@ class DownloadSubmissionTask(SubmissionTask):
         :param bandwidth_limiter: The bandwidth limiter to use when
             downloading streams
         """
-        if transfer_future.meta.size is None:
+        if transfer_future.meta.size is None and config.multipart_threshold is not None:
             # If a size was not provided figure out the size for the
             # user.
             response = client.head_object(
@@ -364,7 +364,7 @@ class DownloadSubmissionTask(SubmissionTask):
 
         # If it is greater than threshold do a ranged download, otherwise
         # do a regular GetObject download.
-        if transfer_future.meta.size < config.multipart_threshold:
+        if config.multipart_threshold is None or transfer_future.meta.size < config.multipart_threshold:
             self._submit_download_request(
                 client,
                 config,

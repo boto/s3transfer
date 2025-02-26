@@ -901,7 +901,7 @@ class S3ClientArgsCreator:
                 algorithm=AwsSigningAlgorithm.V4_ASYMMETRIC,
                 region="*",
                 use_double_uri_encode=False,
-                should_normalize_uri_path=False
+                should_normalize_uri_path=False,
             )
             call_args.bucket = accesspoint_arn_details['resource_name']
         elif is_s3express_bucket(call_args.bucket):
@@ -910,7 +910,7 @@ class S3ClientArgsCreator:
             make_request_args['signing_config'] = AwsSigningConfig(
                 algorithm=AwsSigningAlgorithm.V4_S3EXPRESS,
                 use_double_uri_encode=False,
-                should_normalize_uri_path=False
+                should_normalize_uri_path=False,
             )
         return make_request_args
 

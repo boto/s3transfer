@@ -79,9 +79,9 @@ def run_benchmark(pid, output_file, data_interval):
                 memory_used = process_to_measure.memory_info().rss
                 cpu_percent = process_to_measure.cpu_percent()
                 current_net = psutil.net_io_counters(pernic=True)[INTERFACE]
-            except psutil.AccessDenied:
-                # Trying to get process information from a closed process will
-                # result in AccessDenied.
+            except (psutil.AccessDenied, psutil.ZombieProcess):
+                # Trying to get process information from a closed or zombie process will
+                # result in corresponding exceptions.
                 break
 
             # Collect data on the in/out network io.

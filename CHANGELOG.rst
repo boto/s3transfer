@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.11.3
+======
+
+* bugfix:``awscrt``: Fix urlencoding issues for request signing with the awscrt.
+
+
 0.11.2
 ======
 

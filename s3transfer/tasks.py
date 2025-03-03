@@ -13,9 +13,13 @@
 import copy
 import logging
 
-from botocore.context import start_as_current_context
-
 from s3transfer.utils import get_callbacks
+
+try:
+    from botocore.context import start_as_current_context
+except ImportError:
+    from contextlib import nullcontext as start_as_current_context
+
 
 logger = logging.getLogger(__name__)
 

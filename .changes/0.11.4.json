@@ -1,0 +1,12 @@
+[
+  {
+    "category": "Dependencies",
+    "description": "Update the floor version of botocore to 1.37.4 to match imports.",
+    "type": "enhancement"
+  },
+  {
+    "category": "Tasks",
+    "description": "Pass Botocore context from parent to child threads.",
+    "type": "enhancement"
+  }
+]

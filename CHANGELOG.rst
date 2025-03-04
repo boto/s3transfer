@@ -2,6 +2,13 @@
 CHANGELOG
 =========
 
+0.11.4
+======
+
+* enhancement:Dependencies: Update the floor version of botocore to 1.37.4 to match imports.
+* enhancement:Tasks: Pass Botocore context from parent to child threads.
+
+
 0.11.3
 ======
 

@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "Tasks",
-  "description": "Pass Botocore context from parent to child threads."
-}

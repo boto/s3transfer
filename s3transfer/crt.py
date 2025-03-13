@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import logging
+import os
 import re
 import threading
 from io import BytesIO
@@ -49,7 +50,6 @@ from s3transfer.utils import (
     get_callbacks,
     is_s3express_bucket,
 )
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,9 @@ def acquire_crt_s3_process_lock(name):
             CRT_S3_PROCESS_LOCK = None
 
     # Check if we've already registered using a function attribute
-    if not getattr(acquire_crt_s3_process_lock, '_fork_handler_registered', False):
+    if not getattr(
+        acquire_crt_s3_process_lock, '_fork_handler_registered', False
+    ):
         os.register_at_fork(after_in_child=after_in_child)
         acquire_crt_s3_process_lock._fork_handler_registered = True
 

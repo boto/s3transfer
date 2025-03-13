@@ -49,6 +49,7 @@ from s3transfer.utils import (
     get_callbacks,
     is_s3express_bucket,
 )
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,20 @@ def acquire_crt_s3_process_lock(name):
     # lock is set as a global so that it is not unintentionally garbage
     # collected/released if reference of the lock is lost.
     global CRT_S3_PROCESS_LOCK
+
+    def after_in_child():
+        global CRT_S3_PROCESS_LOCK
+        if CRT_S3_PROCESS_LOCK is not None:
+            # the lock is not belong to the forked child process.
+            # Release the lock after fork in child process.
+            CRT_S3_PROCESS_LOCK.release()
+            CRT_S3_PROCESS_LOCK = None
+
+    # Check if we've already registered using a function attribute
+    if not getattr(acquire_crt_s3_process_lock, '_fork_handler_registered', False):
+        os.register_at_fork(after_in_child=after_in_child)
+        acquire_crt_s3_process_lock._fork_handler_registered = True
+
     if CRT_S3_PROCESS_LOCK is None:
         crt_lock = awscrt.s3.CrossProcessLock(name)
         try:

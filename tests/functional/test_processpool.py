@@ -48,6 +48,9 @@ class StubbedClient:
     def add_client_error(self, *args, **kwargs):
         self._stubber.add_client_error(*args, **kwargs)
 
+    def assert_no_pending_responses(self):
+        self._stubber.assert_no_pending_responses()
+
 
 class StubbedClientManager(BaseManager):
     pass
@@ -107,17 +110,50 @@ class TestProcessPoolDownloader(unittest.TestCase):
         with open(filename, 'rb') as f:
             self.assertEqual(f.read(), expected_contents)
 
+    def add_head_object_response(self, expected_params=None):
+        head_response = {
+            'method': 'head_object',
+            'service_response': {'ContentLength': len(self.remote_contents)},
+        }
+        if expected_params:
+            head_response['expected_params'] = expected_params
+        self.stubbed_client.add_response(**head_response)
+
+    def add_get_object_response(self, expected_params=None):
+        get_object_response = {
+            'method': 'get_object',
+            'service_response': {'Body': self.stream},
+        }
+        if expected_params:
+            get_object_response['expected_params'] = expected_params
+        self.stubbed_client.add_response(**get_object_response)
+
+    def add_ranged_get_object_response(
+        self, range_start, range_end, expected_params=None
+    ):
+        expected = {'Range': f'bytes={range_start}-{range_end}'}
+        if expected_params:
+            expected.update(expected_params)
+        response = {
+            'method': 'get_object',
+            'service_response': {
+                'Body': BytesIO(
+                    self.remote_contents[range_start : range_end + 1]
+                )
+            },
+            'expected_params': expected_params,
+        }
+        self.stubbed_client.add_response(**response)
+
     def test_download_file(self):
-        self.stubbed_client.add_response(
-            'head_object', {'ContentLength': len(self.remote_contents)}
-        )
-        self.stubbed_client.add_response('get_object', {'Body': self.stream})
+        self.add_head_object_response()
+        self.add_get_object_response()
         with self.downloader:
             self.downloader.download_file(self.bucket, self.key, self.filename)
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_download_multiple_files(self):
-        self.stubbed_client.add_response('get_object', {'Body': self.stream})
+        self.add_get_object_response()
         self.stubbed_client.add_response(
             'get_object', {'Body': BytesIO(self.remote_contents)}
         )
@@ -140,9 +176,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
 
     def test_download_file_ranged_download(self):
         half_of_content_length = int(len(self.remote_contents) / 2)
-        self.stubbed_client.add_response(
-            'head_object', {'ContentLength': len(self.remote_contents)}
-        )
+        self.add_head_object_response()
         self.stubbed_client.add_response(
             'get_object',
             {'Body': BytesIO(self.remote_contents[:half_of_content_length])},
@@ -163,24 +197,13 @@ class TestProcessPoolDownloader(unittest.TestCase):
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_download_file_extra_args(self):
-        self.stubbed_client.add_response(
-            'head_object',
-            {'ContentLength': len(self.remote_contents)},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key,
-                'VersionId': 'versionid',
-            },
-        )
-        self.stubbed_client.add_response(
-            'get_object',
-            {'Body': self.stream},
-            expected_params={
-                'Bucket': self.bucket,
-                'Key': self.key,
-                'VersionId': 'versionid',
-            },
-        )
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'VersionId': 'versionid',
+        }
+        self.add_head_object_response(expected_params)
+        self.add_get_object_response(expected_params)
         with self.downloader:
             self.downloader.download_file(
                 self.bucket,
@@ -191,7 +214,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
         self.assert_contents(self.filename, self.remote_contents)
 
     def test_download_file_expected_size(self):
-        self.stubbed_client.add_response('get_object', {'Body': self.stream})
+        self.add_get_object_response()
         with self.downloader:
             self.downloader.download_file(
                 self.bucket,
@@ -226,7 +249,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
                 )
 
     def test_result_with_success(self):
-        self.stubbed_client.add_response('get_object', {'Body': self.stream})
+        self.add_get_object_response()
         with self.downloader:
             future = self.downloader.download_file(
                 self.bucket,
@@ -249,7 +272,7 @@ class TestProcessPoolDownloader(unittest.TestCase):
                 future.result()
 
     def test_result_with_cancel(self):
-        self.stubbed_client.add_response('get_object', {'Body': self.stream})
+        self.add_get_object_response()
         with self.downloader:
             future = self.downloader.download_file(
                 self.bucket,
@@ -279,3 +302,80 @@ class TestProcessPoolDownloader(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             with self.downloader:
                 raise KeyboardInterrupt()
+
+    def test_download_range_clamped_to_size(self):
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        self.add_head_object_response(expected_params)
+        self.add_get_object_response(expected_params)
+
+        with self.downloader:
+            self.downloader.download_file(
+                self.bucket,
+                self.key,
+                self.filename,
+                range_start=-1,
+                range_end=len(self.remote_contents) + 10,
+            )
+
+        self.stubbed_client.assert_no_pending_responses()
+        self.assert_contents(self.filename, self.remote_contents)
+
+    def test_download_range_start(self):
+        range_start = 5
+        range_end = len(self.remote_contents) - 1
+        self.add_head_object_response()
+        self.add_ranged_get_object_response(range_start, range_end)
+        with self.downloader:
+            self.downloader.download_file(
+                self.bucket,
+                self.key,
+                self.filename,
+                range_start=range_start,
+                range_end=range_end,
+            )
+
+        self.stubbed_client.assert_no_pending_responses()
+        self.assert_contents(
+            self.filename, self.remote_contents[range_start : range_end + 1]
+        )
+
+    def test_download_range_end(self):
+        range_start = 0
+        range_end = 5
+        self.add_head_object_response()
+        self.add_ranged_get_object_response(range_start, range_end)
+        with self.downloader:
+            self.downloader.download_file(
+                self.bucket,
+                self.key,
+                self.filename,
+                range_start=range_start,
+                range_end=range_end,
+            )
+
+        self.stubbed_client.assert_no_pending_responses()
+        self.assert_contents(
+            self.filename, self.remote_contents[range_start : range_end + 1]
+        )
+
+    def test_download_range_start_and_end(self):
+        range_start = 5
+        range_end = 5
+        self.add_head_object_response()
+        self.add_ranged_get_object_response(range_start, range_end)
+        with self.downloader:
+            self.downloader.download_file(
+                self.bucket,
+                self.key,
+                self.filename,
+                range_start=range_start,
+                range_end=range_end,
+            )
+
+        self.stubbed_client.assert_no_pending_responses()
+        self.assert_contents(
+            self.filename, self.remote_contents[range_start : range_end + 1]
+        )

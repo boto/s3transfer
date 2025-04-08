@@ -978,12 +978,12 @@ class TestDeferQueue(unittest.TestCase):
             [{'offset': 3, 'data': 'd'}],
         )
 
-    def test_writes_below_min_offset_with_last_byte_above_min_offset_are_queued(self):
+    def test_writes_below_min_offset_with_last_byte_above_min_offset_are_queued(
+        self,
+    ):
         self.assertEqual(
             self.q.request_writes(offset=0, data='foo'),
-            [
-                {'offset': 0, 'data': 'foo'}
-            ]
+            [{'offset': 0, 'data': 'foo'}],
         )
 
         # Even though a partial write of 'foo' was completed at offset 0,
@@ -1039,4 +1039,3 @@ class TestDeferQueue(unittest.TestCase):
                 {'offset': 1, 'data': 'bar'},
             ],
         )
-

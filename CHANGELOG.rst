@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.11.5
+======
+
+* enhancement:``s3``: Implement memory performance fixes for downloads to non-seekable streams
+
+
 0.11.4
 ======
 

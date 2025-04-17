@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``s3``",
-  "description": "Implement memory performance fixes for downloads to non-seekable streams"
-}

@@ -164,6 +164,7 @@ class TransferManager:
 
     _ALLOWED_SHARED_ARGS = [
         'ACL',
+        'BucketKeyEnabled',
         'CacheControl',
         'ChecksumAlgorithm',
         'ContentDisposition',

@@ -1,5 +1,0 @@
-{
-  "type": "bugfix",
-  "category": "``GetObjectTask``",
-  "description": "Validate ETag of stored object during multipart downloads"
-}

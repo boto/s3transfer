@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.13.0
+======
+
+* feature:``GetObjectTask``: Validate ETag of stored object during multipart downloads
+
+
 0.12.0
 ======
 

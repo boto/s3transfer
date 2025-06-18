@@ -513,7 +513,7 @@ class ShutdownQueue(queue.Queue):
         with self._shutdown_lock:
             if self._shutdown:
                 raise QueueShutdownError(
-                    "Cannot put item to queue when " "queue has been shutdown."
+                    "Cannot put item to queue when queue has been shutdown."
                 )
         return queue.Queue.put(self, item)
 
@@ -800,8 +800,7 @@ class S3Transfer:
             )
         except Exception:
             logger.debug(
-                "Exception caught in download_file, removing partial "
-                "file: %s",
+                "Exception caught in download_file, removing partial file: %s",
                 temp_filename,
                 exc_info=True,
             )

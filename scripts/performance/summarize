@@ -81,7 +81,7 @@ def human_readable_size(value):
     if bytes_int == 1:
         return '1 Byte'
     elif bytes_int < base:
-        return '%d Bytes' % bytes_int
+        return f'{bytes_int} Bytes'
 
     for i, suffix in enumerate(hummanize_suffixes):
         unit = base ** (i + 2)

@@ -134,6 +134,7 @@ import random
 import socket
 import string
 import threading
+from logging import NullHandler
 
 from botocore.compat import six  # noqa: F401
 from botocore.exceptions import IncompleteReadError, ResponseStreamingError
@@ -146,11 +147,6 @@ from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
 __version__ = '0.13.0'
-
-
-class NullHandler(logging.Handler):
-    def emit(self, record):
-        pass
 
 
 logger = logging.getLogger(__name__)

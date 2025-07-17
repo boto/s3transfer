@@ -27,9 +27,6 @@ from botocore.exceptions import (
     ResponseStreamingError,
 )
 from botocore.httpchecksum import DEFAULT_CHECKSUM_ALGORITHM, AwsChunkedWrapper
-from botocore.utils import (
-    create_nested_client as botocore_create_nested_client,
-)
 from botocore.utils import is_s3express_bucket
 
 from s3transfer.compat import SOCKET_ERROR, fallocate, rename_file

@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "Client Creation",
-  "description": "Adds a utility method to create nested clients by calling a utility method in botocore"
-}

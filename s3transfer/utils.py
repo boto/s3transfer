@@ -833,6 +833,9 @@ def set_default_checksum_algorithm(extra_args):
     extra_args.setdefault("ChecksumAlgorithm", DEFAULT_CHECKSUM_ALGORITHM)
 
 
+# NOTE: The following interfaces are considered private and are subject
+# to abrupt breaking changes. Please do not use them directly.
+
 try:
     from botocore.utils import create_nested_client as create_client
 except ImportError:

@@ -27,6 +27,9 @@ from botocore.exceptions import (
     ResponseStreamingError,
 )
 from botocore.httpchecksum import DEFAULT_CHECKSUM_ALGORITHM, AwsChunkedWrapper
+from botocore.utils import (
+    create_nested_client as botocore_create_nested_client,
+)
 from botocore.utils import is_s3express_bucket
 
 from s3transfer.compat import SOCKET_ERROR, fallocate, rename_file
@@ -831,3 +834,7 @@ def set_default_checksum_algorithm(extra_args):
     if any(checksum in extra_args for checksum in FULL_OBJECT_CHECKSUM_ARGS):
         return
     extra_args.setdefault("ChecksumAlgorithm", DEFAULT_CHECKSUM_ALGORITHM)
+
+
+def create_nested_client(session, service_name, **kwargs):
+    return botocore_create_nested_client(session, service_name, **kwargs)

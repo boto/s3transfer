@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.13.1
+======
+
+* enhancement:Python: Added provisional support for the upcoming Python 3.14 release
+
+
 0.13.0
 ======
 

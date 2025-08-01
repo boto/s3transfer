@@ -380,6 +380,7 @@ class TestMultipartDownloader(unittest.TestCase):
 
     def test_multipart_download_uses_correct_client_calls(self):
         client = mock.Mock()
+        version_id = '123'
         response_body = b'foobarbaz'
         client.get_object.return_value = {'Body': BytesIO(response_body)}
 
@@ -392,6 +393,14 @@ class TestMultipartDownloader(unittest.TestCase):
 
         client.get_object.assert_called_with(
             Range='bytes=0-', Bucket='bucket', Key='key'
+        )
+
+        downloader.download_versioned_file(
+            'bucket', 'key', 'filename', len(response_body), version_id, {}
+        )
+
+        client.get_object.assert_called_with(
+            Range='bytes=0-', Bucket='bucket', Key='key', VersionId=version_id
         )
 
     def test_multipart_download_with_multiple_parts(self):
@@ -606,12 +615,39 @@ class TestS3Transfer(unittest.TestCase):
                 'bucket', 'key', 'filename', callback=callback
             )
 
-            downloader.return_value.download_file.assert_called_with(
+            downloader.return_value.download_versioned_file.assert_called_with(
                 # Note how we're downloading to a temporary random file.
                 'bucket',
                 'key',
                 'filename.RANDOM',
                 over_multipart_threshold,
+                None,
+                {},
+                callback,
+            )
+
+    def test_multipart_download_uses_version(self):
+        with mock.patch('s3transfer.MultipartDownloader') as downloader:
+            osutil = InMemoryOSLayer({})
+            over_multipart_threshold = 100 * 1024 * 1024
+            version_id = 'version-id'
+            transfer = S3Transfer(self.client, osutil=osutil)
+            callback = mock.sentinel.CALLBACK
+            self.client.head_object.return_value = {
+                'ContentLength': over_multipart_threshold,
+                'VersionId': version_id,
+            }
+            transfer.download_file(
+                'bucket', 'key', 'filename', callback=callback
+            )
+
+            downloader.return_value.download_versioned_file.assert_called_with(
+                # Note how we're downloading to a temporary random file.
+                'bucket',
+                'key',
+                'filename.RANDOM',
+                over_multipart_threshold,
+                version_id,
                 {},
                 callback,
             )

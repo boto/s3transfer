@@ -366,13 +366,27 @@ class DownloadSubmissionTask(SubmissionTask):
             # during a multipart download.
             transfer_future.meta.provide_object_etag(response.get('ETag'))
 
+        # Clamp range_start and range_end to the length of the object
+        range_start = transfer_future.meta.call_args.range_start
+        if range_start < 0:
+            range_start = 0
+        range_end = transfer_future.meta.call_args.range_end
+        if range_end is None or range_end >= transfer_future.meta.size:
+            range_end = transfer_future.meta.size - 1
+        transfer_future.meta.call_args.range_start = range_start
+        transfer_future.meta.call_args.range_end = range_end
+
         download_output_manager = self._get_download_output_manager_cls(
             transfer_future, osutil
         )(osutil, self._transfer_coordinator, io_executor)
 
-        # If it is greater than threshold do a ranged download, otherwise
-        # do a regular GetObject download.
-        if transfer_future.meta.size < config.multipart_threshold:
+        # If it is greater than threshold and the whole object do a ranged download,
+        # otherwise do a regular GetObject download.
+        if (
+            transfer_future.meta.size < config.multipart_threshold
+            and range_start == 0
+            and range_end == transfer_future.meta.size - 1
+        ):
             self._submit_download_request(
                 client,
                 config,
@@ -469,7 +483,9 @@ class DownloadSubmissionTask(SubmissionTask):
 
         # Determine the number of parts
         part_size = config.multipart_chunksize
-        num_parts = calculate_num_parts(transfer_future.meta.size, part_size)
+        num_parts = calculate_num_parts(
+            max(call_args.range_end - call_args.range_start + 1, 0), part_size
+        )
 
         # Get any associated tags for the get object task.
         get_object_tag = download_output_manager.get_download_task_tag()
@@ -484,7 +500,11 @@ class DownloadSubmissionTask(SubmissionTask):
         for i in range(num_parts):
             # Calculate the range parameter
             range_parameter = calculate_range_parameter(
-                part_size, i, num_parts
+                part_size,
+                i,
+                num_parts,
+                call_args.range_end + 1,
+                call_args.range_start,
             )
 
             # Inject extra parameters to be passed in as extra args
@@ -526,16 +546,6 @@ class DownloadSubmissionTask(SubmissionTask):
         return FunctionContainer(
             self._transfer_coordinator.submit, io_executor, final_task
         )
-
-    def _calculate_range_param(self, part_size, part_index, num_parts):
-        # Used to calculate the Range parameter
-        start_range = part_index * part_size
-        if part_index == num_parts - 1:
-            end_range = ''
-        else:
-            end_range = start_range + part_size - 1
-        range_param = f'bytes={start_range}-{end_range}'
-        return range_param
 
 
 class GetObjectTask(Task):

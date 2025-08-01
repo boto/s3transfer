@@ -398,6 +398,8 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         self.etag = 'myetag'
         self.extra_args = {'IfMatch': self.etag}
         self.subscribers = []
+        self.range_start = 0
+        self.range_end = None
 
         # Create a stream to read from
         self.content = b'my content'
@@ -430,6 +432,8 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
             'key': self.key,
             'extra_args': self.extra_args,
             'subscribers': self.subscribers,
+            'range_start': self.range_start,
+            'range_end': self.range_end,
         }
         default_call_args.update(kwargs)
         return CallArgs(**default_call_args)

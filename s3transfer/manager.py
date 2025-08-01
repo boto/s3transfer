@@ -211,6 +211,7 @@ class TransferManager:
         'CopySourceSSECustomerKeyMD5',
         'MetadataDirective',
         'TaggingDirective',
+        'ExpectedSourceBucketOwner',
     ]
 
     ALLOWED_DELETE_ARGS = [

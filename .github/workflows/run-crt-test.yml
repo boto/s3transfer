@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
 
     steps:
-    - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@61a6322f88396a6271a6ee3565807d608ecaddd1
       with:

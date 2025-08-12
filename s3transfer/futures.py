@@ -35,7 +35,11 @@ logger = logging.getLogger(__name__)
 class BaseTransferFuture:
     @property
     def meta(self):
-        """The metadata associated to the TransferFuture"""
+        """The metadata associated with the TransferFuture.
+
+        This typically includes transfer id, call arguments and other context
+        visible to the requester.
+        """
         raise NotImplementedError('meta')
 
     def done(self):
@@ -305,7 +309,7 @@ class TransferCoordinator:
                     self.announce_done()
 
     def set_status_to_queued(self):
-        """Sets the TransferFutrue's status to running"""
+        """Sets the TransferFuture's status to 'queued'."""
         self._transition_to_non_done_state('queued')
 
     def set_status_to_running(self):
@@ -349,10 +353,10 @@ class TransferCoordinator:
         return future
 
     def done(self):
-        """Determines if a TransferFuture has completed
+        """Determines if a TransferFuture has completed.
 
-        :returns: False if status is equal to 'failed', 'cancelled', or
-            'success'. True, otherwise
+        :returns: True if status is 'failed', 'cancelled', or 'success'.
+                  False otherwise.
         """
         return self.status in ['failed', 'cancelled', 'success']
 

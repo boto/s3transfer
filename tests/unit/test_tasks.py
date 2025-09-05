@@ -406,6 +406,24 @@ class TestSubmissionTask(BaseSubmissionTaskTest):
         # for making sure it announces done as nothing else will.
         self.assertEqual(invocations_of_done, ['done announced'])
 
+    def test_failure_cleanup_not_run_if_cancelled_before_main(self):
+        invocations_of_cleanup = []
+        cleanup_callback = FunctionContainer(
+            invocations_of_cleanup.append, 'cleanup called'
+        )
+        self.transfer_coordinator.add_failure_cleanup(cleanup_callback)
+
+        self.transfer_coordinator.cancel()
+        submission_task = self.get_task(
+            NOOPSubmissionTask, main_kwargs=self.main_kwargs
+        )
+        submission_task()
+
+        # Because the submission task was cancelled before being run the
+        # transfer is not considered a failure and the failure cleanup
+        # should not be called.
+        self.assertFalse(invocations_of_cleanup)
+
 
 class TestTask(unittest.TestCase):
     def setUp(self):

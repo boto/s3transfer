@@ -183,9 +183,16 @@ class TransferMeta(BaseTransferMeta):
 class TransferCoordinator:
     """A helper class for managing TransferFuture"""
 
+    NOT_STARTED_STATUS = 'not-started'
+    QUEUED_STATUS = 'queued'
+    RUNNING_STATUS = 'running'
+    CANCELLED_STATUS = 'cancelled'
+    FAILED_STATUS = 'failed'
+    SUCCESS_STATUS = 'success'
+
     def __init__(self, transfer_id=None):
         self.transfer_id = transfer_id
-        self._status = 'not-started'
+        self._status = TransferCoordinator.NOT_STARTED_STATUS
         self._result = None
         self._exception = None
         self._associated_futures = set()
@@ -253,7 +260,7 @@ class TransferCoordinator:
         with self._lock:
             self._exception = None
             self._result = result
-            self._status = 'success'
+            self._status = TransferCoordinator.SUCCESS_STATUS
 
     def set_exception(self, exception, override=False):
         """Set an exception for the TransferFuture
@@ -266,7 +273,7 @@ class TransferCoordinator:
         with self._lock:
             if not self.done() or override:
                 self._exception = exception
-                self._status = 'failed'
+                self._status = TransferCoordinator.FAILED_STATUS
 
     def result(self):
         """Waits until TransferFuture is done and returns the result
@@ -295,22 +302,21 @@ class TransferCoordinator:
         """
         with self._lock:
             if not self.done():
-                should_announce_done = False
                 logger.debug('%s cancel(%s) called', self, msg)
                 self._exception = exc_type(msg)
-                if self._status == 'not-started':
-                    should_announce_done = True
-                self._status = 'cancelled'
-                if should_announce_done:
-                    self.announce_done()
+                started = (
+                    self._status != TransferCoordinator.NOT_STARTED_STATUS
+                )
+                self._status = TransferCoordinator.CANCELLED_STATUS
+                self.announce_done(started)
 
     def set_status_to_queued(self):
         """Sets the TransferFutrue's status to running"""
-        self._transition_to_non_done_state('queued')
+        self._transition_to_non_done_state(TransferCoordinator.QUEUED_STATUS)
 
     def set_status_to_running(self):
         """Sets the TransferFuture's status to running"""
-        self._transition_to_non_done_state('running')
+        self._transition_to_non_done_state(TransferCoordinator.RUNNING_STATUS)
 
     def _transition_to_non_done_state(self, desired_state):
         with self._lock:
@@ -354,7 +360,11 @@ class TransferCoordinator:
         :returns: False if status is equal to 'failed', 'cancelled', or
             'success'. True, otherwise
         """
-        return self.status in ['failed', 'cancelled', 'success']
+        return self.status in [
+            TransferCoordinator.FAILED_STATUS,
+            TransferCoordinator.CANCELLED_STATUS,
+            TransferCoordinator.SUCCESS_STATUS,
+        ]
 
     def add_associated_future(self, future):
         """Adds a future to be associated with the TransferFuture"""
@@ -380,17 +390,25 @@ class TransferCoordinator:
                 FunctionContainer(function, *args, **kwargs)
             )
 
-    def announce_done(self):
+    def announce_done(self, started=True):
         """Announce that future is done running and run associated callbacks
 
         This will run any failure cleanups if the transfer failed if not
         they have not been run, allows the result() to be unblocked, and will
         run any done callbacks associated to the TransferFuture if they have
         not already been ran.
+
+        :param started: Has the transfer started yet.  If not started the
+            transfer can be canceled immediately and failure cleanups will not
+            be called.
         """
-        if self.status != 'success':
+        # Only run failure cleanups if the transfer has started.  If a transfer
+        # is in the not-started state when cancel() is called the transfer is
+        # not considered a failure.
+        if started and self.status != TransferCoordinator.SUCCESS_STATUS:
             self._run_failure_cleanups()
         self._done_event.set()
+        # Done callbacks are run even if the transfer has not been started
         self._run_done_callbacks()
 
     def _run_done_callbacks(self):

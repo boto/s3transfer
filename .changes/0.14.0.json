@@ -1,0 +1,7 @@
+[
+  {
+    "category": "download",
+    "description": "Validate requested range matches content range in response for multipart downloads",
+    "type": "feature"
+  }
+]

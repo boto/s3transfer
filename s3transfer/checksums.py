@@ -15,6 +15,8 @@ NOTE: All classes and functions in this module are considered private and are
 subject to abrupt breaking changes. Please do not use them directly.
 """
 
+from copy import copy
+
 
 def combine_crc32(crc1, crc2, len2):
     """Combine two CRC32 values.
@@ -31,57 +33,60 @@ def combine_crc32(crc1, crc2, len2):
     :rtype: int
     :returns: Combined CRC32 integer value.
     """
+    _GF2_DIM = 32
+    _CRC32_POLY = 0xEDB88320
+    _MASK_32BIT = 0xFFFFFFFF
 
-    POLY = 0xEDB88320
-
-    def gf2_matrix_multiply(mat, vec):
-        """Multiply a matrix by a vector in GF(2)"""
-        result = 0
-        for i in range(32):
+    def _gf2_matrix_times(mat, vec):
+        res = 0
+        idx = 0
+        while vec != 0:
             if vec & 1:
-                result ^= mat[i]
+                res ^= mat[idx]
             vec >>= 1
-        return result
+            idx += 1
+        return res
 
-    def gf2_matrix_square(mat):
-        """Square a matrix in GF(2)"""
-        result = [0] * 32
-        for i in range(32):
-            result[i] = gf2_matrix_multiply(mat, mat[i])
-        return result
+    def _gf2_matrix_square(square, mat):
+        res = copy(square)
+        for n in range(_GF2_DIM):
+            d = mat[n]
+            res[n] = _gf2_matrix_times(mat, d)
+        return res
 
-    def crc32_matrix_power(length):
-        """Generate transformation matrix for CRC32 over given length"""
-        # Base transformation matrix (multiply by x)
-        mat = [0] * 32
-        mat[0] = POLY
-        for i in range(1, 32):
-            mat[i] = 1 << (i - 1)
+    even = [0] * _GF2_DIM
+    odd = [0] * _GF2_DIM
 
-        # Compute mat^length using binary exponentiation
-        result = [0] * 32
-        for i in range(32):
-            result[i] = 1 << i
-
-        n = length
-        while n > 0:
-            if n & 1:
-                result = [
-                    gf2_matrix_multiply(mat, result[i]) for i in range(32)
-                ]
-            mat = gf2_matrix_square(mat)
-            n >>= 1
-
-        return result
-
-    if len2 == 0:
+    if len2 <= 0:
         return crc1
 
-    transform_matrix = crc32_matrix_power(len2 * 8)
-    transformed_crc1 = gf2_matrix_multiply(transform_matrix, crc1)
-    combined = transformed_crc1 ^ crc2
+    odd[0] = _CRC32_POLY
+    row = 1
+    for i in range(1, _GF2_DIM):
+        odd[i] = row
+        row <<= 1
 
-    return combined & 0xFFFFFFFF
+    even = _gf2_matrix_square(even, odd)
+    odd = _gf2_matrix_square(odd, even)
+
+    while True:
+        even = _gf2_matrix_square(even, odd)
+        if len2 & 1:
+            crc1 = _gf2_matrix_times(even, crc1)
+        len2 >>= 1
+
+        if len2 == 0:
+            break
+
+        odd = _gf2_matrix_square(odd, even)
+        if len2 & 1:
+            crc1 = _gf2_matrix_times(odd, crc1)
+        len2 >>= 1
+
+        if len2 == 0:
+            break
+
+    return (crc1 ^ crc2) & _MASK_32BIT
 
 
 _CRC_CHECKSUM_TO_COMBINE_FUNCTION = {

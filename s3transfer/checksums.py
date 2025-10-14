@@ -15,8 +15,6 @@ NOTE: All classes and functions in this module are considered private and are
 subject to abrupt breaking changes. Please do not use them directly.
 """
 
-from copy import copy
-
 
 def combine_crc32(crc1, crc2, len2):
     """Combine two CRC32 values.
@@ -48,11 +46,10 @@ def combine_crc32(crc1, crc2, len2):
         return res
 
     def _gf2_matrix_square(square, mat):
-        res = copy(square)
         for n in range(_GF2_DIM):
             d = mat[n]
-            res[n] = _gf2_matrix_times(mat, d)
-        return res
+            square[n] = _gf2_matrix_times(mat, d)
+        return square
 
     even = [0] * _GF2_DIM
     odd = [0] * _GF2_DIM
@@ -69,7 +66,7 @@ def combine_crc32(crc1, crc2, len2):
     even = _gf2_matrix_square(even, odd)
     odd = _gf2_matrix_square(odd, even)
 
-    while True:
+    while len2 != 0:
         even = _gf2_matrix_square(even, odd)
         if len2 & 1:
             crc1 = _gf2_matrix_times(even, crc1)
@@ -82,9 +79,6 @@ def combine_crc32(crc1, crc2, len2):
         if len2 & 1:
             crc1 = _gf2_matrix_times(odd, crc1)
         len2 >>= 1
-
-        if len2 == 0:
-            break
 
     return (crc1 ^ crc2) & _MASK_32BIT
 

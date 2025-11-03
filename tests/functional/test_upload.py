@@ -177,6 +177,30 @@ class TestNonMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_put_object_body_was_correct()
 
+    def test_upload_with_if_match(self):
+        self.extra_args['IfMatch'] = 'my-etag'
+        self.add_put_object_response_with_default_expected_params(
+            extra_expected_params={'IfMatch': 'my-etag'}
+        )
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
+
+    def test_upload_with_if_none_match(self):
+        self.extra_args['IfNoneMatch'] = '*'
+        self.add_put_object_response_with_default_expected_params(
+            extra_expected_params={'IfNoneMatch': '*'}
+        )
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+        self.assert_put_object_body_was_correct()
+
     def test_upload_with_checksum(self):
         self.extra_args['ChecksumAlgorithm'] = 'sha256'
         self.add_put_object_response_with_default_expected_params(
@@ -651,6 +675,32 @@ class TestMultipartUpload(BaseUploadTest):
         self.add_upload_part_responses_with_default_expected_params()
         self.add_complete_multipart_response_with_default_expected_params()
 
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+
+    def test_multipart_upload_with_if_match(self):
+        self.extra_args['IfMatch'] = 'my-etag'
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params(
+            extra_expected_params={'IfMatch': 'my-etag'}
+        )
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+        self.assert_expected_client_calls_were_correct()
+
+    def test_multipart_upload_with_if_none_match(self):
+        self.extra_args['IfNoneMatch'] = '*'
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params(
+            extra_expected_params={'IfNoneMatch': '*'}
+        )
         future = self.manager.upload(
             self.filename, self.bucket, self.key, self.extra_args
         )

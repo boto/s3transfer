@@ -515,7 +515,11 @@ class UploadSubmissionTask(SubmissionTask):
 
     PUT_OBJECT_BLOCKLIST = ["ChecksumType", "MpuObjectSize"]
 
-    CREATE_MULTIPART_BLOCKLIST = FULL_OBJECT_CHECKSUM_ARGS + ["MpuObjectSize"]
+    CREATE_MULTIPART_BLOCKLIST = FULL_OBJECT_CHECKSUM_ARGS + [
+        "MpuObjectSize",
+        "IfMatch",
+        "IfNoneMatch",
+    ]
 
     UPLOAD_PART_ARGS = [
         'ChecksumAlgorithm',
@@ -534,6 +538,8 @@ class UploadSubmissionTask(SubmissionTask):
         'ExpectedBucketOwner',
         'ChecksumType',
         'MpuObjectSize',
+        'IfMatch',
+        'IfNoneMatch',
     ] + FULL_OBJECT_CHECKSUM_ARGS
 
     def _get_upload_input_manager_cls(self, transfer_future):

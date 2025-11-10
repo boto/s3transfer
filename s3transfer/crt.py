@@ -193,7 +193,9 @@ class CRTTransferManager:
 
     _UNSUPPORTED_BUCKET_PATTERNS = TransferManager._UNSUPPORTED_BUCKET_PATTERNS
 
-    def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
+    def __init__(
+        self, crt_s3_client, crt_request_serializer, osutil=None, config=None
+    ):
         """A transfer manager interface for Amazon S3 on CRT s3 client.
 
         :type crt_s3_client: awscrt.s3.S3Client
@@ -207,12 +209,18 @@ class CRTTransferManager:
         :type osutil: s3transfer.utils.OSUtils
         :param osutil: OSUtils object to use for os-related behavior when
             using with transfer manager.
+
+        :type config: s3transfer.manager.TransferConfig
+        :param config: The transfer configuration to be used when
+            making CRT S3 client requests.
         """
         if osutil is None:
             self._osutil = OSUtils()
         self._crt_s3_client = crt_s3_client
         self._s3_args_creator = S3ClientArgsCreator(
-            crt_request_serializer, self._osutil
+            crt_request_serializer,
+            self._osutil,
+            config,
         )
         self._crt_exception_translator = (
             crt_request_serializer.translate_crt_exception
@@ -732,9 +740,22 @@ class CRTTransferCoordinator:
 
 
 class S3ClientArgsCreator:
-    def __init__(self, crt_request_serializer, os_utils):
+    def __init__(self, crt_request_serializer, os_utils, config=None):
         self._request_serializer = crt_request_serializer
         self._os_utils = os_utils
+        self._config = config
+
+    def _get_crt_transfer_config_options(self):
+        part_size = self._config.multipart_chunksize
+        if (
+            self._config.get_deep_attr('multipart_chunksize')
+            is self._config.UNSET_DEFAULT
+        ):
+            # Let CRT dynamically calculate part size.
+            part_size = None
+        return {
+            'part_size': part_size,
+        }
 
     def get_make_request_args(
         self, request_type, call_args, coordinator, future, on_done_after_calls
@@ -823,6 +844,11 @@ class S3ClientArgsCreator:
         )
         make_request_args['send_filepath'] = send_filepath
         make_request_args['checksum_config'] = checksum_config
+        if self._config is not None:
+            make_request_args.update(self._get_crt_transfer_config_options())
+            make_request_args['multipart_upload_threshold'] = (
+                self._config.multipart_threshold
+            )
         return make_request_args
 
     def _get_make_request_args_get_object(
@@ -859,6 +885,8 @@ class S3ClientArgsCreator:
         make_request_args['recv_filepath'] = recv_filepath
         make_request_args['on_body'] = on_body
         make_request_args['checksum_config'] = checksum_config
+        if self._config is not None:
+            make_request_args.update(self._get_crt_transfer_config_options())
         return make_request_args
 
     def _default_get_make_request_args(

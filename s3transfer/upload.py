@@ -791,9 +791,16 @@ class PutObjectTask(Task):
         :param key: The name of the key to upload to
         :param extra_args: A dictionary of any extra arguments that may be
             used in the upload.
+        :returns: A dictionary representing metadata information about the
+            upload, such as the ETag for the uploaded entity.
         """
         with fileobj as body:
-            client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
+            response = client.put_object(Bucket=bucket, Key=key, Body=body,
+                **extra_args)
+            metadata = dict()
+            if 'ETag' in response:
+                metadata['ETag'] = response['ETag']
+            return metadata
 
 
 class UploadPartTask(Task):

@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``CopyPartTask``",
+    "description": "Validate ETag of stored object during multipart copies",
+    "type": "feature"
+  }
+]

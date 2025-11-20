@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.15.0
+======
+
+* feature:``CopyPartTask``: Validate ETag of stored object during multipart copies
+
+
 0.14.0
 ======
 

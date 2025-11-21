@@ -776,6 +776,7 @@ class TestCRTTransferManager(unittest.TestCase):
         config = TransferConfig(
             multipart_threshold=4 * MB,
             multipart_chunksize=2 * MB,
+            max_request_concurrency=100,
         )
         transfer_manager = s3transfer.crt.CRTTransferManager(
             crt_s3_client=self.s3_crt_client,
@@ -790,11 +791,13 @@ class TestCRTTransferManager(unittest.TestCase):
         callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
         assert callargs_kwargs['multipart_upload_threshold'] == 4 * MB
         assert callargs_kwargs['part_size'] == 2 * MB
+        assert callargs_kwargs['max_active_connections_override'] == 100
 
     def test_transfer_config_used_in_download_request(self):
         config = TransferConfig(
             multipart_threshold=4 * MB,
             multipart_chunksize=2 * MB,
+            max_request_concurrency=100,
         )
         transfer_manager = s3transfer.crt.CRTTransferManager(
             crt_s3_client=self.s3_crt_client,
@@ -808,6 +811,7 @@ class TestCRTTransferManager(unittest.TestCase):
 
         callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
         assert callargs_kwargs['part_size'] == 2 * MB
+        assert callargs_kwargs['max_active_connections_override'] == 100
         # Config option only used for PUT requests.
         assert 'multipart_upload_threshold' not in callargs_kwargs
 
@@ -827,3 +831,20 @@ class TestCRTTransferManager(unittest.TestCase):
 
         callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
         assert callargs_kwargs['part_size'] is None
+
+    def test_unset_max_concurrency_defaults_to_none(self):
+        config = TransferConfig(
+            max_request_concurrency=TransferConfig.UNSET_DEFAULT,
+        )
+        transfer_manager = s3transfer.crt.CRTTransferManager(
+            crt_s3_client=self.s3_crt_client,
+            crt_request_serializer=self.request_serializer,
+            config=config,
+        )
+        future = transfer_manager.upload(
+            self.filename, self.bucket, self.key, {}, []
+        )
+        future.result()
+
+        callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
+        assert callargs_kwargs['max_active_connections_override'] is None

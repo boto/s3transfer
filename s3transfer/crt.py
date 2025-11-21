@@ -753,8 +753,15 @@ class S3ClientArgsCreator:
         ):
             # Let CRT dynamically calculate part size.
             part_size = None
+        max_connections = self._config.max_request_concurrency
+        if (
+            self._config.get_deep_attr('max_request_concurrency')
+            is self._config.UNSET_DEFAULT
+        ):
+            max_connections = None
         return {
             'part_size': part_size,
+            'max_active_connections_override': max_connections,
         }
 
     def get_make_request_args(

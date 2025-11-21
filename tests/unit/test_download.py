@@ -462,13 +462,23 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def add_get_responses(self):
         chunksize = self.config.multipart_chunksize
-        for i in range(0, len(self.content), chunksize):
-            if i + chunksize > len(self.content):
+        total_size = len(self.content)
+        for i in range(0, total_size, chunksize):
+            if i + chunksize > total_size:
                 stream = BytesIO(self.content[i:])
-                self.stubber.add_response('get_object', {'Body': stream})
+                end = total_size - 1
             else:
                 stream = BytesIO(self.content[i : i + chunksize])
-                self.stubber.add_response('get_object', {'Body': stream})
+                end = i + chunksize - 1
+
+            response = {
+                'Body': stream,
+                'ContentLength': len(self.content[i : i + chunksize]),
+                'ETag': self.etag,
+            }
+            if i == 0:
+                response['ContentRange'] = f'bytes {i}-{end}/{total_size}'
+            self.stubber.add_response('get_object', response)
 
     def configure_for_ranged_get(self):
         self.config.multipart_threshold = 1
@@ -486,7 +496,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def test_submits_no_tag_for_get_object_filename(self):
         self.wrap_executor_in_recorder()
-        self.add_head_object_response()
         self.add_get_responses()
 
         self.submission_task = self.get_download_submission_task()
@@ -499,7 +508,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def test_submits_no_tag_for_ranged_get_filename(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
-        self.add_head_object_response()
         self.add_get_responses()
 
         self.submission_task = self.get_download_submission_task()
@@ -511,7 +519,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def test_submits_no_tag_for_get_object_fileobj(self):
         self.wrap_executor_in_recorder()
-        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -526,7 +533,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def test_submits_no_tag_for_ranged_get_object_fileobj(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
-        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -540,7 +546,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def tests_submits_tag_for_get_object_nonseekable_fileobj(self):
         self.wrap_executor_in_recorder()
-        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -555,7 +560,6 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def tests_submits_tag_for_ranged_get_object_nonseekable_fileobj(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
-        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:

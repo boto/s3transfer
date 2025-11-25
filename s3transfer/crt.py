@@ -745,24 +745,34 @@ class S3ClientArgsCreator:
         self._os_utils = os_utils
         self._config = config
 
-    def _get_crt_transfer_config_options(self):
+    def _get_crt_transfer_config_options(self, request_type):
         part_size = self._config.multipart_chunksize
+        max_connections = self._config.max_request_concurrency
+        crt_config = {
+            'part_size': part_size,
+            'max_active_connections_override': max_connections,
+        }
+
         if (
             self._config.get_deep_attr('multipart_chunksize')
             is self._config.UNSET_DEFAULT
         ):
             # Let CRT dynamically calculate part size.
-            part_size = None
-        max_connections = self._config.max_request_concurrency
+            crt_config['part_size'] = None
         if (
             self._config.get_deep_attr('max_request_concurrency')
             is self._config.UNSET_DEFAULT
         ):
-            max_connections = None
-        return {
-            'part_size': part_size,
-            'max_active_connections_override': max_connections,
-        }
+            crt_config['max_active_connections_override'] = None
+
+        if hasattr(self, f'_get_crt_options_{request_type}'):
+            crt_config.update(
+                getattr(self, f'_get_crt_options_{request_type}')()
+            )
+        return crt_config
+
+    def _get_crt_options_put_object(self):
+        return {'multipart_upload_threshold': self._config.multipart_threshold}
 
     def get_make_request_args(
         self, request_type, call_args, coordinator, future, on_done_after_calls
@@ -852,9 +862,8 @@ class S3ClientArgsCreator:
         make_request_args['send_filepath'] = send_filepath
         make_request_args['checksum_config'] = checksum_config
         if self._config is not None:
-            make_request_args.update(self._get_crt_transfer_config_options())
-            make_request_args['multipart_upload_threshold'] = (
-                self._config.multipart_threshold
+            make_request_args.update(
+                self._get_crt_transfer_config_options(request_type)
             )
         return make_request_args
 
@@ -893,7 +902,9 @@ class S3ClientArgsCreator:
         make_request_args['on_body'] = on_body
         make_request_args['checksum_config'] = checksum_config
         if self._config is not None:
-            make_request_args.update(self._get_crt_transfer_config_options())
+            make_request_args.update(
+                self._get_crt_transfer_config_options(request_type)
+            )
         return make_request_args
 
     def _default_get_make_request_args(

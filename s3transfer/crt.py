@@ -787,7 +787,6 @@ class S3ClientArgsCreator:
             crt_config.update(
                 getattr(self, f'_get_crt_options_{request_type}')()
             )
-
         self._remove_param_if_not_min_crt_version(crt_config)
         return crt_config
 
@@ -802,6 +801,8 @@ class S3ClientArgsCreator:
             param = self._CRT_ARG_TO_CONFIG_PARAM[request_arg]
             if _has_minimum_crt_version(param.min_version):
                 continue
+            # Only log the warning if user attempted to explicitly
+            # use the transfer config parameter.
             if (
                 self._config.get_deep_attr(param.name)
                 is not self._config.UNSET_DEFAULT

@@ -13,6 +13,7 @@
 import logging
 import re
 import threading
+from collections import namedtuple
 from io import BytesIO
 
 import awscrt.http
@@ -182,6 +183,16 @@ def _get_crt_throughput_target_gbps(provided_throughput_target_bytes=None):
         target_gbps = provided_throughput_target_bytes * 8 / 1_000_000_000
     logger.debug('Using CRT throughput target in gbps: %s', target_gbps)
     return target_gbps
+
+
+def _has_minimum_crt_version(minimum_version):
+    crt_version_str = awscrt.__version__
+    try:
+        crt_version_ints = map(int, crt_version_str.split("."))
+        crt_version_tuple = tuple(crt_version_ints)
+    except (TypeError, ValueError):
+        return False
+    return crt_version_tuple >= minimum_version
 
 
 class CRTTransferManager:
@@ -739,18 +750,25 @@ class CRTTransferCoordinator:
         self._crt_future = self._s3_request.finished_future
 
 
+CRTConfigParameter = namedtuple('CRTConfigParameter', ['name', 'min_version'])
+
+
 class S3ClientArgsCreator:
+    _CRT_ARG_TO_CONFIG_PARAM = {
+        'max_active_connections_override': CRTConfigParameter(
+            'max_request_concurrency', (0, 29, 0)
+        ),
+    }
+
     def __init__(self, crt_request_serializer, os_utils, config=None):
         self._request_serializer = crt_request_serializer
         self._os_utils = os_utils
         self._config = config
 
     def _get_crt_transfer_config_options(self, request_type):
-        part_size = self._config.multipart_chunksize
-        max_connections = self._config.max_request_concurrency
         crt_config = {
-            'part_size': part_size,
-            'max_active_connections_override': max_connections,
+            'part_size': self._config.multipart_chunksize,
+            'max_active_connections_override': self._config.max_request_concurrency,
         }
 
         if (
@@ -769,10 +787,34 @@ class S3ClientArgsCreator:
             crt_config.update(
                 getattr(self, f'_get_crt_options_{request_type}')()
             )
+
+        self._remove_param_if_not_min_crt_version(crt_config)
         return crt_config
 
     def _get_crt_options_put_object(self):
         return {'multipart_upload_threshold': self._config.multipart_threshold}
+
+    def _remove_param_if_not_min_crt_version(self, crt_config):
+        to_remove = []
+        for request_arg in crt_config:
+            if request_arg not in self._CRT_ARG_TO_CONFIG_PARAM:
+                continue
+            param = self._CRT_ARG_TO_CONFIG_PARAM[request_arg]
+            if _has_minimum_crt_version(param.min_version):
+                continue
+            if (
+                self._config.get_deep_attr(param.name)
+                is not self._config.UNSET_DEFAULT
+            ):
+                min_ver_str = '.'.join(str(i) for i in param.min_version)
+                logger.warning(
+                    f'Transfer config parameter {param.name} '
+                    f'requires minimum CRT version: {min_ver_str}. '
+                    f'{param.name} will not be used in the request.'
+                )
+            to_remove.append(request_arg)
+        for request_arg in to_remove:
+            del crt_config[request_arg]
 
     def get_make_request_args(
         self, request_type, call_args, coordinator, future, on_done_after_calls

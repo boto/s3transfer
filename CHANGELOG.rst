@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.16.0
+======
+
+* feature:``awscrt``: ``CRTTransferManager`` now supports the following ``TransferConfig`` options - ``multipart_threshold``, ``multipart_chunksize``, ``max_request_concurrency``
+
+
 0.15.0
 ======
 

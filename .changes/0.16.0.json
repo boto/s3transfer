@@ -1,0 +1,7 @@
+[
+  {
+    "category": "``awscrt``",
+    "description": "``CRTTransferManager`` now supports the following ``TransferConfig`` options - ``multipart_threshold``, ``multipart_chunksize``, ``max_request_concurrency``",
+    "type": "feature"
+  }
+]

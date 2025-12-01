@@ -13,6 +13,7 @@
 import logging
 import re
 import threading
+from collections import namedtuple
 from io import BytesIO
 
 import awscrt.http
@@ -184,6 +185,16 @@ def _get_crt_throughput_target_gbps(provided_throughput_target_bytes=None):
     return target_gbps
 
 
+def _has_minimum_crt_version(minimum_version):
+    crt_version_str = awscrt.__version__
+    try:
+        crt_version_ints = map(int, crt_version_str.split("."))
+        crt_version_tuple = tuple(crt_version_ints)
+    except (TypeError, ValueError):
+        return False
+    return crt_version_tuple >= minimum_version
+
+
 class CRTTransferManager:
     ALLOWED_DOWNLOAD_ARGS = TransferManager.ALLOWED_DOWNLOAD_ARGS
     ALLOWED_UPLOAD_ARGS = TransferManager.ALLOWED_UPLOAD_ARGS
@@ -193,7 +204,9 @@ class CRTTransferManager:
 
     _UNSUPPORTED_BUCKET_PATTERNS = TransferManager._UNSUPPORTED_BUCKET_PATTERNS
 
-    def __init__(self, crt_s3_client, crt_request_serializer, osutil=None):
+    def __init__(
+        self, crt_s3_client, crt_request_serializer, osutil=None, config=None
+    ):
         """A transfer manager interface for Amazon S3 on CRT s3 client.
 
         :type crt_s3_client: awscrt.s3.S3Client
@@ -207,12 +220,18 @@ class CRTTransferManager:
         :type osutil: s3transfer.utils.OSUtils
         :param osutil: OSUtils object to use for os-related behavior when
             using with transfer manager.
+
+        :type config: s3transfer.manager.TransferConfig
+        :param config: The transfer configuration to be used when
+            making CRT S3 client requests.
         """
         if osutil is None:
             self._osutil = OSUtils()
         self._crt_s3_client = crt_s3_client
         self._s3_args_creator = S3ClientArgsCreator(
-            crt_request_serializer, self._osutil
+            crt_request_serializer,
+            self._osutil,
+            config,
         )
         self._crt_exception_translator = (
             crt_request_serializer.translate_crt_exception
@@ -731,10 +750,72 @@ class CRTTransferCoordinator:
         self._crt_future = self._s3_request.finished_future
 
 
+CRTConfigParameter = namedtuple('CRTConfigParameter', ['name', 'min_version'])
+
+
 class S3ClientArgsCreator:
-    def __init__(self, crt_request_serializer, os_utils):
+    _CRT_ARG_TO_CONFIG_PARAM = {
+        'max_active_connections_override': CRTConfigParameter(
+            'max_request_concurrency', (0, 29, 0)
+        ),
+    }
+
+    def __init__(self, crt_request_serializer, os_utils, config=None):
         self._request_serializer = crt_request_serializer
         self._os_utils = os_utils
+        self._config = config
+
+    def _get_crt_transfer_config_options(self, request_type):
+        crt_config = {
+            'part_size': self._config.multipart_chunksize,
+            'max_active_connections_override': self._config.max_request_concurrency,
+        }
+
+        if (
+            self._config.get_deep_attr('multipart_chunksize')
+            is self._config.UNSET_DEFAULT
+        ):
+            # Let CRT dynamically calculate part size.
+            crt_config['part_size'] = None
+        if (
+            self._config.get_deep_attr('max_request_concurrency')
+            is self._config.UNSET_DEFAULT
+        ):
+            crt_config['max_active_connections_override'] = None
+
+        if hasattr(self, f'_get_crt_options_{request_type}'):
+            crt_config.update(
+                getattr(self, f'_get_crt_options_{request_type}')()
+            )
+        self._remove_param_if_not_min_crt_version(crt_config)
+        return crt_config
+
+    def _get_crt_options_put_object(self):
+        return {'multipart_upload_threshold': self._config.multipart_threshold}
+
+    def _remove_param_if_not_min_crt_version(self, crt_config):
+        to_remove = []
+        for request_arg in crt_config:
+            if request_arg not in self._CRT_ARG_TO_CONFIG_PARAM:
+                continue
+            param = self._CRT_ARG_TO_CONFIG_PARAM[request_arg]
+            if _has_minimum_crt_version(param.min_version):
+                continue
+            # Only log the warning if user attempted to explicitly
+            # use the transfer config parameter.
+            if (
+                self._config.get_deep_attr(param.name)
+                is not self._config.UNSET_DEFAULT
+            ):
+                min_ver_str = '.'.join(str(i) for i in param.min_version)
+                logger.warning(
+                    f'Transfer config parameter {param.name} '
+                    f'requires minimum CRT version: {min_ver_str}. '
+                    f'{param.name} will not be used in the request.'
+                )
+            to_remove.append(request_arg)
+        for request_arg in to_remove:
+            del crt_config[request_arg]
 
     def get_make_request_args(
         self, request_type, call_args, coordinator, future, on_done_after_calls
@@ -823,6 +904,10 @@ class S3ClientArgsCreator:
         )
         make_request_args['send_filepath'] = send_filepath
         make_request_args['checksum_config'] = checksum_config
+        if self._config is not None:
+            make_request_args.update(
+                self._get_crt_transfer_config_options(request_type)
+            )
         return make_request_args
 
     def _get_make_request_args_get_object(
@@ -859,6 +944,10 @@ class S3ClientArgsCreator:
         make_request_args['recv_filepath'] = recv_filepath
         make_request_args['on_body'] = on_body
         make_request_args['checksum_config'] = checksum_config
+        if self._config is not None:
+            make_request_args.update(
+                self._get_crt_transfer_config_options(request_type)
+            )
         return make_request_args
 
     def _default_get_make_request_args(

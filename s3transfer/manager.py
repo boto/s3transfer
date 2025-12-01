@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 
 
 class TransferConfig:
+    UNSET_DEFAULT = object()
+
     def __init__(
         self,
         multipart_threshold=8 * MB,
@@ -152,11 +154,18 @@ class TransferConfig:
 
     def _validate_attrs_are_nonzero(self):
         for attr, attr_val in self.__dict__.items():
-            if attr_val is not None and attr_val <= 0:
+            if (
+                attr_val is not None
+                and attr_val is not self.UNSET_DEFAULT
+                and attr_val <= 0
+            ):
                 raise ValueError(
                     f'Provided parameter {attr} of value {attr_val} must '
                     'be greater than 0.'
                 )
+
+    def get_deep_attr(self, item):
+        return object.__getattribute__(self, item)
 
 
 class TransferManager:

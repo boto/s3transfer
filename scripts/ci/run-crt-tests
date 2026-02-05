@@ -24,8 +24,8 @@ def cd(path):
         os.chdir(cwd)
 
 
-def run(command, env=None):
-    return check_call(command, shell=True, env=env)
+def run(args, env=None):
+    return check_call(args, env=env)
 
 
 try:
@@ -37,4 +37,11 @@ except ImportError:
 
 if __name__ == "__main__":
     with cd(os.path.join(REPO_ROOT, "tests")):
-        run(f"{REPO_ROOT}/scripts/ci/run-tests unit/ functional/")
+        run(
+            [
+                sys.executable,
+                os.path.join(REPO_ROOT, "scripts/ci/run-tests"),
+                "unit/",
+                "functional/",
+            ]
+        )

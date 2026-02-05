@@ -2,6 +2,7 @@
 import argparse
 import os
 import shutil
+import sys
 from contextlib import contextmanager
 from subprocess import check_call
 
@@ -21,8 +22,8 @@ def cd(path):
         os.chdir(cwd)
 
 
-def run(command):
-    return check_call(command, shell=True)
+def run(args):
+    return check_call(args)
 
 
 if __name__ == "__main__":
@@ -35,13 +36,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     with cd(REPO_ROOT):
-        run("pip install -r requirements.txt")
-        run('python scripts/ci/install-dev-deps')
+        run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        run([sys.executable, "scripts/ci/install-dev-deps"])
         if os.path.isdir('dist') and os.listdir('dist'):
             shutil.rmtree('dist')
-        run('python setup.py bdist_wheel')
+        run([sys.executable, "setup.py", "bdist_wheel"])
         wheel_dist = os.listdir('dist')[0]
         package = os.path.join('dist', wheel_dist)
         if args.extras:
-            package = f"'{package}[{args.extras}]'"
-        run(f'pip install {package}')
+            package = f"{package}[{args.extras}]"
+        run([sys.executable, "-m", "pip", "install", package])

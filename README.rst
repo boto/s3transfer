@@ -10,4 +10,4 @@ This project is maintained and published by Amazon Web Services.
   This project is not currently GA. If you are planning to use this code in
   production, make sure to lock to a minor version as interfaces may break
   from minor version to minor version. For a basic, stable interface of
-  s3transfer, try the interfaces exposed in `boto3 <https://boto3.readthedocs.io/en/latest/guide/s3.html#using-the-transfer-manager>`__
+  s3transfer, try the interfaces exposed in `boto3 <https://docs.aws.amazon.com/boto3/latest/guide/s3.html#using-the-transfer-manager>`__

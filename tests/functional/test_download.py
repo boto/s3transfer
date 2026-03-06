@@ -437,9 +437,14 @@ class TestNonRangedDownload(BaseDownloadTest):
         self.stubber.assert_no_pending_responses()
 
     def test_download_empty_object(self):
-        self.content = b''
-        self.stream = BytesIO(self.content)
-        self.add_successful_get_object_responses()
+        # Real S3 returns InvalidRange when a ranged GET is made on a
+        # 0-byte object since no byte range can be satisfied.
+        self.stubber.add_client_error(
+            method='get_object',
+            service_error_code='InvalidRange',
+            service_message='The requested range is not satisfiable',
+            http_status_code=416,
+        )
         future = self.manager.download(
             self.bucket, self.key, self.filename, self.extra_args
         )
@@ -448,6 +453,7 @@ class TestNonRangedDownload(BaseDownloadTest):
         # Ensure that the empty file exists
         with open(self.filename, 'rb') as f:
             self.assertEqual(b'', f.read())
+        self.assertEqual(future.meta.size, 0)
 
     def test_uses_bandwidth_limiter(self):
         self.content = b'a' * 1024 * 1024

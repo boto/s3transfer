@@ -497,6 +497,12 @@ class GetObjectFirstChunkOnDoneCallback:
         self._transfer_future.meta.provide_transfer_size(size)
         self._transfer_future.meta.provide_object_etag(etag)
 
+        if size == 0:
+            # Force-open the DeferredOpenFile so the temp file exists
+            # on disk for IORenameFileTask. Without this, the deferred
+            # file is never opened since no bytes are written.
+            self._fileobj.write(b'')
+
         chunk_size = self._config.multipart_chunksize
         if size > chunk_size:
             self._schedule_remaining_chunks(size, etag)
@@ -652,6 +658,13 @@ class GetObjectTask(Task):
                         f'Contents of stored object "{key}" in bucket '
                         f'"{bucket}" did not match expected ETag.'
                     )
+                elif error_code == "InvalidRange":
+                    self._response = {
+                        'ContentLength': 0,
+                        'ContentRange': None,
+                        'ETag': None,
+                    }
+                    return
                 else:
                     raise
             except S3_RETRYABLE_DOWNLOAD_ERRORS as e:

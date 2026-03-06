@@ -38,6 +38,25 @@ class TestDownload(BaseTransferManagerIntegTest):
             multipart_threshold=self.multipart_threshold
         )
 
+    def test_download_empty_object(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        # Upload a 0-byte object
+        self.client.put_object(
+            Bucket=self.bucket_name, Key='empty.txt', Body=b''
+        )
+        self.addCleanup(self.delete_object, 'empty.txt')
+
+        download_path = os.path.join(self.files.rootdir, 'empty.txt')
+        future = transfer_manager.download(
+            self.bucket_name, 'empty.txt', download_path
+        )
+        future.result()
+
+        with open(download_path, 'rb') as f:
+            self.assertEqual(b'', f.read())
+        self.assertEqual(future.meta.size, 0)
+
     def test_below_threshold(self):
         transfer_manager = self.create_transfer_manager(self.config)
 

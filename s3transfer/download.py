@@ -397,9 +397,12 @@ class DownloadSubmissionTask(SubmissionTask):
         extra_args = dict(call_args.extra_args)
         extra_args['Range'] = f'bytes=0-{chunk_size - 1}'
 
+        if transfer_future.meta.etag is not None:
+            extra_args['IfMatch'] = transfer_future.meta.etag
+
         # Callback will determine if additional chunks are needed based on
         # the Content-Range header in the response
-        on_done_callback = GetObjectOnDoneCallback(
+        on_done_callback = GetObjectFirstChunkOnDoneCallback(
             transfer_future,
             download_output_manager,
             io_executor,
@@ -439,7 +442,7 @@ class DownloadSubmissionTask(SubmissionTask):
         )
 
 
-class GetObjectOnDoneCallback:
+class GetObjectFirstChunkOnDoneCallback:
     def __init__(
         self,
         transfer_future,

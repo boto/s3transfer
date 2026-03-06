@@ -411,6 +411,31 @@ class TestNonRangedDownload(BaseDownloadTest):
         for allowed_upload_arg in self._manager.ALLOWED_DOWNLOAD_ARGS:
             self.assertIn(allowed_upload_arg, op_model.input_shape.members)
 
+    def test_first_chunk_includes_ifmatch_when_etag_provided(self):
+        self.stubber.add_response(
+            method='get_object',
+            service_response={
+                'Body': self.stream,
+                'ContentLength': len(self.content),
+                'ContentRange': f'bytes 0-{len(self.content) - 1}/{len(self.content)}',
+                'ETag': self.etag,
+            },
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Range': 'bytes=0-8388607',
+                'IfMatch': self.etag,
+            },
+        )
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['subscribers'] = [ETagProvider(self.etag)]
+
+        future = self.manager.download(**call_kwargs)
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+
     def test_download_empty_object(self):
         self.content = b''
         self.stream = BytesIO(self.content)
@@ -665,3 +690,25 @@ class TestRangedDownload(BaseDownloadTest):
         # Ensure that the contents are correct
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
+
+    def test_first_chunk_includes_ifmatch_when_etag_provided(self):
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+
+        for i, range_val in enumerate(expected_ranges):
+            params = {
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Range': range_val,
+                'IfMatch': self.etag,
+            }
+            stubbed_response = self.create_stubbed_responses()[i]
+            stubbed_response['expected_params'] = params
+            self.stubber.add_response(**stubbed_response)
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['subscribers'] = [ETagProvider(self.etag)]
+
+        future = self.manager.download(**call_kwargs)
+        future.result()
+
+        self.stubber.assert_no_pending_responses()

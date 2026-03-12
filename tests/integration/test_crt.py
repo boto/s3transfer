@@ -16,7 +16,6 @@ import os
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
-
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from tests import (
@@ -50,7 +49,7 @@ class RecordingSubscriber(BaseSubscriber):
         self.on_done_called = True
 
 
-@requires_crt
+@requires_crt()
 class TestCRTS3Transfers(BaseTransferManagerIntegTest):
     """Tests for the high level s3transfer based on CRT implementation."""
 

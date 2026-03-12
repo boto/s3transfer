@@ -17,7 +17,6 @@ import time
 from concurrent.futures import Future
 
 from botocore.session import Session
-
 from s3transfer.constants import MB
 from s3transfer.manager import TransferConfig
 from s3transfer.subscribers import BaseSubscriber
@@ -65,7 +64,7 @@ class RecordingSubscriber(BaseSubscriber):
         self.on_done_future = future
 
 
-@requires_crt
+@requires_crt()
 class TestCRTTransferManager(unittest.TestCase):
     def setUp(self):
         self.region = 'us-west-2'

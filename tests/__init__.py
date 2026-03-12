@@ -23,6 +23,7 @@ from unittest import mock  # noqa: F401
 
 import botocore.session
 from botocore.stub import Stubber
+
 from s3transfer.futures import (
     IN_MEMORY_DOWNLOAD_TAG,
     IN_MEMORY_UPLOAD_TAG,

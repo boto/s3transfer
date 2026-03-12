@@ -17,6 +17,7 @@ import time
 from concurrent.futures import Future
 
 from botocore.session import Session
+
 from s3transfer.constants import MB
 from s3transfer.manager import TransferConfig
 from s3transfer.subscribers import BaseSubscriber

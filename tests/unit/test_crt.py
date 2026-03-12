@@ -13,10 +13,10 @@
 import io
 
 import pytest
-
 from botocore.credentials import Credentials, ReadOnlyCredentials
 from botocore.exceptions import ClientError, NoCredentialsError
 from botocore.session import Session
+
 from s3transfer.exceptions import TransferNotDoneError
 from s3transfer.utils import CallArgs
 from tests import HAS_CRT, FileCreator, mock, requires_crt, unittest

@@ -16,6 +16,7 @@ import os
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
+
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from tests import (

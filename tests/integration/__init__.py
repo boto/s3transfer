@@ -61,6 +61,21 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
             CreateBucketConfiguration={'LocationConstraint': cls.region},
             ObjectOwnership='ObjectWriter',
         )
+        cls.client.put_bucket_encryption(
+            Bucket=cls.bucket_name,
+            ServerSideEncryptionConfiguration={
+                'Rules': [
+                    {
+                        'ApplyServerSideEncryptionByDefault': {
+                            'SSEAlgorithm': 'AES256',
+                        },
+                        'BlockedEncryptionTypes': {
+                            'EncryptionType': ['NONE'],
+                        },
+                    }
+                ],
+            },
+        )
         cls.client.delete_public_access_block(Bucket=cls.bucket_name)
 
     def setUp(self):

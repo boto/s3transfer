@@ -20,8 +20,8 @@ def cd(path):
         os.chdir(cwd)
 
 
-def run(command):
-    return check_call(command, shell=True)
+def run(args):
+    return check_call(args)
 
 
 if __name__ == "__main__":
@@ -32,6 +32,24 @@ if __name__ == "__main__":
             # Setuptools 71+ now prefers already installed versions
             # of packaging _and_ broke the API for packaging<22.0.
             # We'll pin to match what's in requirements-dev.txt.
-            run("pip install setuptools==71.1.0 packaging==24.1")
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "setuptools==71.1.0",
+                    "packaging==24.1",
+                ]
+            )
 
-        run("pip install -r requirements-dev-lock.txt")
+        run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                "requirements-dev-lock.txt",
+            ]
+        )

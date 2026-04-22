@@ -65,7 +65,7 @@ class RecordingSubscriber(BaseSubscriber):
         self.on_done_future = future
 
 
-@requires_crt
+@requires_crt()
 class TestCRTTransferManager(unittest.TestCase):
     def setUp(self):
         self.region = 'us-west-2'

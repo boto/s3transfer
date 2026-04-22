@@ -14,6 +14,7 @@ import multiprocessing
 import os
 import shutil
 import signal
+import socket
 import tempfile
 from io import BytesIO
 
@@ -79,13 +80,28 @@ class TestReadable(unittest.TestCase):
 
 
 class TestBaseManager(unittest.TestCase):
+    def _can_bind_socket(self):
+        sock = socket.socket()
+        try:
+            sock.bind(('127.0.0.1', 0))
+            return True
+        except PermissionError:
+            return False
+        finally:
+            sock.close()
+
     def create_pid_manager(self):
         class PIDManager(BaseManager):
             def __init__(self):
                 # Python 3.14 changed the non-macOS POSIX default to forkserver
-                # but the code in this module does not work with it
+                # and macOS defaults to spawn. This test uses a local manager
+                # class which is not picklable under spawn/forkserver, so force
+                # fork for the test.
                 # See https://github.com/python/cpython/issues/125714
-                if multiprocessing.get_start_method() == 'forkserver':
+                if multiprocessing.get_start_method() in (
+                    'forkserver',
+                    'spawn',
+                ):
                     ctx = multiprocessing.get_context(method='fork')
                 else:
                     ctx = multiprocessing.get_context()
@@ -102,6 +118,8 @@ class TestBaseManager(unittest.TestCase):
 
     @skip_if_windows('os.kill() with SIGINT not supported on Windows')
     def test_can_provide_signal_handler_initializers_to_start(self):
+        if not self._can_bind_socket():
+            self.skipTest('socket bind is not permitted in this environment')
         manager = self.create_pid_manager()
         manager.start(signal.signal, (signal.SIGINT, signal.SIG_IGN))
         pid = self.get_pid(manager)

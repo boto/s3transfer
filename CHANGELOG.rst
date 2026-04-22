@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.16.1
+======
+
+* enhancement:``TransferManager``: Add support for customer-provided full-object checksums using the SHA512, MD5, XXHASH3, XXHASH64, and XXHASH128 algorithms.
+
+
 0.16.0
 ======
 

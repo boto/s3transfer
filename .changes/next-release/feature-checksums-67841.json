@@ -1,5 +1,0 @@
-{
-  "type": "enhancement",
-  "category": "``TransferManager``",
-  "description": "Add support for customer-provided full-object checksums using the SHA512, MD5, XXHASH3, XXHASH64, and XXHASH128 algorithms."
-}

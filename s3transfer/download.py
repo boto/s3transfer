@@ -356,16 +356,206 @@ class DownloadSubmissionTask(SubmissionTask):
             transfer_future, osutil
         )(osutil, self._transfer_coordinator, io_executor)
 
-        self._submit_first_chunk_request(
-            client,
-            config,
-            osutil,
-            request_executor,
-            io_executor,
-            download_output_manager,
-            transfer_future,
-            bandwidth_limiter,
+        # Skip the HEAD request only when the caller has explicitly opted out
+        # of response checksum validation. Otherwise we need the HEAD to
+        # obtain the full-object ETag/size for checksum validation.
+        if client.meta.config.response_checksum_validation == "when_required":
+            self._submit_first_chunk_request(
+                client,
+                config,
+                osutil,
+                request_executor,
+                io_executor,
+                download_output_manager,
+                transfer_future,
+                bandwidth_limiter,
+            )
+            return
+
+        if (
+            transfer_future.meta.size is None
+            or transfer_future.meta.etag is None
+        ):
+            response = client.head_object(
+                Bucket=transfer_future.meta.call_args.bucket,
+                Key=transfer_future.meta.call_args.key,
+                **transfer_future.meta.call_args.extra_args,
+            )
+            # If a size was not provided figure out the size for the
+            # user.
+            transfer_future.meta.provide_transfer_size(
+                response['ContentLength']
+            )
+            # Provide an etag to ensure a stored object is not modified
+            # during a multipart download.
+            transfer_future.meta.provide_object_etag(response.get('ETag'))
+
+        # If it is greater than threshold do a ranged download, otherwise
+        # do a regular GetObject download.
+        if transfer_future.meta.size < config.multipart_threshold:
+            self._submit_download_request(
+                client,
+                config,
+                osutil,
+                request_executor,
+                io_executor,
+                download_output_manager,
+                transfer_future,
+                bandwidth_limiter,
+            )
+        else:
+            self._submit_ranged_download_request(
+                client,
+                config,
+                osutil,
+                request_executor,
+                io_executor,
+                download_output_manager,
+                transfer_future,
+                bandwidth_limiter,
+            )
+
+    def _submit_download_request(
+        self,
+        client,
+        config,
+        osutil,
+        request_executor,
+        io_executor,
+        download_output_manager,
+        transfer_future,
+        bandwidth_limiter,
+    ):
+        call_args = transfer_future.meta.call_args
+
+        # Get a handle to the file that will be used for writing downloaded
+        # contents
+        fileobj = download_output_manager.get_fileobj_for_io_writes(
+            transfer_future
         )
+
+        # Get the needed callbacks for the task
+        progress_callbacks = get_callbacks(transfer_future, 'progress')
+
+        # Get any associated tags for the get object task.
+        get_object_tag = download_output_manager.get_download_task_tag()
+
+        # Get the final io task to run once the download is complete.
+        final_task = download_output_manager.get_final_io_task()
+
+        # Submit the task to download the object.
+        self._transfer_coordinator.submit(
+            request_executor,
+            ImmediatelyWriteIOGetObjectTask(
+                transfer_coordinator=self._transfer_coordinator,
+                main_kwargs={
+                    'client': client,
+                    'bucket': call_args.bucket,
+                    'key': call_args.key,
+                    'fileobj': fileobj,
+                    'extra_args': call_args.extra_args,
+                    'callbacks': progress_callbacks,
+                    'max_attempts': config.num_download_attempts,
+                    'download_output_manager': download_output_manager,
+                    'io_chunksize': config.io_chunksize,
+                    'bandwidth_limiter': bandwidth_limiter,
+                },
+                done_callbacks=[final_task],
+            ),
+            tag=get_object_tag,
+        )
+
+    def _submit_ranged_download_request(
+        self,
+        client,
+        config,
+        osutil,
+        request_executor,
+        io_executor,
+        download_output_manager,
+        transfer_future,
+        bandwidth_limiter,
+    ):
+        call_args = transfer_future.meta.call_args
+
+        # Get the needed progress callbacks for the task
+        progress_callbacks = get_callbacks(transfer_future, 'progress')
+
+        # Get a handle to the file that will be used for writing downloaded
+        # contents
+        fileobj = download_output_manager.get_fileobj_for_io_writes(
+            transfer_future
+        )
+
+        # Determine the number of parts
+        part_size = config.multipart_chunksize
+        num_parts = calculate_num_parts(transfer_future.meta.size, part_size)
+
+        # Get any associated tags for the get object task.
+        get_object_tag = download_output_manager.get_download_task_tag()
+
+        # Callback invoker to submit the final io task once all downloads
+        # are complete.
+        finalize_download_invoker = CountCallbackInvoker(
+            self._get_final_io_task_submission_callback(
+                download_output_manager, io_executor
+            )
+        )
+        for i in range(num_parts):
+            # Calculate the range parameter
+            range_parameter = calculate_range_parameter(
+                part_size, i, num_parts
+            )
+
+            # Inject extra parameters to be passed in as extra args
+            extra_args = {
+                'Range': range_parameter,
+            }
+            if transfer_future.meta.etag is not None:
+                extra_args['IfMatch'] = transfer_future.meta.etag
+            extra_args.update(call_args.extra_args)
+            finalize_download_invoker.increment()
+            # Submit the ranged downloads
+            self._transfer_coordinator.submit(
+                request_executor,
+                GetObjectTask(
+                    transfer_coordinator=self._transfer_coordinator,
+                    main_kwargs={
+                        'client': client,
+                        'bucket': call_args.bucket,
+                        'key': call_args.key,
+                        'fileobj': fileobj,
+                        'extra_args': extra_args,
+                        'callbacks': progress_callbacks,
+                        'max_attempts': config.num_download_attempts,
+                        'start_index': i * part_size,
+                        'download_output_manager': download_output_manager,
+                        'io_chunksize': config.io_chunksize,
+                        'bandwidth_limiter': bandwidth_limiter,
+                    },
+                    done_callbacks=[finalize_download_invoker.decrement],
+                ),
+                tag=get_object_tag,
+            )
+        finalize_download_invoker.finalize()
+
+    def _get_final_io_task_submission_callback(
+        self, download_manager, io_executor
+    ):
+        final_task = download_manager.get_final_io_task()
+        return FunctionContainer(
+            self._transfer_coordinator.submit, io_executor, final_task
+        )
+
+    def _calculate_range_param(self, part_size, part_index, num_parts):
+        # Used to calculate the Range parameter
+        start_range = part_index * part_size
+        if part_index == num_parts - 1:
+            end_range = ''
+        else:
+            end_range = start_range + part_size - 1
+        range_param = f'bytes={start_range}-{end_range}'
+        return range_param
 
     def _submit_first_chunk_request(
         self,

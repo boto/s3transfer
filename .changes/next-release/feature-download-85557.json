@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "category": "download",
+  "description": "Skip the HEAD request during downloads when the client is configured with ``response_checksum_validation='when_required'``, reducing latency for small-object transfers. The HEAD request remains in place by default to enable full-object checksum validation until S3 supports returning checksums for ranged GETs."
+}

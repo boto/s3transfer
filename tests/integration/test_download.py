@@ -16,7 +16,9 @@ import threading
 import time
 from concurrent.futures import CancelledError
 
-from s3transfer.manager import TransferConfig
+from botocore.client import Config
+
+from s3transfer.manager import TransferConfig, TransferManager
 from tests import (
     NonSeekableWriter,
     RecordingSubscriber,
@@ -301,3 +303,26 @@ class TestDownload(BaseTransferManagerIntegTest):
                 'Should have been able to download to /dev/null but received '
                 f'following exception {e}'
             )
+
+
+class TestDownloadWhenRequired(TestDownload):
+    """Re-runs every test method inherited from ``TestDownload`` against the
+    HEAD-less download path.
+
+    Subclassing, not duplication: each ``test_*`` method defined on
+    ``TestDownload`` is discovered again here and executed with the overridden
+    ``create_transfer_manager`` below, which hands the ``TransferManager`` a
+    client configured with ``response_checksum_validation='when_required'``.
+    That config toggle is what activates the HEAD-less branch in
+    ``DownloadSubmissionTask._submit``, so these tests exercise the same
+    end-to-end behaviour as ``TestDownload`` but through the alternate code
+    path.
+    """
+
+    def create_transfer_manager(self, config=None):
+        client = self.session.create_client(
+            's3',
+            self.region,
+            config=Config(response_checksum_validation='when_required'),
+        )
+        return TransferManager(client, config=config)

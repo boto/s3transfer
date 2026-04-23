@@ -27,6 +27,7 @@ from s3transfer.download import (
     DownloadSeekableOutputManager,
     DownloadSpecialFilenameOutputManager,
     DownloadSubmissionTask,
+    GetObjectFirstChunkOnDoneCallback,
     GetObjectTask,
     ImmediatelyWriteIOGetObjectTask,
     IOCloseTask,
@@ -462,23 +463,13 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def add_get_responses(self):
         chunksize = self.config.multipart_chunksize
-        total_size = len(self.content)
-        for i in range(0, total_size, chunksize):
-            if i + chunksize > total_size:
+        for i in range(0, len(self.content), chunksize):
+            if i + chunksize > len(self.content):
                 stream = BytesIO(self.content[i:])
-                end = total_size - 1
+                self.stubber.add_response('get_object', {'Body': stream})
             else:
                 stream = BytesIO(self.content[i : i + chunksize])
-                end = i + chunksize - 1
-
-            response = {
-                'Body': stream,
-                'ContentLength': len(self.content[i : i + chunksize]),
-                'ETag': self.etag,
-            }
-            if i == 0:
-                response['ContentRange'] = f'bytes {i}-{end}/{total_size}'
-            self.stubber.add_response('get_object', response)
+                self.stubber.add_response('get_object', {'Body': stream})
 
     def configure_for_ranged_get(self):
         self.config.multipart_threshold = 1
@@ -496,6 +487,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def test_submits_no_tag_for_get_object_filename(self):
         self.wrap_executor_in_recorder()
+        self.add_head_object_response()
         self.add_get_responses()
 
         self.submission_task = self.get_download_submission_task()
@@ -508,6 +500,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def test_submits_no_tag_for_ranged_get_filename(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
+        self.add_head_object_response()
         self.add_get_responses()
 
         self.submission_task = self.get_download_submission_task()
@@ -519,6 +512,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def test_submits_no_tag_for_get_object_fileobj(self):
         self.wrap_executor_in_recorder()
+        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -533,6 +527,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def test_submits_no_tag_for_ranged_get_object_fileobj(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
+        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -546,6 +541,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
 
     def tests_submits_tag_for_get_object_nonseekable_fileobj(self):
         self.wrap_executor_in_recorder()
+        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -560,6 +556,7 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
     def tests_submits_tag_for_ranged_get_object_nonseekable_fileobj(self):
         self.wrap_executor_in_recorder()
         self.configure_for_ranged_get()
+        self.add_head_object_response()
         self.add_get_responses()
 
         with open(self.filename, 'wb') as f:
@@ -1048,3 +1045,77 @@ class TestDeferQueue(unittest.TestCase):
                 {'offset': 1, 'data': 'bar'},
             ],
         )
+
+
+class TestGetObjectFirstChunkOnDoneCallback(unittest.TestCase):
+    """Covers defensive fallbacks in the no-HEAD first-chunk callback.
+
+    Each branch submits the final IO task so the download future completes
+    even when the first GET fails to produce a usable response.
+    """
+
+    def _make_callback(self):
+        self.io_executor = mock.Mock()
+        self.transfer_coordinator = mock.Mock()
+        self.download_output_manager = mock.Mock()
+        self.final_task = mock.sentinel.final_task
+        self.download_output_manager.get_final_io_task.return_value = (
+            self.final_task
+        )
+        return GetObjectFirstChunkOnDoneCallback(
+            transfer_future=mock.Mock(),
+            download_output_manager=self.download_output_manager,
+            io_executor=self.io_executor,
+            transfer_coordinator=self.transfer_coordinator,
+            client=mock.Mock(),
+            config=mock.Mock(),
+            request_executor=mock.Mock(),
+            bandwidth_limiter=None,
+            fileobj=mock.Mock(),
+            progress_callbacks=[],
+            get_object_tag=None,
+        )
+
+    def _assert_only_final_task_submitted(self):
+        self.transfer_coordinator.submit.assert_called_once_with(
+            self.io_executor, self.final_task
+        )
+
+    def test_no_task_submits_final_task(self):
+        callback = self._make_callback()
+        # _task is never set
+        callback()
+        self._assert_only_final_task_submitted()
+
+    def test_no_response_submits_final_task(self):
+        callback = self._make_callback()
+        task = mock.Mock()
+        task.get_response.return_value = None
+        callback.set_task(task)
+        callback()
+        self._assert_only_final_task_submitted()
+
+    def test_transfer_done_submits_final_task(self):
+        callback = self._make_callback()
+        task = mock.Mock()
+        task.get_response.return_value = {'ContentLength': 5, 'ETag': 'e'}
+        callback.set_task(task)
+        self.transfer_coordinator.done.return_value = True
+        callback()
+        self._assert_only_final_task_submitted()
+
+
+class TestValidateContentRange(unittest.TestCase):
+    """Covers edge-case early returns in GetObjectTask._validate_content_range."""
+
+    def _validator(self):
+        # Bind the unbound method; validator doesn't touch instance state.
+        return GetObjectTask._validate_content_range.__get__(
+            mock.Mock(), GetObjectTask
+        )
+
+    def test_requested_range_without_dash_returns_silently(self):
+        # Malformed requested range (no '-') must short-circuit rather than
+        # raising from the subsequent tuple unpacking.
+        validate = self._validator()
+        validate('bytes=0', 'bytes 0-9/10')

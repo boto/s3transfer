@@ -131,7 +131,6 @@ import math
 import os
 import queue
 import random
-import socket
 import string
 import threading
 from logging import NullHandler
@@ -617,7 +616,7 @@ class MultipartDownloader:
                         current_index += len(chunk)
                     return
                 except (
-                    socket.timeout,
+                    TimeoutError,
                     OSError,
                     ReadTimeoutError,
                     IncompleteReadError,
@@ -843,7 +842,7 @@ class S3Transfer:
                     bucket, key, filename, extra_args, callback
                 )
             except (
-                socket.timeout,
+                TimeoutError,
                 OSError,
                 ReadTimeoutError,
                 IncompleteReadError,

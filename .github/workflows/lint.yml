@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       with:
         persist-credentials: false
-    - name: Set up Python 3.9
-      uses: actions/setup-python@61a6322f88396a6271a6ee3565807d608ecaddd1
+    - name: Set up Python 3.10
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
       with:
-        python-version: 3.9
+        python-version: "3.10"
     - name: Run pre-commit
       uses: pre-commit/action@646c83fcd040023954eafda54b4db0192ce70507

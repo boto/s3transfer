@@ -131,7 +131,6 @@ import math
 import os
 import queue
 import random
-import socket
 import string
 import threading
 from logging import NullHandler
@@ -146,7 +145,7 @@ import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.16.1'
+__version__ = '0.17.0'
 
 
 logger = logging.getLogger(__name__)
@@ -617,7 +616,7 @@ class MultipartDownloader:
                         current_index += len(chunk)
                     return
                 except (
-                    socket.timeout,
+                    TimeoutError,
                     OSError,
                     ReadTimeoutError,
                     IncompleteReadError,
@@ -843,7 +842,7 @@ class S3Transfer:
                     bucket, key, filename, extra_args, callback
                 )
             except (
-                socket.timeout,
+                TimeoutError,
                 OSError,
                 ReadTimeoutError,
                 IncompleteReadError,

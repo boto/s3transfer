@@ -20,18 +20,18 @@ jobs:
       security-events: write
     steps:
     - name: "Checkout repository"
-      uses: "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+      uses: "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
       with:
         persist-credentials: false
 
     - name: "Run CodeQL init"
-      uses: "github/codeql-action/init@cdcdbb579706841c47f7063dda365e292e5cad7a"
+      uses: "github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225"
       with:
         config-file: "./.github/codeql.yml"
         languages: "python"
 
     - name: "Run CodeQL autobuild"
-      uses: "github/codeql-action/autobuild@cdcdbb579706841c47f7063dda365e292e5cad7a"
+      uses: "github/codeql-action/autobuild@95e58e9a2cdfd71adc6e0353d5c52f41a045d225"
 
     - name: "Run CodeQL analyze"
-      uses: "github/codeql-action/analyze@cdcdbb579706841c47f7063dda365e292e5cad7a"
+      uses: "github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225"

@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.17.0
+======
+
+* feature:Python: End of support for Python 3.9
+
+
 0.16.1
 ======
 

@@ -661,10 +661,10 @@ class GetObjectFirstChunkOnDoneCallback:
         self._task = None
 
     def __call__(self):
-        # Always check if we have a task and response first
-        assert self._task is not None, (
-            "set_task() must be called before the task is submitted"
-        )
+        if self._task is None:
+            raise RuntimeError(
+                "set_task() must be called before the task is submitted"
+            )
 
         response = self._task.get_response()
         if not response:

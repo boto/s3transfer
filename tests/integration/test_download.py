@@ -305,7 +305,7 @@ class TestDownload(BaseTransferManagerIntegTest):
             )
 
 
-class TestDownloadWhenRequired(TestDownload):
+class TestDownloadResponseChecksumValidationWhenRequired(TestDownload):
     """Re-runs every test method inherited from ``TestDownload`` against the
     HEAD-less download path.
 

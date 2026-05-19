@@ -651,11 +651,11 @@ class TestRangedDownload(BaseDownloadTest):
             self.assertEqual(self.content, f.read())
 
 
-class TestDownloadWhenRequiredChecksumValidation(StubbedClientTest):
+class TestDownloadResponseChecksumValidationWhenRequired(StubbedClientTest):
     """Exercises the HEAD-less download path enabled when a client is
     configured with ``response_checksum_validation="when_required"``.
 
-    Note: unlike ``TestDownloadWhenRequired`` in the integ suite (which
+    Note: unlike ``TestDownloadResponseChecksumValidationWhenRequired`` in the integ suite (which
     subclasses ``TestDownload`` to re-run every inherited test method under
     the alternate config), this class does not re-use the other functional
     download tests. It only inherits ``StubbedClientTest`` for stubber setup

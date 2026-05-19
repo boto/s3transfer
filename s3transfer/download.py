@@ -667,9 +667,9 @@ class GetObjectFirstChunkOnDoneCallback:
             )
 
         response = self._task.get_response()
-        if not response:
-            # No response means the GET failed or was cancelled
-            # Still need to submit final task to signal completion
+        if response is None:
+            # The first GET failed or was cancelled before storing a response.
+            # Submit the final task so the download future still completes.
             final_task = self._download_output_manager.get_final_io_task()
             self._transfer_coordinator.submit(self._io_executor, final_task)
             return
@@ -686,10 +686,13 @@ class GetObjectFirstChunkOnDoneCallback:
         self._transfer_future.meta.provide_object_etag(etag)
 
         if size == 0:
-            # Force-open the DeferredOpenFile so the temp file exists
-            # on disk for IORenameFileTask. Without this, the deferred
-            # file is never opened since no bytes are written.
-            self._fileobj.write(b'')
+            # Queue an empty write through the io executor so the
+            # DeferredOpenFile is opened and closed on the same thread that
+            # IORenameFileTask runs on. Windows rejects renaming a file
+            # whose handle is still open on another thread.
+            self._download_output_manager.queue_file_io_task(
+                self._fileobj, b'', 0
+            )
 
         chunk_size = self._config.multipart_chunksize
         if size > chunk_size:

@@ -30,9 +30,8 @@ def main():
     s3_keys = []
 
     try:
-        # Upload files
-        print(f"Uploading {args.file_count} files...")
         with TransferManager(client) as manager:
+            print(f"Uploading {args.file_count} files...")
             for i in range(args.file_count):
                 file_path = f"{tempdir}/upload_{i}"
                 create_file(file_path, args.file_size)
@@ -40,14 +39,17 @@ def main():
                 manager.upload(file_path, args.s3_bucket, s3_key)
                 s3_keys.append(s3_key)
 
-        # Download files
-        print(f"Downloading {args.file_count} files...")
-        start_time = time.time()
-        with TransferManager(client) as manager:
-            for i, s3_key in enumerate(s3_keys):
-                download_path = f"{tempdir}/download_{i}"
-                manager.download(args.s3_bucket, s3_key, download_path)
-        duration = time.time() - start_time
+            print(f"Downloading {args.file_count} files...")
+            start_time = time.time()
+            futures = [
+                manager.download(
+                    args.s3_bucket, s3_key, f"{tempdir}/download_{i}"
+                )
+                for i, s3_key in enumerate(s3_keys)
+            ]
+            for future in futures:
+                future.result()
+            duration = time.time() - start_time
 
         print(f"Download duration: {duration:.2f} seconds")
 

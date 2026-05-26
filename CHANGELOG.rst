@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.17.1
+======
+
+* enhancement:``s3``: Skip the HEAD request during S3 downloads when the client is configured with ``response_checksum_validation='when_required'``, reducing latency for small-object transfers. The HEAD request remains in place by default to enable full-object checksum validation.
+
+
 0.17.0
 ======
 

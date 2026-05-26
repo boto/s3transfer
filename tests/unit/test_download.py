@@ -15,6 +15,9 @@ import os
 import shutil
 import tempfile
 from io import BytesIO
+from types import SimpleNamespace
+
+import pytest
 
 from s3transfer.bandwidth import BandwidthLimiter
 from s3transfer.compat import SOCKET_ERROR
@@ -27,6 +30,7 @@ from s3transfer.download import (
     DownloadSeekableOutputManager,
     DownloadSpecialFilenameOutputManager,
     DownloadSubmissionTask,
+    GetObjectFirstChunkOnDoneCallback,
     GetObjectTask,
     ImmediatelyWriteIOGetObjectTask,
     IOCloseTask,
@@ -1044,3 +1048,72 @@ class TestDeferQueue(unittest.TestCase):
                 {'offset': 1, 'data': 'bar'},
             ],
         )
+
+
+@pytest.fixture
+def first_chunk_callback():
+    """Builds a GetObjectFirstChunkOnDoneCallback with mocked collaborators.
+
+    The callback's defensive fallbacks (no response, transfer already done,
+    missing task) are race-window behaviours that the synchronous stubber
+    in functional tests cannot reproduce, so they are exercised here against
+    the callback's contract directly.
+    """
+    io_executor = mock.Mock()
+    transfer_coordinator = mock.Mock()
+    download_output_manager = mock.Mock()
+    final_task = mock.sentinel.final_task
+    download_output_manager.get_final_io_task.return_value = final_task
+    callback = GetObjectFirstChunkOnDoneCallback(
+        transfer_future=mock.Mock(),
+        download_output_manager=download_output_manager,
+        io_executor=io_executor,
+        transfer_coordinator=transfer_coordinator,
+        client=mock.Mock(),
+        config=mock.Mock(),
+        request_executor=mock.Mock(),
+        bandwidth_limiter=None,
+        fileobj=mock.Mock(),
+        progress_callbacks=[],
+        get_object_tag=None,
+    )
+    return SimpleNamespace(
+        callback=callback,
+        io_executor=io_executor,
+        transfer_coordinator=transfer_coordinator,
+        final_task=final_task,
+    )
+
+
+def test_first_chunk_callback_without_task_raises(first_chunk_callback):
+    with pytest.raises(RuntimeError, match='set_task'):
+        first_chunk_callback.callback()
+
+
+def test_first_chunk_callback_with_no_response_submits_final_task(
+    first_chunk_callback,
+):
+    task = mock.Mock()
+    task.get_response.return_value = None
+    first_chunk_callback.callback.set_task(task)
+
+    first_chunk_callback.callback()
+
+    first_chunk_callback.transfer_coordinator.submit.assert_called_once_with(
+        first_chunk_callback.io_executor, first_chunk_callback.final_task
+    )
+
+
+def test_first_chunk_callback_when_transfer_done_submits_final_task(
+    first_chunk_callback,
+):
+    task = mock.Mock()
+    task.get_response.return_value = {'ContentLength': 5, 'ETag': 'e'}
+    first_chunk_callback.callback.set_task(task)
+    first_chunk_callback.transfer_coordinator.done.return_value = True
+
+    first_chunk_callback.callback()
+
+    first_chunk_callback.transfer_coordinator.submit.assert_called_once_with(
+        first_chunk_callback.io_executor, first_chunk_callback.final_task
+    )

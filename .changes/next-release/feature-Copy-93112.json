@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "category": "Copy",
+  "description": "By default, preserve source object metadata during multipart copies to match single CopyObject behavior."
+}

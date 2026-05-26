@@ -751,7 +751,7 @@ class TestMultipartCopy(BaseCopyTest):
         future.result()
         self.stubber.assert_no_pending_responses()
 
-    def test_multipart_copy_merges_metadata_fields(self):
+    def test_multipart_copy_caller_metadata_ignored_when_preserving(self):
         head_metadata = {
             'ContentType': 'application/octet-stream',
             'CacheControl': 'no-cache',
@@ -760,10 +760,7 @@ class TestMultipartCopy(BaseCopyTest):
         self.add_head_object_response_with_metadata(head_metadata)
 
         _, add_copy_kwargs = self._get_expected_params()
-        expected_create_mpu = add_copy_kwargs['expected_create_mpu_params']
-        expected_create_mpu['ContentType'] = 'application/json'
-        expected_create_mpu['CacheControl'] = 'no-cache'
-        expected_create_mpu['Metadata'] = {'foo': 'bar'}
+        add_copy_kwargs['expected_create_mpu_params'].update(head_metadata)
         self.add_successful_copy_responses(**add_copy_kwargs)
 
         call_kwargs = self.create_call_kwargs()

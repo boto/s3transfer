@@ -326,7 +326,7 @@ class CopySubmissionTask(SubmissionTask):
             return extra_args
         merged = dict(extra_args)
         for field, value in preserved_metadata.items():
-            merged.setdefault(field, value)
+            merged[field] = value
         return merged
 
     def _get_head_object_request_from_copy_source(self, copy_source):

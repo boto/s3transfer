@@ -72,6 +72,17 @@ class CopySubmissionTask(SubmissionTask):
         'TaggingDirective',
     ]
 
+    # Metadata fields to preserve for multipart copies.
+    PRESERVED_METADATA_FIELDS = [
+        'CacheControl',
+        'ContentDisposition',
+        'ContentEncoding',
+        'ContentLanguage',
+        'ContentType',
+        'Expires',
+        'Metadata',
+    ]
+
     COMPLETE_MULTIPART_ARGS = [
         'SSECustomerKey',
         'SSECustomerAlgorithm',
@@ -101,6 +112,7 @@ class CopySubmissionTask(SubmissionTask):
         :param transfer_future: The transfer future associated with the
             transfer request that tasks are being submitted for
         """
+        preserved_metadata = {}
         if (
             transfer_future.meta.size is None
             or transfer_future.meta.etag is None
@@ -135,6 +147,7 @@ class CopySubmissionTask(SubmissionTask):
             # Provide an etag to ensure a stored object is not modified
             # during a multipart copy.
             transfer_future.meta.provide_object_etag(response.get('ETag'))
+            preserved_metadata = self._extract_preserved_metadata(response)
 
         # If it is greater than threshold do a multipart copy, otherwise
         # do a regular copy object.
@@ -144,7 +157,12 @@ class CopySubmissionTask(SubmissionTask):
             )
         else:
             self._submit_multipart_request(
-                client, config, osutil, request_executor, transfer_future
+                client,
+                config,
+                osutil,
+                request_executor,
+                transfer_future,
+                preserved_metadata,
             )
 
     def _submit_copy_request(
@@ -174,14 +192,23 @@ class CopySubmissionTask(SubmissionTask):
         )
 
     def _submit_multipart_request(
-        self, client, config, osutil, request_executor, transfer_future
+        self,
+        client,
+        config,
+        osutil,
+        request_executor,
+        transfer_future,
+        preserved_metadata=None,
     ):
         call_args = transfer_future.meta.call_args
+        merged_extra_args = self._merge_preserved_metadata(
+            call_args.extra_args, preserved_metadata or {}
+        )
 
         # Submit the request to create a multipart upload and make sure it
         # does not include any of the arguments used for copy part.
         create_multipart_extra_args = {}
-        for param, val in call_args.extra_args.items():
+        for param, val in merged_extra_args.items():
             if param not in self.CREATE_MULTIPART_ARGS_BLACKLIST:
                 create_multipart_extra_args[param] = val
 
@@ -284,6 +311,23 @@ class CopySubmissionTask(SubmissionTask):
                 is_final=True,
             ),
         )
+
+    def _extract_preserved_metadata(self, head_object_response):
+        preserved = {}
+        for field in self.PRESERVED_METADATA_FIELDS:
+            if field in head_object_response:
+                preserved[field] = head_object_response[field]
+        return preserved
+
+    def _merge_preserved_metadata(self, extra_args, preserved_metadata):
+        if not preserved_metadata:
+            return extra_args
+        if extra_args.get('MetadataDirective') == 'REPLACE':
+            return extra_args
+        merged = dict(extra_args)
+        for field, value in preserved_metadata.items():
+            merged[field] = value
+        return merged
 
     def _get_head_object_request_from_copy_source(self, copy_source):
         if isinstance(copy_source, dict):

@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import copy
+import datetime
 
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
@@ -452,6 +453,21 @@ class TestMultipartCopy(BaseCopyTest):
     def add_create_multipart_upload_response(self):
         self.stubber.add_response(**self.create_stubbed_responses()[1])
 
+    def add_head_object_response_with_metadata(self, head_metadata):
+        service_response = {
+            'ContentLength': len(self.content),
+            'ETag': self.etag,
+        }
+        service_response.update(head_metadata)
+        self.stubber.add_response(
+            'head_object',
+            service_response=service_response,
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+            },
+        )
+
     def _get_expected_params(self):
         # Add expected parameters to the head object
         expected_head_params = {
@@ -710,6 +726,69 @@ class TestMultipartCopy(BaseCopyTest):
         future = self.manager.copy(
             self.copy_source, self.bucket, self.key, extra_args
         )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_multipart_copy_preserves_source_metadata(self):
+        head_metadata = {
+            'CacheControl': 'no-cache',
+            'ContentDisposition': 'attachment; filename="x.json"',
+            'ContentEncoding': 'gzip',
+            'ContentLanguage': 'en-US',
+            'ContentType': 'application/json',
+            'Expires': datetime.datetime(
+                2030, 1, 1, tzinfo=datetime.timezone.utc
+            ),
+            'Metadata': {'foo': 'bar'},
+        }
+        self.add_head_object_response_with_metadata(head_metadata)
+
+        _, add_copy_kwargs = self._get_expected_params()
+        add_copy_kwargs['expected_create_mpu_params'].update(head_metadata)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+
+        future = self.manager.copy(**self.create_call_kwargs())
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_multipart_copy_caller_metadata_ignored_when_preserving(self):
+        head_metadata = {
+            'ContentType': 'application/octet-stream',
+            'CacheControl': 'no-cache',
+            'Metadata': {'foo': 'bar'},
+        }
+        self.add_head_object_response_with_metadata(head_metadata)
+
+        _, add_copy_kwargs = self._get_expected_params()
+        add_copy_kwargs['expected_create_mpu_params'].update(head_metadata)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['extra_args'] = {'ContentType': 'application/json'}
+        future = self.manager.copy(**call_kwargs)
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_multipart_copy_metadata_directive_replace_opts_out(self):
+        head_metadata = {
+            'ContentType': 'application/octet-stream',
+            'CacheControl': 'no-cache',
+            'Metadata': {'foo': 'bar'},
+        }
+        self.add_head_object_response_with_metadata(head_metadata)
+
+        _, add_copy_kwargs = self._get_expected_params()
+        add_copy_kwargs['expected_create_mpu_params']['ContentType'] = (
+            'application/json'
+        )
+        self.add_successful_copy_responses(**add_copy_kwargs)
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['extra_args'] = {
+            'ContentType': 'application/json',
+            'MetadataDirective': 'REPLACE',
+        }
+        future = self.manager.copy(**call_kwargs)
         future.result()
         self.stubber.assert_no_pending_responses()
 

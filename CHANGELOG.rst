@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.18.0
+======
+
+* feature:Copy: By default, preserve source object metadata during multipart copies to match single CopyObject behavior.
+
+
 0.17.1
 ======
 

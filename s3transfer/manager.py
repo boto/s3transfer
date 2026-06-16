@@ -220,6 +220,7 @@ class TransferManager:
         'CopySourceSSECustomerKeyMD5',
         'MetadataDirective',
         'TaggingDirective',
+        'AnnotationDirective',
     ]
 
     ALLOWED_DELETE_ARGS = [
@@ -456,6 +457,25 @@ class TransferManager:
             subscribers = []
         if source_client is None:
             source_client = self._client
+        # Warn when Metadata/Tagging are supplied without a directive. To match
+        # the low-level CopyObject behavior, the supplied values are silently
+        # ignored unless the corresponding directive is set to 'REPLACE'. The
+        # warning surfaces this so callers don't get blindsided when their
+        # input has no effect.
+        if extra_args.get('Metadata') and extra_args.get('MetadataDirective') is None:
+            logger.warning(
+                "Metadata was supplied without a metadata directive. The "
+                "supplied metadata will be ignored and source metadata will "
+                "be preserved. Set the metadata directive to 'REPLACE' to "
+                "apply the supplied metadata."
+            )
+        if extra_args.get('Tagging') and extra_args.get('TaggingDirective') is None:
+            logger.warning(
+                "Tagging was supplied without a tagging directive. The "
+                "supplied tagging will be ignored and source tags will be "
+                "preserved. Set the tagging directive to 'REPLACE' to apply "
+                "the supplied tagging."
+            )
         self._validate_all_known_args(extra_args, self.ALLOWED_COPY_ARGS)
         if isinstance(copy_source, dict):
             self._validate_if_bucket_supported(copy_source.get('Bucket'))

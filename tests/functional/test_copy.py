@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 import copy
 import datetime
+import io
 
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
@@ -713,20 +714,251 @@ class TestMultipartCopy(BaseCopyTest):
             future.result()
         self.stubber.assert_no_pending_responses()
 
-    def test_mp_copy_with_tagging_directive(self):
-        extra_args = {'Tagging': 'tag1=val1', 'TaggingDirective': 'REPLACE'}
-        self.add_head_object_response()
-        self.add_successful_copy_responses(
-            expected_create_mpu_params={
+    def add_get_object_tagging_response(self, tag_set):
+        self.stubber.add_response(
+            'get_object_tagging',
+            service_response={'TagSet': tag_set},
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+            },
+        )
+
+    def add_put_object_tagging_response(self, tag_set):
+        self.stubber.add_response(
+            'put_object_tagging',
+            service_response={},
+            expected_params={
                 'Bucket': self.bucket,
                 'Key': self.key,
-                'Tagging': 'tag1=val1',
-            }
+                'Tagging': {'TagSet': tag_set},
+            },
         )
+
+    def test_mp_copy_tagging_directive_copy_applies_source_tags(self):
+        source_tags = [
+            {'Key': 'env', 'Value': 'prod'},
+            {'Key': 'team', 'Value': 'xddcc'},
+        ]
+        extra_args = {'TaggingDirective': 'COPY'}
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        self.add_get_object_tagging_response(source_tags)
+        self.add_put_object_tagging_response(source_tags)
         future = self.manager.copy(
             self.copy_source, self.bucket, self.key, extra_args
         )
         future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_tagging_supplied_without_directive_preserves_source(self):
+        extra_args = {'Tagging': 'key1=val1&key2=val2'}
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        with self.assertLogs('s3transfer.manager', level='WARNING'):
+            future = self.manager.copy(
+                self.copy_source, self.bucket, self.key, extra_args
+            )
+            future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_tagging_copy_pins_source_version_id(self):
+        source_version_id = 'abc123version'
+        source_tags = [{'Key': 'env', 'Value': 'prod'}]
+        self.stubber.add_response(
+            'head_object',
+            service_response={
+                'ContentLength': len(self.content),
+                'ETag': self.etag,
+                'VersionId': source_version_id,
+            },
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+            },
+        )
+        _, add_copy_kwargs = self._get_expected_params()
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        self.stubber.add_response(
+            'get_object_tagging',
+            service_response={'TagSet': source_tags},
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+                'VersionId': source_version_id,
+            },
+        )
+        self.add_put_object_tagging_response(source_tags)
+        future = self.manager.copy(
+            self.copy_source, self.bucket, self.key,
+            {'TaggingDirective': 'COPY'},
+        )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_tagging_replace_pins_dest_version_id_on_put(self):
+        dest_version_id = 'dest-version-xyz'
+        self.add_get_head_response_with_default_expected_params()
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_copy_responses_with_default_expected_params()
+        self.stubber.add_response(
+            'complete_multipart_upload',
+            service_response={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'ETag': '"destetag"',
+                'VersionId': dest_version_id,
+            },
+        )
+        self.stubber.add_response(
+            'put_object_tagging',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'VersionId': dest_version_id,
+                'Tagging': {'TagSet': [{'Key': 'env', 'Value': 'prod'}]},
+            },
+        )
+        future = self.manager.copy(
+            self.copy_source, self.bucket, self.key,
+            {'Tagging': 'env=prod', 'TaggingDirective': 'REPLACE'},
+        )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_forwards_passthrough_args_to_tag_and_annotation_calls(self):
+        # RequestPayer/ExpectedBucketOwner go to all five tag/annotation ops;
+        # ChecksumAlgorithm only to the put ops. Stubber's expected_params
+        # asserts each call carries the right subset.
+        source_tags = [{'Key': 'env', 'Value': 'prod'}]
+        annotation_payload = b'note-payload'
+        passthrough_all = {
+            'RequestPayer': 'requester',
+            'ExpectedBucketOwner': '111111111111',
+        }
+        passthrough_with_checksum = {
+            **passthrough_all,
+            'ChecksumAlgorithm': 'SHA256',
+        }
+
+        head_params, add_copy_kwargs = self._get_expected_params()
+        head_params.update(passthrough_all)
+        for kw in (
+            'expected_create_mpu_params',
+            'expected_complete_mpu_params',
+        ):
+            add_copy_kwargs[kw].update(passthrough_all)
+        for params in add_copy_kwargs['expected_copy_params']:
+            params.update(passthrough_all)
+        # ChecksumAlgorithm propagates to CreateMultipartUpload as well.
+        add_copy_kwargs['expected_create_mpu_params']['ChecksumAlgorithm'] = (
+            'SHA256'
+        )
+
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        self.stubber.add_response(
+            'get_object_tagging',
+            service_response={'TagSet': source_tags},
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+                **passthrough_all,
+            },
+        )
+        self.stubber.add_response(
+            'put_object_tagging',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'Tagging': {'TagSet': source_tags},
+                **passthrough_with_checksum,
+            },
+        )
+        self.stubber.add_response(
+            'list_object_annotations',
+            service_response={
+                'Annotations': [{
+                    'AnnotationName': 'note',
+                    'LastModified': datetime.datetime(
+                        2026, 1, 1, tzinfo=datetime.timezone.utc
+                    ),
+                    'Size': len(annotation_payload),
+                }],
+            },
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+                **passthrough_all,
+            },
+        )
+        self.stubber.add_response(
+            'get_object_annotation',
+            service_response={
+                'AnnotationPayload': io.BytesIO(annotation_payload),
+            },
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+                'AnnotationName': 'note',
+                **passthrough_all,
+            },
+        )
+        self.stubber.add_response(
+            'put_object_annotation',
+            service_response={},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'AnnotationName': 'note',
+                'AnnotationPayload': annotation_payload,
+                **passthrough_with_checksum,
+            },
+        )
+        future = self.manager.copy(
+            self.copy_source, self.bucket, self.key,
+            {
+                'TaggingDirective': 'COPY',
+                'AnnotationDirective': 'COPY',
+                **passthrough_with_checksum,
+            },
+        )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_no_tagging_args_skips_put_object_tagging(self):
+        head_params, add_copy_kwargs = self._get_expected_params()
+        self.add_head_object_response(expected_params=head_params)
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        future = self.manager.copy(**self.create_call_kwargs())
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_metadata_supplied_without_directive_preserves_source(self):
+        head_metadata = {
+            'ContentType': 'application/octet-stream',
+            'Metadata': {'original': 'value'},
+        }
+        self.add_head_object_response_with_metadata(head_metadata)
+
+        _, add_copy_kwargs = self._get_expected_params()
+        add_copy_kwargs['expected_create_mpu_params']['ContentType'] = (
+            'application/octet-stream'
+        )
+        add_copy_kwargs['expected_create_mpu_params']['Metadata'] = {
+            'original': 'value'
+        }
+        self.add_successful_copy_responses(**add_copy_kwargs)
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['extra_args'] = {'Metadata': {'caller': 'supplied'}}
+        with self.assertLogs('s3transfer.manager', level='WARNING'):
+            future = self.manager.copy(**call_kwargs)
+            future.result()
         self.stubber.assert_no_pending_responses()
 
     def test_multipart_copy_preserves_source_metadata(self):

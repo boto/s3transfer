@@ -1,0 +1,12 @@
+[
+  {
+    "category": "``s3``",
+    "description": "Update multi-part copy logic to match single-part behavior for TaggingDirective and AnnotationDirective",
+    "type": "feature"
+  },
+  {
+    "category": "``s3``",
+    "description": "Warn when Metadata or Tagging is supplied to a copy without the corresponding directive set to REPLACE, in which case the supplied value is silently ignored. This matches the CopyObject behavior.",
+    "type": "enhancement"
+  }
+]

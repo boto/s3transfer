@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 import copy
 import math
+from urllib.parse import parse_qsl
 
 from botocore.exceptions import ClientError
 
@@ -70,6 +71,8 @@ class CopySubmissionTask(SubmissionTask):
         'CopySourceSSECustomerKeyMD5',
         'MetadataDirective',
         'TaggingDirective',
+        'AnnotationDirective',
+        'Tagging',
     ]
 
     # Metadata fields to preserve for multipart copies.
@@ -89,6 +92,20 @@ class CopySubmissionTask(SubmissionTask):
         'SSECustomerKeyMD5',
         'RequestPayer',
         'ExpectedBucketOwner',
+    ]
+
+    GET_OBJECT_TAGGING_ARGS = ['RequestPayer', 'ExpectedBucketOwner']
+    PUT_OBJECT_TAGGING_ARGS = [
+        'RequestPayer',
+        'ExpectedBucketOwner',
+        'ChecksumAlgorithm',
+    ]
+    LIST_OBJECT_ANNOTATIONS_ARGS = ['RequestPayer', 'ExpectedBucketOwner']
+    GET_OBJECT_ANNOTATION_ARGS = ['RequestPayer', 'ExpectedBucketOwner']
+    PUT_OBJECT_ANNOTATION_ARGS = [
+        'RequestPayer',
+        'ExpectedBucketOwner',
+        'ChecksumAlgorithm',
     ]
 
     def _submit(
@@ -113,6 +130,8 @@ class CopySubmissionTask(SubmissionTask):
             transfer request that tasks are being submitted for
         """
         preserved_metadata = {}
+        source_version_id = None
+        call_args = transfer_future.meta.call_args
         if (
             transfer_future.meta.size is None
             or transfer_future.meta.etag is None
@@ -122,7 +141,6 @@ class CopySubmissionTask(SubmissionTask):
             # the TransferManager. If the object is outside of the region
             # of the client, they may have to provide the file size themselves
             # with a completely new client.
-            call_args = transfer_future.meta.call_args
             head_object_request = (
                 self._get_head_object_request_from_copy_source(
                     call_args.copy_source
@@ -148,6 +166,9 @@ class CopySubmissionTask(SubmissionTask):
             # during a multipart copy.
             transfer_future.meta.provide_object_etag(response.get('ETag'))
             preserved_metadata = self._extract_preserved_metadata(response)
+            # Pin the source version so all subsequent reads (tags, annotations)
+            # are consistent with the object from the head call
+            source_version_id = response.get('VersionId')
 
         # If it is greater than threshold do a multipart copy, otherwise
         # do a regular copy object.
@@ -163,6 +184,7 @@ class CopySubmissionTask(SubmissionTask):
                 request_executor,
                 transfer_future,
                 preserved_metadata,
+                source_version_id=source_version_id,
             )
 
     def _submit_copy_request(
@@ -199,9 +221,10 @@ class CopySubmissionTask(SubmissionTask):
         request_executor,
         transfer_future,
         preserved_metadata=None,
+        source_version_id=None,
     ):
         call_args = transfer_future.meta.call_args
-        merged_extra_args = self._merge_preserved_metadata(
+        merged_extra_args = self._apply_preserved_metadata(
             call_args.extra_args, preserved_metadata or {}
         )
 
@@ -293,16 +316,19 @@ class CopySubmissionTask(SubmissionTask):
         complete_multipart_extra_args = self._extra_complete_multipart_args(
             call_args.extra_args
         )
+
         # Submit the request to complete the multipart upload.
         self._transfer_coordinator.submit(
             request_executor,
-            CompleteMultipartUploadTask(
+            CopyCompleteMultipartUploadTask(
                 transfer_coordinator=self._transfer_coordinator,
                 main_kwargs={
                     'client': client,
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': complete_multipart_extra_args,
+                    'call_args': call_args,
+                    'source_version_id': source_version_id,
                 },
                 pending_main_kwargs={
                     'upload_id': create_multipart_future,
@@ -319,15 +345,18 @@ class CopySubmissionTask(SubmissionTask):
                 preserved[field] = head_object_response[field]
         return preserved
 
-    def _merge_preserved_metadata(self, extra_args, preserved_metadata):
-        if not preserved_metadata:
-            return extra_args
+    def _apply_preserved_metadata(self, extra_args, preserved_metadata):
+        # MPU has no native MetadataDirective, handle metadata manually.  REPLACE
+        # means we copy whatever the user provided, anything else means we drop
+        # what the user supplied
         if extra_args.get('MetadataDirective') == 'REPLACE':
             return extra_args
-        merged = dict(extra_args)
-        for field, value in preserved_metadata.items():
-            merged[field] = value
-        return merged
+        result = {
+            k: v for k, v in extra_args.items()
+            if k not in self.PRESERVED_METADATA_FIELDS
+        }
+        result.update(preserved_metadata)
+        return result
 
     def _get_head_object_request_from_copy_source(self, copy_source):
         if isinstance(copy_source, dict):
@@ -355,6 +384,148 @@ class CopySubmissionTask(SubmissionTask):
             # parts.
             return total_transfer_size - (part_index * part_size)
         return part_size
+
+
+class CopyCompleteMultipartUploadTask(CompleteMultipartUploadTask):
+    """CompleteMultipartUpload variant that also applies tags and annotations.
+
+    After the destination object is finalized, copies/applies tags and
+    annotations inline. Errors during apply propagate as task failures.
+    """
+
+    def _main(
+        self,
+        client,
+        bucket,
+        key,
+        upload_id,
+        parts,
+        extra_args,
+        call_args,
+        source_version_id,
+    ):
+        response = client.complete_multipart_upload(
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={'Parts': parts},
+            **extra_args,
+        )
+        dest_etag = response.get('ETag')
+        dest_version_id = response.get('VersionId')
+        self._apply_tags(client, call_args, source_version_id, dest_version_id)
+        self._apply_annotations(
+            client, call_args, source_version_id, dest_version_id, dest_etag
+        )
+
+    def _apply_tags(self, client, call_args, source_version_id, dest_version_id):
+        extra_args = call_args.extra_args
+        directive = extra_args.get('TaggingDirective')
+        if directive not in ('COPY', 'REPLACE'):
+            return
+        if directive == 'COPY':
+            src_kwargs = {
+                'Bucket': call_args.copy_source['Bucket'],
+                'Key': call_args.copy_source['Key'],
+                **get_filtered_dict(
+                    extra_args, CopySubmissionTask.GET_OBJECT_TAGGING_ARGS
+                ),
+            }
+            if source_version_id:
+                src_kwargs['VersionId'] = source_version_id
+            tag_set = call_args.source_client.get_object_tagging(
+                **src_kwargs
+            ).get('TagSet', [])
+        else:  # REPLACE
+            tag_set = [
+                {'Key': k, 'Value': v}
+                for k, v in parse_qsl(
+                    extra_args.get('Tagging', ''),
+                    keep_blank_values=True,
+                )
+            ]
+        if not tag_set:
+            return
+        put_kwargs = {
+            'Bucket': call_args.bucket,
+            'Key': call_args.key,
+            'Tagging': {'TagSet': tag_set},
+            **get_filtered_dict(
+                extra_args, CopySubmissionTask.PUT_OBJECT_TAGGING_ARGS
+            ),
+        }
+        if dest_version_id:
+            put_kwargs['VersionId'] = dest_version_id
+        client.put_object_tagging(**put_kwargs)
+
+    def _apply_annotations(
+        self,
+        client,
+        call_args,
+        source_version_id,
+        dest_version_id,
+        dest_etag,
+    ):
+        # We copy annotations only if COPY is explicitly set by the user.
+        extra_args = call_args.extra_args
+        if extra_args.get('AnnotationDirective') != 'COPY':
+            return
+        src_base = {
+            'Bucket': call_args.copy_source['Bucket'],
+            'Key': call_args.copy_source['Key'],
+        }
+        if source_version_id:
+            src_base['VersionId'] = source_version_id
+        list_kwargs = {
+            **src_base,
+            **get_filtered_dict(
+                extra_args, CopySubmissionTask.LIST_OBJECT_ANNOTATIONS_ARGS
+            ),
+        }
+        get_kwargs_base = {
+            **src_base,
+            **get_filtered_dict(
+                extra_args, CopySubmissionTask.GET_OBJECT_ANNOTATION_ARGS
+            ),
+        }
+        put_passthrough = get_filtered_dict(
+            extra_args, CopySubmissionTask.PUT_OBJECT_ANNOTATION_ARGS
+        )
+        list_response = call_args.source_client.list_object_annotations(
+            **list_kwargs
+        )
+        succeeded = []
+        failed = {}
+        for annotation in list_response.get('Annotations', []):
+            name = annotation['AnnotationName']
+            payload_response = call_args.source_client.get_object_annotation(
+                **get_kwargs_base,
+                AnnotationName=name,
+            )
+            put_kwargs = {
+                'Bucket': call_args.bucket,
+                'Key': call_args.key,
+                'AnnotationName': name,
+                'AnnotationPayload': payload_response['AnnotationPayload'].read(),
+                **put_passthrough,
+            }
+            if dest_version_id:
+                put_kwargs['VersionId'] = dest_version_id
+            if dest_etag:
+                put_kwargs['ObjectIfMatch'] = dest_etag
+            try:
+                client.put_object_annotation(**put_kwargs)
+                succeeded.append(name)
+            except Exception as e:
+                failed[name] = e
+        if failed:
+            raise S3CopyFailedError(
+                f'Failed to copy annotations to '
+                f's3://{call_args.bucket}/{call_args.key}. '
+                f'Succeeded: {succeeded}. '
+                f'Failed: {list(failed.keys())}. '
+                f'Errors: {failed}'
+            )
 
 
 class CopyObjectTask(Task):

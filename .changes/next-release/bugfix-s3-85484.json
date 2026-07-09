@@ -1,0 +1,5 @@
+{
+  "type": "bugfix",
+  "category": "``s3``",
+  "description": "Only pin VersionId if supplied by caller instead of automatically using value from HeadObject response"
+}

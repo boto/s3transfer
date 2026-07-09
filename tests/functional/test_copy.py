@@ -764,7 +764,7 @@ class TestMultipartCopy(BaseCopyTest):
             future.result()
         self.stubber.assert_no_pending_responses()
 
-    def test_mp_copy_tagging_copy_pins_source_version_id(self):
+    def test_mp_copy_tagging_copy_does_not_pin_discovered_version_id(self):
         source_version_id = 'abc123version'
         source_tags = [{'Key': 'env', 'Value': 'prod'}]
         self.stubber.add_response(
@@ -777,6 +777,36 @@ class TestMultipartCopy(BaseCopyTest):
             expected_params={
                 'Bucket': 'mysourcebucket',
                 'Key': 'mysourcekey',
+            },
+        )
+        _, add_copy_kwargs = self._get_expected_params()
+        self.add_successful_copy_responses(**add_copy_kwargs)
+        self.add_get_object_tagging_response(source_tags)
+        self.add_put_object_tagging_response(source_tags)
+        future = self.manager.copy(
+            self.copy_source,
+            self.bucket,
+            self.key,
+            {'TaggingDirective': 'COPY'},
+        )
+        future.result()
+        self.stubber.assert_no_pending_responses()
+
+    def test_mp_copy_tagging_copy_pins_user_supplied_source_version_id(self):
+        source_version_id = 'abc123version'
+        source_tags = [{'Key': 'env', 'Value': 'prod'}]
+        self.copy_source['VersionId'] = source_version_id
+        self.stubber.add_response(
+            'head_object',
+            service_response={
+                'ContentLength': len(self.content),
+                'ETag': self.etag,
+                'VersionId': source_version_id,
+            },
+            expected_params={
+                'Bucket': 'mysourcebucket',
+                'Key': 'mysourcekey',
+                'VersionId': source_version_id,
             },
         )
         _, add_copy_kwargs = self._get_expected_params()

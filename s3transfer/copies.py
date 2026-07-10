@@ -130,8 +130,10 @@ class CopySubmissionTask(SubmissionTask):
             transfer request that tasks are being submitted for
         """
         preserved_metadata = {}
-        source_version_id = None
         call_args = transfer_future.meta.call_args
+        source_version_id = None
+        if isinstance(call_args.copy_source, dict):
+            source_version_id = call_args.copy_source.get('VersionId')
         if (
             transfer_future.meta.size is None
             or transfer_future.meta.etag is None
@@ -166,9 +168,6 @@ class CopySubmissionTask(SubmissionTask):
             # during a multipart copy.
             transfer_future.meta.provide_object_etag(response.get('ETag'))
             preserved_metadata = self._extract_preserved_metadata(response)
-            # Pin the source version so all subsequent reads (tags, annotations)
-            # are consistent with the object from the head call
-            source_version_id = response.get('VersionId')
 
         # If it is greater than threshold do a multipart copy, otherwise
         # do a regular copy object.
@@ -352,7 +351,8 @@ class CopySubmissionTask(SubmissionTask):
         if extra_args.get('MetadataDirective') == 'REPLACE':
             return extra_args
         result = {
-            k: v for k, v in extra_args.items()
+            k: v
+            for k, v in extra_args.items()
             if k not in self.PRESERVED_METADATA_FIELDS
         }
         result.update(preserved_metadata)
@@ -418,7 +418,9 @@ class CopyCompleteMultipartUploadTask(CompleteMultipartUploadTask):
             client, call_args, source_version_id, dest_version_id, dest_etag
         )
 
-    def _apply_tags(self, client, call_args, source_version_id, dest_version_id):
+    def _apply_tags(
+        self, client, call_args, source_version_id, dest_version_id
+    ):
         extra_args = call_args.extra_args
         directive = extra_args.get('TaggingDirective')
         if directive not in ('COPY', 'REPLACE'):
@@ -506,7 +508,9 @@ class CopyCompleteMultipartUploadTask(CompleteMultipartUploadTask):
                 'Bucket': call_args.bucket,
                 'Key': call_args.key,
                 'AnnotationName': name,
-                'AnnotationPayload': payload_response['AnnotationPayload'].read(),
+                'AnnotationPayload': payload_response[
+                    'AnnotationPayload'
+                ].read(),
                 **put_passthrough,
             }
             if dest_version_id:

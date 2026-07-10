@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.19.1
+======
+
+* bugfix:``s3``: Only pin VersionId if supplied by caller instead of automatically using value from HeadObject response
+
+
 0.19.0
 ======
 

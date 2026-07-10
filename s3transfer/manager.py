@@ -462,14 +462,20 @@ class TransferManager:
         # ignored unless the corresponding directive is set to 'REPLACE'. The
         # warning surfaces this so callers don't get blindsided when their
         # input has no effect.
-        if extra_args.get('Metadata') and extra_args.get('MetadataDirective') is None:
+        if (
+            extra_args.get('Metadata')
+            and extra_args.get('MetadataDirective') is None
+        ):
             logger.warning(
                 "Metadata was supplied without a metadata directive. The "
                 "supplied metadata will be ignored and source metadata will "
                 "be preserved. Set the metadata directive to 'REPLACE' to "
                 "apply the supplied metadata."
             )
-        if extra_args.get('Tagging') and extra_args.get('TaggingDirective') is None:
+        if (
+            extra_args.get('Tagging')
+            and extra_args.get('TaggingDirective') is None
+        ):
             logger.warning(
                 "Tagging was supplied without a tagging directive. The "
                 "supplied tagging will be ignored and source tags will be "

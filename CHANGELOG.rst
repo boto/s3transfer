@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.19.2
+======
+
+* bugfix:TLS: Return a configuration error when the CA bundle value (ca_bundle, AWS_CA_BUNDLE, REQUESTS_CA_BUNDLE, or verify) resolves to an empty or whitespace-only string.
+
+
 0.19.1
 ======
 

@@ -441,6 +441,26 @@ class TestTransferCoordinator(unittest.TestCase):
         self.transfer_coordinator.announce_done()
         self.assertEqual(done_callback_invocations, ['done callback called'])
 
+    def test_done_callbacks_on_done_not_running(self):
+        done_callback_invocations = []
+        callback = FunctionContainer(
+            done_callback_invocations.append, 'done callback called'
+        )
+
+        # Add the done callback to the transfer.
+        self.transfer_coordinator.add_done_callback(callback)
+
+        # Announce that the transfer is done. This should invoke the done
+        # callback.
+        self.transfer_coordinator.announce_done(False)
+        self.assertEqual(done_callback_invocations, ['done callback called'])
+
+        # If done is announced again, we should not invoke the callback again
+        # because done has already been announced and thus the callback has
+        # been ran as well.
+        self.transfer_coordinator.announce_done(False)
+        self.assertEqual(done_callback_invocations, ['done callback called'])
+
     def test_failure_cleanups_on_done(self):
         cleanup_invocations = []
         callback = FunctionContainer(
@@ -460,6 +480,23 @@ class TestTransferCoordinator(unittest.TestCase):
         # been ran as well.
         self.transfer_coordinator.announce_done()
         self.assertEqual(cleanup_invocations, ['cleanup called'])
+
+    def test_failure_cleanups_on_done_not_running(self):
+        cleanup_invocations = []
+        callback = FunctionContainer(
+            cleanup_invocations.append, 'cleanup called'
+        )
+
+        # Add the failure cleanup to the transfer.
+        self.transfer_coordinator.add_failure_cleanup(callback)
+
+        # Announce that the transfer is done but not in a running state. This
+        # should not invoke the failure cleanup.
+        self.transfer_coordinator.announce_done(False)
+        self.assertFalse(cleanup_invocations)
+
+        # Make sure failure cleanups were not removed from the list
+        self.assertEqual(len(self.transfer_coordinator.failure_cleanups), 1)
 
 
 class TestBoundedExecutor(unittest.TestCase):

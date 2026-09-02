@@ -1,0 +1,5 @@
+{
+  "description": "Fix issue where a nonmultipart upload closed the file-like object provided by the caller.",
+  "type": "bugfix",
+  "category": "upload"
+}

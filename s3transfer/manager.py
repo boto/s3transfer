@@ -185,6 +185,8 @@ class TransferManager:
         'GrantRead',
         'GrantReadACP',
         'GrantWriteACP',
+        'IfMatch',
+        'IfNoneMatch',
         'Metadata',
         'ObjectLockLegalHoldStatus',
         'ObjectLockMode',

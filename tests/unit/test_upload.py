@@ -156,6 +156,20 @@ class TestInterruptReader(BaseUploadTest):
             reader.seek(1)
             self.assertEqual(reader.tell(), 1)
 
+    def test_close_closes_fileobj(self):
+        with open(self.filename, 'rb') as f:
+            reader = InterruptReader(f, self.transfer_coordinator)
+            reader.close()
+            self.assertTrue(f.closed)
+
+    def test_close_does_not_close_fileobj_when_not_owned(self):
+        with open(self.filename, 'rb') as f:
+            reader = InterruptReader(
+                f, self.transfer_coordinator, close_fileobj=False
+            )
+            reader.close()
+            self.assertFalse(f.closed)
+
 
 class BaseUploadInputManagerTest(BaseUploadTest):
     def setUp(self):
@@ -246,6 +260,28 @@ class TestUploadFilenameInputManager(BaseUploadInputManagerTest):
             self.recording_subscriber.calculate_bytes_seen(), len(self.content)
         )
 
+    def test_put_object_body_close_closes_file_it_opened(self):
+        opened_files = []
+        original_open = self.osutil.open
+
+        def recording_open(filename, mode):
+            fileobj = original_open(filename, mode)
+            opened_files.append(fileobj)
+            return fileobj
+
+        self.osutil.open = recording_open
+        self.future.meta.provide_transfer_size(len(self.content))
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future
+        )
+        with read_file_chunk:
+            read_file_chunk.read()
+        # s3transfer opened these files itself, so it is responsible for
+        # closing them.
+        self.assertTrue(opened_files)
+        for fileobj in opened_files:
+            self.assertTrue(fileobj.closed)
+
     def test_get_put_object_body_is_interruptable(self):
         self.future.meta.provide_transfer_size(len(self.content))
         read_file_chunk = self.upload_input_manager.get_put_object_body(
@@ -327,6 +363,22 @@ class TestUploadSeekableInputManager(TestUploadFilenameInputManager):
     def test_is_compatible_bytes_io(self):
         self.assertTrue(self.upload_input_manager.is_compatible(BytesIO()))
 
+    def test_put_object_body_close_closes_file_it_opened(self):
+        # Unlike the filename case, this manager reads directly from the
+        # file-like object the caller provided. It opens nothing itself, so
+        # it has nothing of its own to close and must leave the caller's
+        # object open.
+        opened_files = []
+        self.osutil.open = lambda *args, **kwargs: opened_files.append(args)
+        self.future.meta.provide_transfer_size(len(self.content))
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future
+        )
+        with read_file_chunk:
+            read_file_chunk.read()
+        self.assertEqual(opened_files, [])
+        self.assertFalse(self.fileobj.closed)
+
     def test_not_compatible_for_non_filelike_obj(self):
         self.assertFalse(self.upload_input_manager.is_compatible(object()))
 
@@ -366,6 +418,21 @@ class TestUploadNonSeekableInputManager(TestUploadFilenameInputManager):
             fileobj=self.fileobj, subscribers=self.subscribers
         )
         self.future = self.get_transfer_future(self.call_args)
+
+    def test_put_object_body_close_closes_file_it_opened(self):
+        # This manager buffers the stream into BytesIO objects of its own and
+        # opens no files, so there is nothing of its own to close and the
+        # caller's stream must be left open.
+        opened_files = []
+        self.osutil.open = lambda *args, **kwargs: opened_files.append(args)
+        self.future.meta.provide_transfer_size(len(self.content))
+        read_file_chunk = self.upload_input_manager.get_put_object_body(
+            self.future
+        )
+        with read_file_chunk:
+            read_file_chunk.read()
+        self.assertEqual(opened_files, [])
+        self.assertFalse(self.fileobj.closed)
 
     def assert_multipart_parts(self):
         """

@@ -698,6 +698,8 @@ class S3Transfer:
         'GrantRead',
         'GrantReadACP',
         'GrantWriteACL',
+        'IfMatch',
+        'IfNoneMatch',
         'Metadata',
         'RequestPayer',
         'ServerSideEncryption',

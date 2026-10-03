@@ -496,6 +496,54 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         self._assert_subscribers_called(future)
 
+    def test_upload_with_full_checksum_and_if_none_match(self):
+        future = self.transfer_manager.upload(
+            self.filename,
+            self.bucket,
+            self.key,
+            {
+                "ChecksumSHA256": "abc123",
+                "IfNoneMatch": "*",
+            },
+            [self.record_subscriber],
+        )
+        future.result()
+
+        callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self._assert_expected_crt_http_request(
+            callargs_kwargs["request"],
+            expected_http_method='PUT',
+            expected_extra_headers={
+                "If-None-Match": "*",
+                "x-amz-checksum-sha256": "abc123",
+            },
+        )
+        self._assert_subscribers_called(future)
+
+    def test_upload_with_full_checksum_and_if_match(self):
+        future = self.transfer_manager.upload(
+            self.filename,
+            self.bucket,
+            self.key,
+            {
+                "ChecksumSHA256": "abc123",
+                "IfMatch": '"etag"',
+            },
+            [self.record_subscriber],
+        )
+        future.result()
+
+        callargs_kwargs = self.s3_crt_client.make_request.call_args[1]
+        self._assert_expected_crt_http_request(
+            callargs_kwargs["request"],
+            expected_http_method='PUT',
+            expected_extra_headers={
+                "If-Match": '"etag"',
+                "x-amz-checksum-sha256": "abc123",
+            },
+        )
+        self._assert_subscribers_called(future)
+
     def test_download(self):
         future = self.transfer_manager.download(
             self.bucket, self.key, self.filename, {}, [self.record_subscriber]

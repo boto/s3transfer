@@ -11,12 +11,15 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 import glob
+import hashlib
 import io
 import os
+from base64 import b64encode
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
+from s3transfer.idempotency import IdempotentUploader
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 from tests import (
@@ -169,6 +172,62 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
             future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
         self._assert_subscribers_called(file_size)
+
+    def test_idempotent_upload_creates_missing_object(self):
+        key = 'idempotent-small.txt'
+        filename = self.files.create_file(
+            key, b'idempotent content', mode='wb'
+        )
+        self.addCleanup(self.delete_object, key)
+
+        with self._create_s3_transfer() as transfer:
+            uploader = IdempotentUploader(self.client, transfer)
+            uploaded = uploader.upload(filename, self.bucket_name, key)
+
+        self.assertTrue(uploaded)
+        response = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=key,
+            ChecksumMode='ENABLED',
+        )
+        expected_checksum = b64encode(
+            hashlib.sha256(b'idempotent content').digest()
+        ).decode('ascii')
+        self.assertEqual(response['ChecksumSHA256'], expected_checksum)
+
+    def test_idempotent_multipart_upload_replaces_changed_object(self):
+        key = 'idempotent-multipart.txt'
+        old_contents = b'old content'
+        old_checksum = b64encode(hashlib.sha256(old_contents).digest()).decode(
+            'ascii'
+        )
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=key,
+            Body=old_contents,
+            ChecksumSHA256=old_checksum,
+        )
+        self.addCleanup(self.delete_object, key)
+        file_size = 20 * 1024 * 1024
+        filename = self.files.create_file_with_size(key, filesize=file_size)
+
+        with self._create_s3_transfer() as transfer:
+            uploader = IdempotentUploader(self.client, transfer)
+            uploaded = uploader.upload(filename, self.bucket_name, key)
+
+        self.assertTrue(uploaded)
+        response = self.client.head_object(
+            Bucket=self.bucket_name,
+            Key=key,
+            ChecksumMode='ENABLED',
+        )
+        checksum = hashlib.sha256()
+        with open(filename, 'rb') as fileobj:
+            for chunk in iter(lambda: fileobj.read(1024 * 1024), b''):
+                checksum.update(chunk)
+        expected_checksum = b64encode(checksum.digest()).decode('ascii')
+        self.assertEqual(response['ChecksumSHA256'], expected_checksum)
+        self.assertEqual(response['ChecksumType'], 'FULL_OBJECT')
 
     def test_upload_file_above_threshold_with_acl(self):
         transfer = self._create_s3_transfer()

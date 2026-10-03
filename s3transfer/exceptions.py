@@ -47,3 +47,13 @@ class FatalError(CancelledError):
 
 class S3ValidationError(Exception):
     pass
+
+
+class S3ObjectChecksumUnavailableError(Exception):
+    """Raised when an S3 object has no comparable full-object checksum."""
+
+    def __init__(self, bucket, key):
+        super().__init__(
+            f'S3 object s3://{bucket}/{key} does not have a comparable '
+            'full-object SHA-256 checksum.'
+        )

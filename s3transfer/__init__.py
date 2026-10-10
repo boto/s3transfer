@@ -275,7 +275,7 @@ class ReadFileChunk:
         return min(max_chunk_size, requested_size)
 
     def read(self, amount=None):
-        if amount is None:
+        if amount is None or amount < 0:
             amount_to_read = self._size - self._amount_read
         else:
             amount_to_read = min(self._size - self._amount_read, amount)

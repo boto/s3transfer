@@ -133,6 +133,25 @@ class TestReadFileChunk(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tempdir)
 
+    def test_read_negative_amount_stays_within_chunk(self):
+        filename = os.path.join(self.tempdir, 'foo')
+        with open(filename, 'wb') as f:
+            f.write(b'beforechunkafter')
+        for amount in (-1, -2):
+            with self.subTest(amount=amount):
+                amounts_seen = []
+                with ReadFileChunk.from_filename(
+                    filename,
+                    start_byte=6,
+                    chunk_size=5,
+                    callback=amounts_seen.append,
+                ) as chunk:
+                    self.assertEqual(chunk.read(2), b'ch')
+                    self.assertEqual(chunk.read(amount), b'unk')
+                    self.assertEqual(chunk.tell(), 5)
+                    self.assertEqual(chunk.read(amount), b'')
+                    self.assertEqual(sum(amounts_seen), 5)
+
     def test_read_entire_chunk(self):
         filename = os.path.join(self.tempdir, 'foo')
         with open(filename, 'wb') as f:

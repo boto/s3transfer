@@ -564,6 +564,20 @@ class TestMultipartUpload(BaseUploadTest):
         self.assert_expected_client_calls_were_correct()
         self.assert_upload_part_bodies_were_correct()
 
+    def test_multipart_upload_with_negative_read_size(self):
+        self.add_create_multipart_response_with_default_expected_params()
+        self.add_upload_part_responses_with_default_expected_params()
+        self.add_complete_multipart_response_with_default_expected_params()
+
+        with mock.patch.object(
+            self, '_stream_body', side_effect=lambda body: body.read(-1)
+        ):
+            future = self.manager.upload(self.filename, self.bucket, self.key)
+            future.result()
+
+        self.assert_expected_client_calls_were_correct()
+        self.assert_upload_part_bodies_were_correct()
+
     def test_limits_in_memory_chunks_for_fileobj(self):
         # Limit the maximum in memory chunks to one but make number of
         # threads more than one. This means that the upload will have to

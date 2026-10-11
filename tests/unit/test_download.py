@@ -18,8 +18,14 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from botocore.config import Config
 
 from s3transfer.bandwidth import BandwidthLimiter
+from s3transfer.checksums import (
+    FullObjectChecksum,
+    FullObjectChecksumCombiner,
+    create_checksum_for_algorithm,
+)
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.download import (
     CompleteDownloadNOOPTask,
@@ -455,14 +461,14 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         for submission in submissions_to_compare:
             self.assertEqual(submission['tag'], tag_value)
 
-    def add_head_object_response(self):
-        self.stubber.add_response(
-            'head_object',
-            {
-                'ContentLength': len(self.content),
-                'ETag': self.etag,
-            },
-        )
+    def add_head_object_response(self, extras=None):
+        service_response = {
+            'ContentLength': len(self.content),
+            'ETag': self.etag,
+        }
+        if extras:
+            service_response.update(extras)
+        self.stubber.add_response('head_object', service_response)
 
     def add_get_responses(self):
         chunksize = self.config.multipart_chunksize
@@ -570,6 +576,89 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         # Make sure no tag to limit that task specifically was not associated
         # to that task submission.
         self.assert_tag_for_get_object(IN_MEMORY_DOWNLOAD_TAG)
+
+    def test_head_object_enables_checksum_mode(self):
+        self.stubber.add_response(
+            'head_object',
+            {'ContentLength': len(self.content), 'ETag': self.etag},
+            expected_params={
+                'Bucket': self.bucket,
+                'Key': self.key,
+                'IfMatch': self.etag,
+                'ChecksumMode': 'ENABLED',
+            },
+        )
+        self.add_get_responses()
+        self.submission_task = self.get_download_submission_task()
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+    def test_head_object_provides_full_object_checksum(self):
+        self.add_head_object_response(
+            extras={
+                'ChecksumCRC32': self._compute_content_crc32_b64(),
+                'ChecksumType': 'FULL_OBJECT',
+            }
+        )
+        self.add_get_responses()
+        self.submission_task = self.get_download_submission_task()
+        self.wait_and_assert_completed_successfully(self.submission_task)
+        self.assertEqual(
+            self.transfer_future.meta.full_object_checksum,
+            FullObjectChecksum('crc32', self._compute_content_crc32_b64()),
+        )
+
+    def test_creates_combiner_when_auto_enabled(self):
+        client_config = Config(response_checksum_validation='when_supported')
+        combiner = self._call_create_checksum_combiner(
+            client_config, FullObjectChecksum('crc32', 'AAAABB==')
+        )
+        self.assertIsNotNone(combiner)
+        self.assertEqual(combiner.algorithm, 'crc32')
+
+    def test_creates_combiner_when_explicitly_enabled(self):
+        self.extra_args['ChecksumMode'] = 'ENABLED'
+        client_config = Config(response_checksum_validation='when_required')
+        combiner = self._call_create_checksum_combiner(
+            client_config, FullObjectChecksum('crc32', 'AAAABB==')
+        )
+        self.assertIsNotNone(combiner)
+        self.assertEqual(combiner.algorithm, 'crc32')
+
+    def test_no_combiner_without_checksum_info(self):
+        client_config = Config(response_checksum_validation='when_supported')
+        self.assertIsNone(self._call_create_checksum_combiner(client_config))
+
+    def test_no_combiner_when_validation_disabled(self):
+        client_config = Config(response_checksum_validation='when_required')
+        self.assertIsNone(
+            self._call_create_checksum_combiner(
+                client_config, FullObjectChecksum('crc32', 'AAAABB==')
+            )
+        )
+
+    def test_no_combiner_for_unsupported_algorithm(self):
+        client_config = Config(response_checksum_validation='when_supported')
+        self.assertIsNone(
+            self._call_create_checksum_combiner(
+                client_config, FullObjectChecksum('sha256', 'AAAABB==')
+            )
+        )
+
+    def _call_create_checksum_combiner(
+        self, client_config, checksum_info=None
+    ):
+        transfer_future = self.get_transfer_future(self.get_call_args())
+        if checksum_info is not None:
+            transfer_future.meta.provide_full_object_checksum(checksum_info)
+        submission_task = self.get_download_submission_task()
+        return submission_task._create_checksum_combiner(
+            client_config, transfer_future, num_parts=3
+        )
+
+    def _compute_content_crc32_b64(self):
+        checksum = create_checksum_for_algorithm('crc32')
+        checksum.update(self.content)
+        return checksum.b64digest()
 
 
 class TestGetObjectTask(BaseTaskTest):
@@ -791,6 +880,52 @@ class TestGetObjectTask(BaseTaskTest):
         # get_object keeps raising a socket error.
         with self.assertRaises(RetriesExceededError):
             self.transfer_coordinator.result()
+
+    def test_checksum_combiner_self_computes_when_body_has_no_checksum(self):
+        self.stubber.add_response(
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
+        )
+        combiner = FullObjectChecksumCombiner('crc32', 1)
+        task = self.get_download_task(checksum_combiner=combiner, part_index=0)
+        task()
+        expected_checksum = create_checksum_for_algorithm('crc32')
+        expected_checksum.update(self.content)
+        self.assertEqual(combiner.combined_b64, expected_checksum.b64digest())
+
+    def test_checksum_combiner_reuses_botocore_checksum(self):
+        botocore_checksum = create_checksum_for_algorithm('crc32')
+        botocore_checksum.update(self.content)
+        body = BytesIO(self.content)
+        body.checksum = botocore_checksum
+
+        self.stubber.add_response(
+            'get_object',
+            service_response={'Body': body},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
+        )
+        combiner = FullObjectChecksumCombiner('crc32', 1)
+        task = self.get_download_task(checksum_combiner=combiner, part_index=0)
+        task()
+        expected_checksum = create_checksum_for_algorithm('crc32')
+        expected_checksum.update(self.content)
+        expected_combiner = FullObjectChecksumCombiner('crc32', 1)
+        expected_combiner.register_part(
+            0, expected_checksum, len(self.content)
+        )
+        self.assertEqual(combiner.combined_b64, expected_combiner.combined_b64)
+
+    def test_no_checksum_computation_without_combiner(self):
+        self.stubber.add_response(
+            'get_object',
+            service_response={'Body': self.stream},
+            expected_params={'Bucket': self.bucket, 'Key': self.key},
+        )
+        task = self.get_download_task()
+        task()
+        self.stubber.assert_no_pending_responses()
+        self.assert_io_writes([(0, self.content)])
 
 
 class TestImmediatelyWriteIOGetObjectTask(TestGetObjectTask):

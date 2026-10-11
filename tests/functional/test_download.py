@@ -16,14 +16,18 @@ import os
 import shutil
 import tempfile
 import time
+import unittest
 from io import BytesIO
 
 from botocore.client import Config
+from botocore.compat import HAS_CRT
 from botocore.exceptions import ClientError
 
+from s3transfer.checksums import FullObjectChecksum
 from s3transfer.compat import SOCKET_ERROR
 from s3transfer.exceptions import (
     RetriesExceededError,
+    S3DownloadChecksumError,
     S3DownloadFailedError,
     S3ValidationError,
 )
@@ -32,6 +36,7 @@ from tests import (
     BaseGeneralInterfaceTest,
     ETagProvider,
     FileSizeProvider,
+    FullObjectChecksumProvider,
     NonSeekableWriter,
     RecordingOSUtils,
     RecordingSubscriber,
@@ -40,6 +45,9 @@ from tests import (
     skip_if_using_serial_implementation,
     skip_if_windows,
 )
+
+# The base64 encoded CRC32 of the ``b'my content'`` test content.
+CRC32_OF_CONTENT = 'AUwfuQ=='
 
 
 class BaseDownloadTest(BaseGeneralInterfaceTest):
@@ -108,10 +116,12 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         # that the stream is done.
         return [{'bytes_transferred': 10}]
 
-    def add_head_object_response(self, expected_params=None):
+    def add_head_object_response(self, expected_params=None, extras=None):
         head_response = self.create_stubbed_responses()[0]
         if expected_params:
             head_response['expected_params'] = expected_params
+        if extras:
+            head_response['service_response'].update(extras)
         self.stubber.add_response(**head_response)
 
     def add_successful_get_object_responses(
@@ -385,7 +395,9 @@ class TestNonRangedDownload(BaseDownloadTest):
             'Key': self.key,
             'RequestPayer': 'requester',
         }
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
         self.add_successful_get_object_responses(expected_params)
         future = self.manager.download(
             self.bucket, self.key, self.filename, self.extra_args
@@ -403,7 +415,9 @@ class TestNonRangedDownload(BaseDownloadTest):
             'Key': self.key,
             'ChecksumMode': 'ENABLED',
         }
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
         self.add_successful_get_object_responses(expected_params)
         future = self.manager.download(
             self.bucket, self.key, self.filename, self.extra_args
@@ -520,7 +534,9 @@ class TestRangedDownload(BaseDownloadTest):
         }
         expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
         stubbed_ranges = ['bytes 0-3/10', 'bytes 4-7/10', 'bytes 8-9/10']
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
         self.add_successful_get_object_responses(
             {**expected_params, 'IfMatch': self.etag},
             expected_ranges,
@@ -544,7 +560,9 @@ class TestRangedDownload(BaseDownloadTest):
             'ChecksumMode': 'ENABLED',
         }
         expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
         self.add_successful_get_object_responses(
             {**expected_params, 'IfMatch': self.etag}, expected_ranges
         )
@@ -566,7 +584,9 @@ class TestRangedDownload(BaseDownloadTest):
         expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
         # Note that the final retrieved range should be `bytes 8-9/10`.
         stubbed_ranges = ['bytes 0-3/10', 'bytes 4-7/10', 'bytes 7-8/10']
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
         self.add_successful_get_object_responses(
             {**expected_params, 'IfMatch': self.etag},
             expected_ranges,
@@ -586,7 +606,9 @@ class TestRangedDownload(BaseDownloadTest):
             'Key': self.key,
         }
         expected_ranges = ['bytes=0-3', 'bytes=4-7']
-        self.add_head_object_response(expected_params)
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'}
+        )
 
         # Add successful GetObject responses for the first 2 requests.
         for i, stubbed_response in enumerate(
@@ -632,7 +654,10 @@ class TestRangedDownload(BaseDownloadTest):
             'service_response': {
                 'ContentLength': len(self.content),
             },
-            'expected_params': expected_params,
+            'expected_params': {
+                **expected_params,
+                'ChecksumMode': 'ENABLED',
+            },
         }
         self.stubber.add_response(**head_object_response)
 
@@ -647,6 +672,139 @@ class TestRangedDownload(BaseDownloadTest):
         future.result()
 
         # Ensure that the contents are correct
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
+    def _stub_full_object_checksum_download(self, checksum_crc32):
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        stubbed_ranges = ['bytes 0-3/10', 'bytes 4-7/10', 'bytes 8-9/10']
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'},
+            extras={
+                'ChecksumCRC32': checksum_crc32,
+                'ChecksumType': 'FULL_OBJECT',
+            },
+        )
+        self.add_successful_get_object_responses(
+            {**expected_params, 'IfMatch': self.etag},
+            expected_ranges,
+            [{'ContentRange': r} for r in stubbed_ranges],
+        )
+
+    def test_ranged_download_full_object_checksum_validation(self):
+        self._stub_full_object_checksum_download(CRC32_OF_CONTENT)
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            self.subscribers,
+        )
+        future.result()
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
+    def test_ranged_download_full_object_checksum_mismatch_raises(self):
+        self._stub_full_object_checksum_download('AAAABB==')
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            self.subscribers,
+        )
+        with self.assertRaises(S3DownloadChecksumError):
+            future.result()
+        self.assertFalse(os.path.exists(self.filename))
+
+    def test_ranged_download_full_object_checksum_from_subscriber(self):
+        # A caller that provides the size and ETag itself skips the
+        # HeadObject, so it can supply the full object checksum directly.
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        self.add_successful_get_object_responses(
+            {**expected_params, 'IfMatch': self.etag}, expected_ranges
+        )
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            [
+                FileSizeProvider(len(self.content)),
+                ETagProvider(self.etag),
+                FullObjectChecksumProvider(
+                    FullObjectChecksum('crc32', 'AAAABB==')
+                ),
+            ],
+        )
+        with self.assertRaises(S3DownloadChecksumError):
+            future.result()
+        self.assertFalse(os.path.exists(self.filename))
+
+    def test_ranged_download_skips_composite_checksum(self):
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        # A composite checksum cannot be validated so the mismatching value
+        # must not fail the download.
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'},
+            extras={
+                'ChecksumCRC32': 'AAAABB==-3',
+                'ChecksumType': 'COMPOSITE',
+            },
+        )
+        self.add_successful_get_object_responses(
+            {**expected_params, 'IfMatch': self.etag}, expected_ranges
+        )
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            self.subscribers,
+        )
+        future.result()
+        with open(self.filename, 'rb') as f:
+            self.assertEqual(self.content, f.read())
+
+    @unittest.skipIf(HAS_CRT, 'awscrt is installed')
+    def test_ranged_download_skips_crc64nvme_without_crt(self):
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+        }
+        expected_ranges = ['bytes=0-3', 'bytes=4-7', 'bytes=8-']
+        # CRC64NVME cannot be calculated without awscrt, so the mismatching
+        # value must not fail the download.
+        self.add_head_object_response(
+            {**expected_params, 'ChecksumMode': 'ENABLED'},
+            extras={
+                'ChecksumCRC64NVME': 'AAAAAAAAAAA=',
+                'ChecksumType': 'FULL_OBJECT',
+            },
+        )
+        self.add_successful_get_object_responses(
+            {**expected_params, 'IfMatch': self.etag}, expected_ranges
+        )
+        future = self.manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            self.extra_args,
+            self.subscribers,
+        )
+        future.result()
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
 
@@ -769,6 +927,60 @@ class TestDownloadResponseChecksumValidationWhenRequired(StubbedClientTest):
 
         with open(self.filename, 'rb') as f:
             self.assertEqual(content, f.read())
+
+    def test_explicit_checksum_mode_validates_full_object_checksum(self):
+        config = TransferConfig(
+            multipart_threshold=1,
+            multipart_chunksize=4,
+            max_request_concurrency=1,
+        )
+        manager = TransferManager(self.client, config)
+        extra_args = {'ChecksumMode': 'ENABLED'}
+        expected_params = {
+            'Bucket': self.bucket,
+            'Key': self.key,
+            'ChecksumMode': 'ENABLED',
+        }
+        self.stubber.add_response(
+            'head_object',
+            {
+                'ContentLength': len(self.content),
+                'ETag': self.etag,
+                'ChecksumCRC32': 'AAAABB==',
+                'ChecksumType': 'FULL_OBJECT',
+            },
+            expected_params,
+        )
+        for start, end, range_header in [
+            (0, 4, 'bytes=0-3'),
+            (4, 8, 'bytes=4-7'),
+            (8, len(self.content), 'bytes=8-'),
+        ]:
+            self.stubber.add_response(
+                'get_object',
+                {
+                    'Body': BytesIO(self.content[start:end]),
+                    'ContentLength': end - start,
+                    'ContentRange': (
+                        f'bytes {start}-{end - 1}/{len(self.content)}'
+                    ),
+                },
+                {
+                    **expected_params,
+                    'Range': range_header,
+                    'IfMatch': self.etag,
+                },
+            )
+
+        future = manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            extra_args=extra_args,
+        )
+        with self.assertRaises(S3DownloadChecksumError):
+            future.result()
+        self.assertFalse(os.path.exists(self.filename))
 
     def test_first_get_uses_ifmatch_when_etag_provided(self):
         # If the caller pre-provides the ETag (e.g. via a subscriber from a

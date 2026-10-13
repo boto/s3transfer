@@ -1,0 +1,70 @@
+---
+name: 🚀 Feature Request
+description: Suggest an idea for this project
+title: "(short issue description)"
+labels: [feature-request, needs-triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, note that s3transfer is not GA. Interfaces may break between minor
+        versions, and the stable, supported surface is the one boto3 exposes. If your request
+        is really about the boto3 API you call, file it on
+        [boto/boto3](https://github.com/boto/boto3/issues) instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the feature
+      description: A clear and concise description of the feature you are proposing.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: |
+        Why do you need this feature? Describe the concrete transfer workload driving it:
+        object sizes, how many transfers, and what you do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: |
+        Suggest how to implement the addition or change. Please include prototype/workaround/sketch/reference implementation.
+      render: python
+    validations:
+      required: false
+  - type: textarea
+    id: other
+    attributes:
+      label: Other Information
+      description: |
+        Any alternative solutions or features you considered, a more detailed explanation, stack traces, related issues, links for context, etc.
+    validations:
+      required: false
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I may be able to implement this feature request
+          required: false
+        - label: This feature might incur a breaking change
+          required: false
+        - label: This would also need a corresponding change in boto3 to be reachable by most users
+          required: false
+  - type: input
+    id: s3transfer-version
+    attributes:
+      label: s3transfer version used
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment details (OS name and version, etc.)
+    validations:
+      required: true

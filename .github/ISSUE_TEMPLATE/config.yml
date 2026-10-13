@@ -1,0 +1,15 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 General Question
+    url: https://github.com/boto/boto3/discussions/categories/q-a
+    about: Please ask and answer usage questions as a discussion thread on boto3
+  - name: 🐍 Issue with a boto3 API
+    url: https://github.com/boto/boto3/issues/new/choose
+    about: For upload_file, download_file, TransferConfig, or anything on the boto3 surface
+  - name: ⚙️ Issue with a plain S3 client call
+    url: https://github.com/boto/botocore/issues/new/choose
+    about: For put_object, get_object, credentials, signing, retries, or endpoints
+  - name: 🔐 Report a security issue
+    url: https://github.com/boto/s3transfer/security/policy
+    about: Please report vulnerabilities to AWS Security, not as a public issue

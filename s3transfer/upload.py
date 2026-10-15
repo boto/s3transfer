@@ -75,11 +75,18 @@ class InterruptReader:
     :type transfer_coordinator: s3transfer.futures.TransferCoordinator
     :param transfer_coordinator: The transfer coordinator to use if the
         reader needs to be interrupted.
+
+    :type close_fileobj: bool
+    :param close_fileobj: Whether closing this reader should also close the
+        underlying file-like object. Set this to False when the underlying
+        object was supplied by the caller instead of being opened by
+        s3transfer, since closing it is then not this reader's to do.
     """
 
-    def __init__(self, fileobj, transfer_coordinator):
+    def __init__(self, fileobj, transfer_coordinator, close_fileobj=True):
         self._fileobj = fileobj
         self._transfer_coordinator = transfer_coordinator
+        self._close_fileobj = close_fileobj
 
     def read(self, amount=None):
         # If there is an exception, then raise the exception.
@@ -98,7 +105,8 @@ class InterruptReader:
         return self._fileobj.tell()
 
     def close(self):
-        self._fileobj.close()
+        if self._close_fileobj:
+            self._fileobj.close()
 
     def __enter__(self):
         return self
@@ -209,8 +217,10 @@ class UploadInputManager:
         """
         raise NotImplementedError('must implement yield_upload_part_bodies()')
 
-    def _wrap_fileobj(self, fileobj):
-        fileobj = InterruptReader(fileobj, self._transfer_coordinator)
+    def _wrap_fileobj(self, fileobj, close_fileobj=True):
+        fileobj = InterruptReader(
+            fileobj, self._transfer_coordinator, close_fileobj=close_fileobj
+        )
         if self._bandwidth_limiter:
             fileobj = self._bandwidth_limiter.get_bandwith_limited_stream(
                 fileobj, self._transfer_coordinator, enabled=False
@@ -232,6 +242,10 @@ class UploadInputManager:
 
 class UploadFilenameInputManager(UploadInputManager):
     """Upload utility for filenames"""
+
+    # PutObject reads from a DeferredOpenFile that this manager opened, so
+    # the wrapper owns that file object and is responsible for closing it.
+    _CLOSE_PUT_OBJECT_FILEOBJ = True
 
     @classmethod
     def is_compatible(cls, upload_source):
@@ -257,7 +271,9 @@ class UploadFilenameInputManager(UploadInputManager):
         # Wrap fileobj with interrupt reader that will quickly cancel
         # uploads if needed instead of having to wait for the socket
         # to completely read all of the data.
-        fileobj = self._wrap_fileobj(fileobj)
+        fileobj = self._wrap_fileobj(
+            fileobj, close_fileobj=self._CLOSE_PUT_OBJECT_FILEOBJ
+        )
 
         callbacks = self._get_progress_callbacks(transfer_future)
         close_callbacks = self._get_close_callbacks(callbacks)
@@ -325,6 +341,12 @@ class UploadFilenameInputManager(UploadInputManager):
 
 class UploadSeekableInputManager(UploadFilenameInputManager):
     """Upload utility for an open file object"""
+
+    # Unlike the filename case, PutObject reads directly from the file object
+    # the caller handed to the transfer manager (see
+    # _get_put_object_fileobj_with_full_size below). s3transfer did not open
+    # it, so s3transfer must not close it.
+    _CLOSE_PUT_OBJECT_FILEOBJ = False
 
     @classmethod
     def is_compatible(cls, upload_source):

@@ -1,0 +1,39 @@
+---
+name: "📕 Documentation Issue"
+description: Report an issue in the documentation
+title: "(short issue description)"
+labels: [documentation, needs-triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        s3transfer has no standalone documentation site. Most user-facing transfer
+        documentation lives in the boto3 guide and API reference, so an issue there is best
+        filed on [boto/boto3](https://github.com/boto/boto3/issues). Use this template for
+        docstrings, the README, or CONTRIBUTING in this repository.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: A clear and concise description of the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: |
+        Include links to the affected page(s), or the path and symbol if the problem is in a
+        docstring in this repository.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: |
+        If you know what the text should say, propose the wording. Please say how you
+        confirmed it, for example by reading the source or by observing the behavior.
+    validations:
+      required: false

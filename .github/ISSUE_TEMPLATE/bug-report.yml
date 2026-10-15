@@ -1,0 +1,147 @@
+---
+name: "🐛 Bug Report"
+description: Report a bug
+title: "(short issue description)"
+labels: [bug, needs-triage]
+assignees: []
+body:
+  - type: checkboxes
+    attributes:
+      label: Checkboxes for prior research
+      options:
+        - label: I've read the [boto3 S3 guide](https://docs.aws.amazon.com/boto3/latest/guide/s3.html)
+            and the [transfer manager reference](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/s3.html).
+          required: true
+        - label: I've searched for [previous similar issues](https://github.com/boto/s3transfer/issues?q=is%3Aissue)
+            and didn't find any solution.
+          required: true
+        - label: I've confirmed the issue is in the transfer manager (`upload_file`, `download_file`,
+            `copy`, multipart, concurrency) rather than in a plain client call. Plain `put_object`
+            or `get_object` issues belong in [boto/botocore](https://github.com/boto/botocore/issues).
+          required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: What is the problem? A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: checkboxes
+    id: regression
+    attributes:
+      label: Regression Issue
+      description: What is a regression? If it worked in a previous version but doesn't in the latest version, it's considered a regression. In this case, please provide specific version numbers in the report.
+      options:
+        - label: Select this option if this issue appears to be a regression.
+          required: false
+  - type: input
+    id: s3transfer-version
+    attributes:
+      label: s3transfer version
+      description: Output of `python -c "import s3transfer; print(s3transfer.__version__)"`
+    validations:
+      required: true
+  - type: input
+    id: boto-version
+    attributes:
+      label: boto3 and botocore versions
+      description: |
+        Output of `python -c "import boto3, botocore; print(boto3.__version__, botocore.__version__)"`.
+        These version independently of s3transfer, so please include both.
+      value: "boto3 x.y.z, botocore x.y.z"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python -V`. Note whether this is a free-threaded (PEP 703) build.
+    validations:
+      required: true
+  - type: dropdown
+    id: entrypoint
+    attributes:
+      label: How are you calling the transfer manager?
+      description: This decides which repo the fix lands in, so please pick the closest match.
+      options:
+        - boto3 client method (client.upload_file / download_file / copy)
+        - boto3 resource method (bucket.upload_file / Object.download_file)
+        - boto3.s3.transfer.TransferManager or S3Transfer directly
+        - s3transfer package directly (not through boto3)
+        - CRT-based transfer manager (s3transfer.crt)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: transfer-config
+    attributes:
+      label: TransferConfig in use
+      description: |
+        Paste the `TransferConfig` you construct, or state that you rely on the defaults.
+        Concurrency and threshold settings change behavior substantially, so the defaults
+        are a meaningful answer rather than a missing one.
+      render: python
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: |
+        Provide a self-contained, concise snippet of code that can be used to reproduce the issue.
+        For more complex issues provide a repo with the smallest sample that reproduces the bug.
+
+        Include the approximate object size and the number of concurrent transfers, since most
+        transfer manager bugs only appear above the multipart threshold or under concurrency.
+
+        Avoid including business logic or unrelated code, it makes diagnosis more difficult.
+        The code sample should be an SSCCE. See http://sscce.org/ for details. In short, please provide a code sample that we can copy/paste, run and reproduce.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed Behavior
+      description: |
+        What actually happened?
+
+        Please include full errors, uncaught exceptions, stack traces, and relevant logs.
+        If a transfer failed partway through, say whether the object was left incomplete and
+        whether an incomplete multipart upload remained in the bucket.
+        Debug logs from `boto3.set_stream_logger('')` are especially useful here.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: |
+        What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Possible Solution
+      description: |
+        Suggest a fix/reason for the bug
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Information/Context
+      description: |
+        Anything else that might be relevant for troubleshooting this bug. Providing context helps us come up with a solution that is most useful in the real world.
+
+        If the transfer targets a non-AWS, S3-compatible endpoint, please say so, and if you can,
+        confirm whether the same code works against Amazon S3.
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment details (OS name and version, etc.)
+    validations:
+      required: true

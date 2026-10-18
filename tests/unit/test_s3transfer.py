@@ -152,6 +152,28 @@ class TestReadFileChunk(unittest.TestCase):
                     self.assertEqual(chunk.read(amount), b'')
                     self.assertEqual(sum(amounts_seen), 5)
 
+    def test_read_after_seek_past_chunk_returns_empty(self):
+        filename = os.path.join(self.tempdir, 'foo')
+        with open(filename, 'wb') as f:
+            f.write(b'beforechunkafter')
+        for amount in (None, -1, -2, 0, 1):
+            with self.subTest(amount=amount):
+                amounts_seen = []
+                with ReadFileChunk.from_filename(
+                    filename,
+                    start_byte=6,
+                    chunk_size=5,
+                    callback=amounts_seen.append,
+                ) as chunk:
+                    chunk.seek(6)
+                    self.assertEqual(chunk.read(amount), b'')
+                    self.assertEqual(chunk.tell(), 6)
+                    self.assertEqual(amounts_seen, [6, 0])
+                    chunk.seek(0)
+                    self.assertEqual(chunk.read(), b'chunk')
+                    self.assertEqual(chunk.tell(), 5)
+                    self.assertEqual(amounts_seen, [6, 0, -6, 5])
+
     def test_read_entire_chunk(self):
         filename = os.path.join(self.tempdir, 'foo')
         with open(filename, 'wb') as f:

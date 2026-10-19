@@ -145,7 +145,7 @@ import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
-__version__ = '0.19.2'
+__version__ = '0.19.3'
 
 
 logger = logging.getLogger(__name__)
@@ -275,10 +275,11 @@ class ReadFileChunk:
         return min(max_chunk_size, requested_size)
 
     def read(self, amount=None):
-        if amount is None:
-            amount_to_read = self._size - self._amount_read
+        amount_left = max(self._size - self._amount_read, 0)
+        if amount is None or amount < 0:
+            amount_to_read = amount_left
         else:
-            amount_to_read = min(self._size - self._amount_read, amount)
+            amount_to_read = min(amount_left, amount)
         data = self._fileobj.read(amount_to_read)
         self._amount_read += len(data)
         if self._callback is not None and self._callback_enabled:

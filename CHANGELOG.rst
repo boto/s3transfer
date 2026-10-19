@@ -2,6 +2,12 @@
 CHANGELOG
 =========
 
+0.19.3
+======
+
+* bugfix:ReadFileChunk: Keep reads with a negative size within the chunk bounds.
+
+
 0.19.2
 ======
 

@@ -1,5 +1,0 @@
-{
-  "type": "bugfix",
-  "category": "ReadFileChunk",
-  "description": "Keep reads with a negative size within the chunk bounds."
-}

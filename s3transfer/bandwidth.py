@@ -148,17 +148,24 @@ class BandwidthLimitedStream:
         if not self._bandwidth_limiting_enabled:
             return self._fileobj.read(amount)
 
+        if self._transfer_coordinator.exception:
+            raise self._transfer_coordinator.exception
+
+        data = self._fileobj.read(amount)
+
         # We do not want to be calling consume on every read as the read
         # amounts can be small causing the lock of the leaky bucket to
         # introduce noticeable overhead. So instead we keep track of
         # how many bytes we have seen and only call consume once we pass a
         # certain threshold.
-        self._bytes_seen += amount
-        if self._bytes_seen < self._bytes_threshold:
-            return self._fileobj.read(amount)
-
-        self._consume_through_leaky_bucket()
-        return self._fileobj.read(amount)
+        self._bytes_seen += len(data)
+        # Flush pending bytes at EOF as download streams may not be closed.
+        if self._bytes_seen and (
+            self._bytes_seen >= self._bytes_threshold
+            or (not data and amount != 0)
+        ):
+            self._consume_through_leaky_bucket()
+        return data
 
     def _consume_through_leaky_bucket(self):
         # NOTE: If the read amount on the stream are high, it will result

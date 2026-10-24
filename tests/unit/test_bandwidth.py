@@ -13,6 +13,7 @@
 import os
 import shutil
 import tempfile
+from io import BytesIO
 
 from s3transfer.bandwidth import (
     BandwidthLimitedStream,
@@ -136,6 +137,54 @@ class TestBandwidthLimitedStream(BaseBandwidthLimitTest):
             self.assert_consume_calls(amts=[len(self.content)])
             self.assert_sleep_calls(amts=[])
 
+    def test_short_read_only_consumes_returned_bytes(self):
+        stream = self.get_bandwidth_limited_stream(BytesIO(b'abc'))
+        self.assertEqual(stream.read(1024), b'abc')
+        self.assert_consume_calls(amts=[3])
+        self.assertEqual(stream.read(1024), b'')
+        self.assert_consume_calls(amts=[3])
+
+    def test_empty_stream_does_not_consume(self):
+        stream = self.get_bandwidth_limited_stream(BytesIO())
+        self.assertEqual(stream.read(1024), b'')
+        stream.close()
+        self.assert_consume_calls(amts=[])
+
+    def test_short_reads_accumulate_until_threshold(self):
+        self.bytes_threshold = 4
+        fileobj = mock.Mock()
+        fileobj.read.side_effect = [b'ab', b'cd', b'e', b'']
+        stream = self.get_bandwidth_limited_stream(fileobj)
+        self.assertEqual(stream.read(1024), b'ab')
+        self.assert_consume_calls(amts=[])
+        self.assertEqual(stream.read(1024), b'cd')
+        self.assert_consume_calls(amts=[4])
+        self.assertEqual(stream.read(1024), b'e')
+        self.assert_consume_calls(amts=[4])
+        self.assertEqual(stream.read(1024), b'')
+        self.assert_consume_calls(amts=[4, 1])
+        stream.close()
+        self.assert_consume_calls(amts=[4, 1])
+
+    def test_zero_read_does_not_flush_pending_bytes(self):
+        self.bytes_threshold = 4
+        stream = self.get_bandwidth_limited_stream(BytesIO(b'abc'))
+        self.assertEqual(stream.read(2), b'ab')
+        self.assertEqual(stream.read(0), b'')
+        self.assert_consume_calls(amts=[])
+        stream.close()
+        self.assert_consume_calls(amts=[2])
+
+    def test_failed_read_does_not_consume(self):
+        self.bytes_threshold = 4
+        fileobj = mock.Mock()
+        fileobj.read.side_effect = OSError('read failed')
+        stream = self.get_bandwidth_limited_stream(fileobj)
+        with self.assertRaisesRegex(OSError, 'read failed'):
+            stream.read(2)
+        stream.close()
+        self.assert_consume_calls(amts=[])
+
     def test_retries_on_request_exceeded(self):
         with open(self.filename, 'rb') as f:
             stream = self.get_bandwidth_limited_stream(f)
@@ -156,6 +205,7 @@ class TestBandwidthLimitedStream(BaseBandwidthLimitTest):
             stream = self.get_bandwidth_limited_stream(f)
             with self.assertRaises(ValueError):
                 stream.read(len(self.content))
+            self.assertEqual(f.tell(), 0)
 
     def test_read_when_bandwidth_limiting_disabled(self):
         with open(self.filename, 'rb') as f:

@@ -37,6 +37,7 @@ from tests import (
     RecordingSubscriber,
     StreamWithError,
     StubbedClientTest,
+    mock,
     skip_if_using_serial_implementation,
     skip_if_windows,
 )
@@ -462,6 +463,36 @@ class TestNonRangedDownload(BaseDownloadTest):
         # Ensure that the contents are correct
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
+
+    def test_bandwidth_limiter_accounts_for_downloaded_bytes(self):
+        self.config = TransferConfig(
+            max_request_concurrency=1, max_bandwidth=1024**3
+        )
+        self._manager = TransferManager(self.client, self.config)
+        bucket = self.manager._bandwidth_limiter._leaky_bucket
+        for size in (
+            0,
+            10,
+            self.config.io_chunksize,
+            self.config.io_chunksize + 10,
+        ):
+            with self.subTest(size=size):
+                self.content = b'a' * size
+                self.stream = BytesIO(self.content)
+                self.add_head_object_response()
+                self.add_successful_get_object_responses()
+                with mock.patch.object(
+                    bucket, 'consume', wraps=bucket.consume
+                ) as consume:
+                    self.manager.download(
+                        self.bucket, self.key, self.filename, self.extra_args
+                    ).result()
+                    self.assertEqual(
+                        sum(call.args[0] for call in consume.call_args_list),
+                        size,
+                    )
+                with open(self.filename, 'rb') as f:
+                    self.assertEqual(f.read(), self.content)
 
 
 class TestRangedDownload(BaseDownloadTest):

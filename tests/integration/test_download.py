@@ -20,6 +20,8 @@ from botocore.client import Config
 
 from s3transfer.manager import TransferConfig, TransferManager
 from tests import (
+    ETagProvider,
+    FileSizeProvider,
     NonSeekableWriter,
     RecordingSubscriber,
     assert_files_equal,
@@ -88,6 +90,51 @@ class TestDownload(BaseTransferManagerIntegTest):
         )
         future.result()
         assert_files_equal(filename, download_path)
+
+    def assert_response_after_download(
+        self, key, filesize, provide_size_and_etag=False
+    ):
+        filename = self.put_object_with_metadata(key, filesize)
+        subscribers = None
+        if provide_size_and_etag:
+            # Skips the HeadObject request on the default download path.
+            etag = self.client.head_object(Bucket=self.bucket_name, Key=key)[
+                'ETag'
+            ]
+            subscribers = [FileSizeProvider(filesize), ETagProvider(etag)]
+        transfer_manager = self.create_transfer_manager(self.config)
+
+        download_path = os.path.join(self.files.rootdir, 'downloaded')
+        future = transfer_manager.download(
+            self.bucket_name, key, download_path, subscribers=subscribers
+        )
+        future.result()
+        assert_files_equal(filename, download_path)
+        self.assert_downloaded_response(future, key)
+
+    def test_response_below_threshold(self):
+        self.assert_response_after_download(
+            'metadata-1mb.txt', filesize=1024 * 1024
+        )
+
+    def test_response_above_threshold(self):
+        self.assert_response_after_download(
+            'metadata-20mb.txt', filesize=20 * 1024 * 1024
+        )
+
+    def test_response_below_threshold_with_size_and_etag(self):
+        self.assert_response_after_download(
+            'provided-1mb.txt',
+            filesize=1024 * 1024,
+            provide_size_and_etag=True,
+        )
+
+    def test_response_above_threshold_with_size_and_etag(self):
+        self.assert_response_after_download(
+            'provided-20mb.txt',
+            filesize=20 * 1024 * 1024,
+            provide_size_and_etag=True,
+        )
 
     @skip_if_using_serial_implementation(
         'Exception is thrown once the transfer is submitted. '

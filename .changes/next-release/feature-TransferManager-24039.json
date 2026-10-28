@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "category": "TransferManager",
+  "description": "Add TransferFuture.meta.response with the S3 response describing the transferred object, such as ETag, VersionId and Expiration for uploads and copies, and Metadata and TagCount for downloads. Supported by the classic and CRT transfer managers."
+}

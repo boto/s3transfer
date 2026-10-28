@@ -207,6 +207,7 @@ class CopySubmissionTask(SubmissionTask):
                     'extra_args': call_args.extra_args,
                     'callbacks': progress_callbacks,
                     'size': transfer_future.meta.size,
+                    'transfer_meta': transfer_future.meta,
                 },
                 is_final=True,
             ),
@@ -328,6 +329,7 @@ class CopySubmissionTask(SubmissionTask):
                     'extra_args': complete_multipart_extra_args,
                     'call_args': call_args,
                     'source_version_id': source_version_id,
+                    'transfer_meta': transfer_future.meta,
                 },
                 pending_main_kwargs={
                     'upload_id': create_multipart_future,
@@ -403,6 +405,7 @@ class CopyCompleteMultipartUploadTask(CompleteMultipartUploadTask):
         extra_args,
         call_args,
         source_version_id,
+        transfer_meta=None,
     ):
         response = client.complete_multipart_upload(
             Bucket=bucket,
@@ -417,6 +420,8 @@ class CopyCompleteMultipartUploadTask(CompleteMultipartUploadTask):
         self._apply_annotations(
             client, call_args, source_version_id, dest_version_id, dest_etag
         )
+        if transfer_meta is not None:
+            transfer_meta._set_response(response)
 
     def _apply_tags(
         self, client, call_args, source_version_id, dest_version_id
@@ -536,7 +541,15 @@ class CopyObjectTask(Task):
     """Task to do a nonmultipart copy"""
 
     def _main(
-        self, client, copy_source, bucket, key, extra_args, callbacks, size
+        self,
+        client,
+        copy_source,
+        bucket,
+        key,
+        extra_args,
+        callbacks,
+        size,
+        transfer_meta=None,
     ):
         """
         :param client: The client to use when calling PutObject
@@ -548,11 +561,20 @@ class CopyObjectTask(Task):
         :param callbacks: List of callbacks to call after copy
         :param size: The size of the transfer. This value is passed into
             the callbacks
+        :param transfer_meta: The TransferMeta to record the response on.
 
         """
-        client.copy_object(
+        response = client.copy_object(
             CopySource=copy_source, Bucket=bucket, Key=key, **extra_args
         )
+        if transfer_meta is not None:
+            # Flatten CopyObjectResult so ETag is at the top level, as it is
+            # for every other transfer type.
+            recorded_response = dict(response)
+            recorded_response.update(
+                recorded_response.pop('CopyObjectResult', {})
+            )
+            transfer_meta._set_response(recorded_response)
         for callback in callbacks:
             callback(bytes_transferred=size)
 

@@ -16,7 +16,11 @@ from threading import Event
 
 from botocore.context import ClientContext, get_context
 
-from s3transfer.futures import BoundedExecutor, TransferCoordinator
+from s3transfer.futures import (
+    BoundedExecutor,
+    TransferCoordinator,
+    TransferMeta,
+)
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.tasks import (
     CompleteMultipartUploadTask,
@@ -847,3 +851,38 @@ class TestCompleteMultipartUploadTask(BaseMultipartTaskTest):
         )
         task()
         self.stubber.assert_no_pending_responses()
+
+    def test_records_response_on_transfer_meta(self):
+        upload_id = 'my-id'
+        parts = [{'ETag': 'etag', 'PartNumber': 0}]
+        transfer_meta = TransferMeta()
+        task = self.get_task(
+            CompleteMultipartUploadTask,
+            main_kwargs={
+                'client': self.client,
+                'bucket': self.bucket,
+                'key': self.key,
+                'upload_id': upload_id,
+                'parts': parts,
+                'extra_args': {},
+                'transfer_meta': transfer_meta,
+            },
+        )
+        self.stubber.add_response(
+            method='complete_multipart_upload',
+            service_response={
+                'ETag': 'myetag-1',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="date", rule-id="rule"',
+            },
+        )
+        task()
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            transfer_meta.response,
+            {
+                'ETag': 'myetag-1',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="date", rule-id="rule"',
+            },
+        )

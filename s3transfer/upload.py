@@ -650,6 +650,7 @@ class UploadSubmissionTask(SubmissionTask):
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': put_object_extra_args,
+                    'transfer_meta': transfer_future.meta,
                 },
                 is_final=True,
             ),
@@ -746,6 +747,7 @@ class UploadSubmissionTask(SubmissionTask):
                     'bucket': call_args.bucket,
                     'key': call_args.key,
                     'extra_args': complete_multipart_extra_args,
+                    'transfer_meta': transfer_future.meta,
                 },
                 pending_main_kwargs={
                     'upload_id': create_multipart_future,
@@ -783,7 +785,9 @@ class UploadSubmissionTask(SubmissionTask):
 class PutObjectTask(Task):
     """Task to do a nonmultipart upload"""
 
-    def _main(self, client, fileobj, bucket, key, extra_args):
+    def _main(
+        self, client, fileobj, bucket, key, extra_args, transfer_meta=None
+    ):
         """
         :param client: The client to use when calling PutObject
         :param fileobj: The file to upload.
@@ -791,9 +795,14 @@ class PutObjectTask(Task):
         :param key: The name of the key to upload to
         :param extra_args: A dictionary of any extra arguments that may be
             used in the upload.
+        :param transfer_meta: The TransferMeta to record the response on.
         """
         with fileobj as body:
-            client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
+            response = client.put_object(
+                Bucket=bucket, Key=key, Body=body, **extra_args
+            )
+        if transfer_meta is not None:
+            transfer_meta._set_response(response)
 
 
 class UploadPartTask(Task):

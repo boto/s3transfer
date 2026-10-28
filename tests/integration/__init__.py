@@ -117,6 +117,39 @@ class BaseTransferManagerIntegTest(unittest.TestCase):
                 Bucket=self.bucket_name, Key=key, **extra_args
             )
 
+    def put_object_with_metadata(self, key, filesize):
+        """Upload an object with user metadata and tags to download"""
+        filename = self.files.create_file_with_size(key, filesize=filesize)
+        with open(filename, 'rb') as f:
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=f,
+                Metadata={'foo': 'bar'},
+                Tagging='a=b&c=d',
+            )
+        self.addCleanup(self.delete_object, key)
+        return filename
+
+    def assert_downloaded_response(self, future, key):
+        recorded_response = future.meta.response
+        head = self.client.head_object(Bucket=self.bucket_name, Key=key)
+        self.assertEqual(recorded_response['Metadata'], {'foo': 'bar'})
+        self.assertEqual(recorded_response['TagCount'], 2)
+        self.assertEqual(recorded_response['ETag'], head['ETag'])
+        self.assertEqual(recorded_response['ServerSideEncryption'], 'AES256')
+        self.assertNotIn('Body', recorded_response)
+        self.assertNotIn('ResponseMetadata', recorded_response)
+
+    def assert_written_response(self, future, key):
+        """Assert the metadata of an uploaded or copied object"""
+        recorded_response = future.meta.response
+        head = self.client.head_object(Bucket=self.bucket_name, Key=key)
+        self.assertEqual(recorded_response['ETag'], head['ETag'])
+        self.assertEqual(recorded_response['ServerSideEncryption'], 'AES256')
+        self.assertNotIn('ResponseMetadata', recorded_response)
+        return recorded_response
+
     def create_transfer_manager(self, config=None):
         return TransferManager(self.client, config=config)
 

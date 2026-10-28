@@ -56,6 +56,40 @@ class TestUpload(BaseTransferManagerIntegTest):
         future.result()
         self.assertTrue(self.object_exists('20mb.txt'))
 
+    def test_response_below_threshold(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+        key = 'metadata-1mb.txt'
+        file = self.get_input_fileobj(size=1024 * 1024, name='1mb.txt')
+        future = transfer_manager.upload(
+            file,
+            self.bucket_name,
+            key,
+            extra_args={'Metadata': {'foo': 'bar'}, 'Tagging': 'a=b'},
+        )
+        self.addCleanup(self.delete_object, key)
+
+        future.result()
+        recorded_response = self.assert_written_response(future, key)
+        # A single PutObject has a plain MD5 ETag.
+        self.assertNotIn('-', recorded_response['ETag'])
+
+    def test_response_above_threshold(self):
+        transfer_manager = self.create_transfer_manager(self.config)
+        key = 'metadata-20mb.txt'
+        file = self.get_input_fileobj(size=20 * 1024 * 1024, name='20mb.txt')
+        future = transfer_manager.upload(
+            file,
+            self.bucket_name,
+            key,
+            extra_args={'Metadata': {'foo': 'bar'}, 'Tagging': 'a=b'},
+        )
+        self.addCleanup(self.delete_object, key)
+
+        future.result()
+        recorded_response = self.assert_written_response(future, key)
+        # A multipart upload ETag ends with the number of parts.
+        self.assertRegex(recorded_response['ETag'], r'-\d+"$')
+
     @skip_if_using_serial_implementation(
         'Exception is thrown once the transfer is submitted. '
         'However for the serial implementation, transfers are performed '

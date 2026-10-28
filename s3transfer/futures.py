@@ -75,6 +75,14 @@ class BaseTransferMeta:
         """A dictionary that requesters can store data in"""
         raise NotImplementedError('user_context')
 
+    @property
+    def response(self):
+        """The S3 response describing the stored object
+
+        ``None`` for transfer managers that do not record it.
+        """
+        return None
+
 
 class TransferFuture(BaseTransferFuture):
     def __init__(self, meta=None, coordinator=None):
@@ -135,6 +143,7 @@ class TransferMeta(BaseTransferMeta):
         self._size = None
         self._user_context = {}
         self._etag = None
+        self._response = None
 
     @property
     def call_args(self):
@@ -161,6 +170,33 @@ class TransferMeta(BaseTransferMeta):
         """The etag of the stored object for validating multipart downloads"""
         return self._etag
 
+    @property
+    def response(self):
+        """The S3 response describing the stored object
+
+        A copy of the parsed response from the request that best describes
+        the object once the transfer succeeds, without ``Body`` and
+        ``ResponseMetadata``. A transfer can make several requests, so this
+        is the response of one of them:
+
+        * Downloads: the GetObject response for single-request downloads.
+          For ranged downloads, the HeadObject response, or the first
+          ranged GetObject response when no HeadObject request is made.
+          Includes fields such as ``ETag``, ``VersionId``, ``Metadata``,
+          ``TagCount`` and ``Expiration``.
+        * Uploads: the PutObject or CompleteMultipartUpload response.
+          Includes fields such as ``ETag``, ``VersionId`` and
+          ``Expiration``. S3 does not return ``Metadata`` or ``TagCount``
+          for uploads.
+        * Copies: the CopyObject response, with the ``CopyObjectResult``
+          members moved to the top level, or the CompleteMultipartUpload
+          response.
+
+        ``None`` until the transfer has made that request, and ``None`` if
+        the transfer fails.
+        """
+        return self._response
+
     def provide_transfer_size(self, size):
         """A method to provide the size of a transfer request
 
@@ -178,6 +214,27 @@ class TransferMeta(BaseTransferMeta):
         the etag as the value to GetObject requests.
         """
         self._etag = etag
+
+    def _set_response(self, response):
+        """A method to record the S3 response describing the object
+
+        Passing ``None`` clears any previously recorded response.
+        """
+        self._response = _filter_response(response)
+
+
+def _filter_response(response):
+    if response is None:
+        return None
+    # Deep copy so nested values such as Metadata are not shared with the
+    # botocore response.
+    return copy.deepcopy(
+        {
+            k: v
+            for k, v in response.items()
+            if k not in ('Body', 'ResponseMetadata')
+        }
+    )
 
 
 class TransferCoordinator:

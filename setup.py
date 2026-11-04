@@ -32,13 +32,12 @@ setup(
     extras_require={
         'crt': 'botocore[crt]>=1.37.4,<2.0a.0',
     },
-    license="Apache License 2.0",
+    license="Apache-2.0",
     python_requires=">= 3.10",
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'Natural Language :: English',
-        'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3 :: Only',

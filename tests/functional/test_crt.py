@@ -268,6 +268,33 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         self._assert_subscribers_called(future)
 
+    def test_upload_does_not_mutate_extra_args(self):
+        extra_args = {
+            'ContentType': 'text/plain',
+            'ChecksumAlgorithm': 'CRC32C',
+        }
+        original_extra_args = extra_args.copy()
+        for _ in range(2):
+            future = self.transfer_manager.upload(
+                self.filename, self.bucket, self.key, extra_args
+            )
+            future.result()
+            self.assertEqual(extra_args, original_extra_args)
+
+    def test_upload_from_stream_does_not_mutate_extra_args(self):
+        extra_args = {
+            'ContentType': 'text/plain',
+            'ChecksumAlgorithm': 'CRC32C',
+        }
+        original_extra_args = extra_args.copy()
+        for _ in range(2):
+            with open(self.filename, 'rb') as f:
+                future = self.transfer_manager.upload(
+                    f, self.bucket, self.key, extra_args
+                )
+                future.result()
+            self.assertEqual(extra_args, original_extra_args)
+
     def test_upload_from_seekable_stream(self):
         with open(self.filename, 'rb') as f:
             future = self.transfer_manager.upload(

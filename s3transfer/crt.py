@@ -278,8 +278,7 @@ class CRTTransferManager:
         return self._submit_transfer("get_object", callargs)
 
     def upload(self, fileobj, bucket, key, extra_args=None, subscribers=None):
-        if extra_args is None:
-            extra_args = {}
+        extra_args = extra_args.copy() if extra_args else {}
         if subscribers is None:
             subscribers = {}
         self._validate_all_known_args(extra_args, self.ALLOWED_UPLOAD_ARGS)

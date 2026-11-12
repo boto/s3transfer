@@ -1,0 +1,5 @@
+{
+  "type": "bugfix",
+  "category": "``crt``",
+  "description": "Copy ``extra_args`` in ``CRTTransferManager.upload()`` so the caller's dict is not modified and can be reused across uploads."
+}

@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-import os
 import re
-
+from pathlib import Path
 from setuptools import find_packages, setup
 
-ROOT = os.path.dirname(__file__)
+ROOT = Path(__file__).parent
 VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
-
 
 requires = [
     'botocore>=1.37.4,<2.0a.0',
@@ -14,7 +12,7 @@ requires = [
 
 
 def get_version():
-    init = open(os.path.join(ROOT, 's3transfer', '__init__.py')).read()
+    init = (ROOT / 's3transfer' / '__init__.py').read_text()
     return VERSION_RE.search(init).group(1)
 
 
@@ -22,7 +20,7 @@ setup(
     name='s3transfer',
     version=get_version(),
     description='An Amazon S3 Transfer Manager',
-    long_description=open('README.rst').read(),
+    long_description=(ROOT / 'README.rst').read_text(),
     author='Amazon Web Services',
     author_email='kyknapp1@gmail.com',
     url='https://github.com/boto/s3transfer',

@@ -339,7 +339,15 @@ class TransferCoordinator:
         logger.debug(
             f"Submitting task {task} to executor {executor} for transfer request: {self.transfer_id}."
         )
-        future = executor.submit(task, tag=tag)
+        try:
+            future = executor.submit(task, tag=tag)
+        except RuntimeError:
+            # We just tried to submit a task to an executor that was shutdown
+            # If that task was the CompleteDownloadNOOPTask, then we had
+            # expected it to call .announce_done(). If that isn't happening,
+            # then we need to call it ourselves
+            self.announce_done()
+            raise
         # Add this created future to the list of associated future just
         # in case it is needed during cleanups.
         self.add_associated_future(future)

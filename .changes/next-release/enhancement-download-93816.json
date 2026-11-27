@@ -1,0 +1,5 @@
+{
+  "type": "enhancement",
+  "category": "Download",
+  "description": "Automatically calculate and validate full object checksums during multipart downloads, when available. The HEAD request now includes ``ChecksumMode='ENABLED'`` to retrieve the stored checksum, and is no longer skipped when ``ChecksumMode='ENABLED'`` is passed in ``ExtraArgs`` on a client configured with ``response_checksum_validation='when_required'``."
+}

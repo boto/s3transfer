@@ -15,7 +15,14 @@ import logging
 import threading
 
 from botocore.exceptions import ClientError
+from botocore.httpchecksum import StreamingChecksumBody
 
+from s3transfer.checksums import (
+    FullObjectChecksumCombiner,
+    create_checksum_for_algorithm,
+    is_full_object_checksum_supported,
+    resolve_full_object_checksum,
+)
 from s3transfer.compat import seekable
 from s3transfer.exceptions import (
     RetriesExceededError,
@@ -359,7 +366,11 @@ class DownloadSubmissionTask(SubmissionTask):
         # Skip the HEAD request only when the caller has explicitly opted out
         # of response checksum validation. Otherwise we need the HEAD to
         # obtain the full-object ETag/size for checksum validation.
-        if client.meta.config.response_checksum_validation == "when_required":
+        checksum_validation_enabled = self._is_checksum_validation_enabled(
+            client.meta.config,
+            transfer_future.meta.call_args.extra_args,
+        )
+        if not checksum_validation_enabled:
             self._submit_first_chunk_request(
                 client,
                 config,
@@ -376,10 +387,13 @@ class DownloadSubmissionTask(SubmissionTask):
             transfer_future.meta.size is None
             or transfer_future.meta.etag is None
         ):
+            # HeadObject has no checksum trait, so request the stored checksum.
+            head_extra_args = dict(transfer_future.meta.call_args.extra_args)
+            head_extra_args.setdefault('ChecksumMode', 'ENABLED')
             response = client.head_object(
                 Bucket=transfer_future.meta.call_args.bucket,
                 Key=transfer_future.meta.call_args.key,
-                **transfer_future.meta.call_args.extra_args,
+                **head_extra_args,
             )
             # If a size was not provided figure out the size for the
             # user.
@@ -389,6 +403,13 @@ class DownloadSubmissionTask(SubmissionTask):
             # Provide an etag to ensure a stored object is not modified
             # during a multipart download.
             transfer_future.meta.provide_object_etag(response.get('ETag'))
+            # Provide the stored full object checksum, if any, so that a
+            # multipart download can validate it once all parts complete.
+            full_object_checksum = resolve_full_object_checksum(response)
+            if full_object_checksum is not None:
+                transfer_future.meta.provide_full_object_checksum(
+                    full_object_checksum
+                )
 
         # If it is greater than threshold do a ranged download, otherwise
         # do a regular GetObject download.
@@ -494,11 +515,27 @@ class DownloadSubmissionTask(SubmissionTask):
         # Get any associated tags for the get object task.
         get_object_tag = download_output_manager.get_download_task_tag()
 
+        checksum_combiner = self._create_checksum_combiner(
+            client.meta.config,
+            transfer_future,
+            num_parts,
+        )
+
         # Callback invoker to submit the final io task once all downloads
         # are complete.
+        finalize_callback = self._get_final_io_task_submission_callback(
+            download_output_manager, io_executor
+        )
+        pre_finalize_callbacks = []
+        if checksum_combiner is not None:
+            pre_finalize_callbacks.append(
+                checksum_combiner.combine_and_validate
+            )
         finalize_download_invoker = CountCallbackInvoker(
-            self._get_final_io_task_submission_callback(
-                download_output_manager, io_executor
+            FunctionContainer(
+                self._finalize_download,
+                pre_finalize_callbacks,
+                finalize_callback,
             )
         )
         for i in range(num_parts):
@@ -529,9 +566,11 @@ class DownloadSubmissionTask(SubmissionTask):
                         'callbacks': progress_callbacks,
                         'max_attempts': config.num_download_attempts,
                         'start_index': i * part_size,
+                        'part_index': i,
                         'download_output_manager': download_output_manager,
                         'io_chunksize': config.io_chunksize,
                         'bandwidth_limiter': bandwidth_limiter,
+                        'checksum_combiner': checksum_combiner,
                     },
                     done_callbacks=[finalize_download_invoker.decrement],
                 ),
@@ -539,12 +578,49 @@ class DownloadSubmissionTask(SubmissionTask):
             )
         finalize_download_invoker.finalize()
 
+    def _finalize_download(self, pre_finalize_callbacks, finalize_callback):
+        for callback in pre_finalize_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                self._transfer_coordinator.set_exception(e)
+                break
+        finalize_callback()
+
     def _get_final_io_task_submission_callback(
         self, download_manager, io_executor
     ):
         final_task = download_manager.get_final_io_task()
         return FunctionContainer(
             self._transfer_coordinator.submit, io_executor, final_task
+        )
+
+    def _create_checksum_combiner(
+        self, client_config, transfer_future, num_parts
+    ):
+        checksum_info = transfer_future.meta.full_object_checksum
+        if checksum_info is None:
+            return None
+        extra_args = transfer_future.meta.call_args.extra_args
+        if not self._is_checksum_validation_enabled(client_config, extra_args):
+            return None
+        if not is_full_object_checksum_supported(checksum_info.algorithm):
+            logger.debug(
+                'Skipping full object checksum validation. The %s algorithm '
+                'is not supported in this environment.',
+                checksum_info.algorithm,
+            )
+            return None
+        return FullObjectChecksumCombiner(
+            algorithm=checksum_info.algorithm,
+            num_parts=num_parts,
+            expected_b64=checksum_info.expected_b64,
+        )
+
+    def _is_checksum_validation_enabled(self, client_config, extra_args):
+        return (
+            client_config.response_checksum_validation == 'when_supported'
+            or extra_args.get('ChecksumMode') == 'ENABLED'
         )
 
     def _calculate_range_param(self, part_size, part_index, num_parts):
@@ -782,7 +858,9 @@ class GetObjectTask(Task):
         download_output_manager,
         io_chunksize,
         start_index=0,
+        part_index=0,
         bandwidth_limiter=None,
+        checksum_combiner=None,
     ):
         """Downloads an object and places content into io queue
 
@@ -799,8 +877,11 @@ class GetObjectTask(Task):
             download stream and queue in the io queue.
         :param start_index: The location in the file to start writing the
             content of the key to.
+        :param part_index: The part number for this ranged download.
         :param bandwidth_limiter: The bandwidth limiter to use when throttling
             the downloading of data in streams.
+        :param checksum_combiner: Optional FullObjectChecksumCombiner for
+            full object checksum validation on multipart downloads.
         """
         last_exception = None
         for i in range(max_attempts):
@@ -816,9 +897,25 @@ class GetObjectTask(Task):
                     extra_args.get('Range'),
                     response.get('ContentRange'),
                 )
-                streaming_body = StreamReaderProgress(
-                    response['Body'], callbacks
-                )
+                # When doing full object checksum combining and botocore
+                # hasn't already wrapped the body with a checksum
+                # calculator, wrap it in StreamingChecksumBody ourselves
+                # so the CRC is computed as data is read. We pass
+                # expected=None since we validate at the full object
+                # level, not per-part.
+                body = response['Body']
+                if checksum_combiner is not None and not hasattr(
+                    body, 'checksum'
+                ):
+                    body = StreamingChecksumBody(
+                        body,
+                        response.get('ContentLength'),
+                        create_checksum_for_algorithm(
+                            checksum_combiner.algorithm
+                        ),
+                        expected=None,
+                    )
+                streaming_body = StreamReaderProgress(body, callbacks)
                 if bandwidth_limiter:
                     streaming_body = (
                         bandwidth_limiter.get_bandwith_limited_stream(
@@ -826,12 +923,14 @@ class GetObjectTask(Task):
                         )
                     )
 
+                part_length = 0
                 chunks = DownloadChunkIterator(streaming_body, io_chunksize)
                 for chunk in chunks:
                     # If the transfer is done because of a cancellation
                     # or error somewhere else, stop trying to submit more
                     # data to be written and break out of the download.
                     if not self._transfer_coordinator.done():
+                        part_length += len(chunk)
                         self._handle_io(
                             download_output_manager,
                             fileobj,
@@ -841,6 +940,13 @@ class GetObjectTask(Task):
                         current_index += len(chunk)
                     else:
                         return
+
+                if checksum_combiner is not None:
+                    checksum_combiner.register_part(
+                        part_index,
+                        body.checksum,
+                        part_length,
+                    )
                 return
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code')

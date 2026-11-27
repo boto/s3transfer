@@ -321,6 +321,36 @@ class BaseDownloadTest(BaseGeneralInterfaceTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
 
+    def test_response_is_none_when_download_fails(self):
+        self.add_head_object_response()
+        self.stubber.add_client_error('get_object', 'AccessDenied')
+
+        future = self.manager.download(**self.create_call_kwargs())
+        with self.assertRaises(ClientError):
+            future.result()
+
+        self.assertIsNone(future.meta.response)
+
+    def test_response_from_get_object_when_head_is_skipped(self):
+        for i, get_response in enumerate(self.create_stubbed_responses()[1:]):
+            get_response['service_response'].update(
+                {'ETag': self.etag, 'Metadata': {'part': str(i)}}
+            )
+            self.stubber.add_response(**get_response)
+
+        call_kwargs = self.create_call_kwargs()
+        call_kwargs['subscribers'] = [
+            FileSizeProvider(len(self.content)),
+            ETagProvider(self.etag),
+        ]
+        future = self.manager.download(**call_kwargs)
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+        # Only the first GetObject response is recorded.
+        self.assertEqual(future.meta.response['Metadata'], {'part': '0'})
+        self.assertNotIn('Body', future.meta.response)
+
     def test_uses_provided_osutil(self):
         osutil = RecordingOSUtils()
         # Use the recording os utility for the transfer manager
@@ -463,6 +493,42 @@ class TestNonRangedDownload(BaseDownloadTest):
         with open(self.filename, 'rb') as f:
             self.assertEqual(self.content, f.read())
 
+    def test_response_from_get_object_after_head_object(self):
+        # The single GetObject is not pinned to the HeadObject ETag, so its
+        # response is the one that describes the downloaded bytes.
+        head_response = self.create_stubbed_responses()[0]
+        head_response['service_response'].update(
+            {'VersionId': 'v1', 'Metadata': {'version': '1'}}
+        )
+        self.stubber.add_response(**head_response)
+        self.stubber.add_response(
+            method='get_object',
+            service_response={
+                'Body': BytesIO(self.content),
+                'ContentLength': len(self.content),
+                'ETag': 'newetag',
+                'VersionId': 'v2',
+                'Metadata': {'version': '2'},
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+                'TagCount': 2,
+            },
+        )
+
+        future = self.manager.download(**self.create_call_kwargs())
+        future.result()
+
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ContentLength': len(self.content),
+                'ETag': 'newetag',
+                'VersionId': 'v2',
+                'Metadata': {'version': '2'},
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+                'TagCount': 2,
+            },
+        )
+
 
 class TestRangedDownload(BaseDownloadTest):
     # TODO: If you want to add tests outside of this test class and still
@@ -510,6 +576,32 @@ class TestRangedDownload(BaseDownloadTest):
             {'bytes_transferred': 4},
             {'bytes_transferred': 2},
         ]
+
+    def test_response_from_head_object(self):
+        head_response = self.create_stubbed_responses()[0]
+        head_response['service_response'].update(
+            {
+                'Metadata': {'foo': 'bar'},
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+                'TagCount': 2,
+            }
+        )
+        self.stubber.add_response(**head_response)
+        self.add_successful_get_object_responses()
+
+        future = self.manager.download(**self.create_call_kwargs())
+        future.result()
+
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ContentLength': len(self.content),
+                'ETag': self.etag,
+                'Metadata': {'foo': 'bar'},
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+                'TagCount': 2,
+            },
+        )
 
     def test_download(self):
         self.extra_args['RequestPayer'] = 'requester'
@@ -727,6 +819,40 @@ class TestDownloadResponseChecksumValidationWhenRequired(StubbedClientTest):
             self.assertEqual(b'', f.read())
         self.assertEqual(future.meta.size, 0)
 
+    def test_response_is_none_for_empty_object(self):
+        # The InvalidRange error does not describe the object, so nothing
+        # should be recorded rather than a placeholder response.
+        self.stubber.add_client_error(
+            method='get_object',
+            service_error_code='InvalidRange',
+            service_message='The requested range is not satisfiable',
+        )
+
+        future = self.manager.download(self.bucket, self.key, self.filename)
+        future.result()
+
+        self.assertIsNone(future.meta.response)
+
+    def test_response_is_none_when_later_part_fails(self):
+        chunk_size = self.config.multipart_chunksize
+        total_size = chunk_size * 2
+        self.stubber.add_response(
+            method='get_object',
+            service_response={
+                'Body': BytesIO(b'x' * chunk_size),
+                'ContentRange': f'bytes 0-{chunk_size - 1}/{total_size}',
+                'ETag': self.etag,
+                'Metadata': {'foo': 'bar'},
+            },
+        )
+        self.stubber.add_client_error('get_object', 'AccessDenied')
+
+        future = self.manager.download(self.bucket, self.key, self.filename)
+        with self.assertRaises(ClientError):
+            future.result()
+
+        self.assertIsNone(future.meta.response)
+
     def test_multipart_download_schedules_remaining_chunks(self):
         # Object larger than a single chunk should trigger scheduling of
         # additional ranged GETs from _schedule_remaining_chunks, each
@@ -769,6 +895,66 @@ class TestDownloadResponseChecksumValidationWhenRequired(StubbedClientTest):
 
         with open(self.filename, 'rb') as f:
             self.assertEqual(content, f.read())
+
+    def test_response_from_first_get_for_single_chunk(self):
+        self.stubber.add_response(
+            method='get_object',
+            service_response={
+                'Body': BytesIO(self.content),
+                'ContentRange': f'bytes 0-{len(self.content) - 1}/{len(self.content)}',
+                'ETag': self.etag,
+                'Metadata': {'foo': 'bar'},
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+                'TagCount': 2,
+            },
+        )
+
+        future = self.manager.download(self.bucket, self.key, self.filename)
+        future.result()
+
+        recorded_response = future.meta.response
+        self.assertEqual(recorded_response['Metadata'], {'foo': 'bar'})
+        self.assertEqual(
+            recorded_response['Expiration'],
+            'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+        )
+        self.assertEqual(recorded_response['TagCount'], 2)
+        self.assertNotIn('Body', recorded_response)
+
+    def test_response_from_first_get_for_multipart(self):
+        chunk_size = self.config.multipart_chunksize
+        total_size = chunk_size * 2 + 7
+        content = b'x' * total_size
+        self.stubber.add_response(
+            method='get_object',
+            service_response={
+                'Body': BytesIO(content[:chunk_size]),
+                'ContentRange': f'bytes 0-{chunk_size - 1}/{total_size}',
+                'ETag': self.etag,
+                'Metadata': {'part': '0'},
+            },
+        )
+        for i in (1, 2):
+            start = i * chunk_size
+            end = min(start + chunk_size, total_size)
+            self.stubber.add_response(
+                method='get_object',
+                service_response={
+                    'Body': BytesIO(content[start:end]),
+                    'Metadata': {'part': str(i)},
+                },
+            )
+
+        future = self.manager.download(self.bucket, self.key, self.filename)
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+        # Later ranged GETs must not overwrite the first response.
+        self.assertEqual(future.meta.response['Metadata'], {'part': '0'})
+        self.assertEqual(
+            future.meta.response['ContentRange'],
+            f'bytes 0-{chunk_size - 1}/{total_size}',
+        )
 
     def test_first_get_uses_ifmatch_when_etag_provided(self):
         # If the caller pre-provides the ETag (e.g. via a subscriber from a

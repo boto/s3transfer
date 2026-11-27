@@ -18,6 +18,7 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from botocore.config import Config
 
 from s3transfer.bandwidth import BandwidthLimiter
 from s3transfer.compat import SOCKET_ERROR
@@ -38,8 +39,12 @@ from s3transfer.download import (
     IOStreamingWriteTask,
     IOWriteTask,
 )
-from s3transfer.exceptions import RetriesExceededError
-from s3transfer.futures import IN_MEMORY_DOWNLOAD_TAG, BoundedExecutor
+from s3transfer.exceptions import RetriesExceededError, S3ValidationError
+from s3transfer.futures import (
+    IN_MEMORY_DOWNLOAD_TAG,
+    BoundedExecutor,
+    TransferMeta,
+)
 from s3transfer.utils import CallArgs, OSUtils
 from tests import (
     BaseSubmissionTaskTest,
@@ -571,6 +576,106 @@ class TestDownloadSubmissionTask(BaseSubmissionTaskTest):
         # to that task submission.
         self.assert_tag_for_get_object(IN_MEMORY_DOWNLOAD_TAG)
 
+    def add_head_object_response_with_metadata(self):
+        self.stubber.add_response(
+            'head_object',
+            {
+                'ContentLength': len(self.content),
+                'ETag': self.etag,
+                'Metadata': {'source': 'head'},
+            },
+        )
+
+    def add_get_responses_with_metadata(self):
+        # Each GET reports a distinct metadata value so the tests can
+        # assert which response was recorded.
+        chunksize = self.config.multipart_chunksize
+        for i in range(0, len(self.content), chunksize):
+            self.stubber.add_response(
+                'get_object',
+                {
+                    'Body': BytesIO(self.content[i : i + chunksize]),
+                    'ETag': self.etag,
+                    'Metadata': {'source': f'get-{i}'},
+                },
+            )
+
+    def provide_size_and_etag(self):
+        self.transfer_future.meta.provide_transfer_size(len(self.content))
+        self.transfer_future.meta.provide_object_etag(self.etag)
+
+    def test_records_get_object_response_over_head_object(self):
+        # A single GetObject is not pinned to the HeadObject ETag, so its
+        # response is the one that describes the downloaded bytes.
+        self.add_head_object_response_with_metadata()
+        self.add_get_responses_with_metadata()
+
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        self.assertEqual(
+            self.transfer_future.meta.response,
+            {'ETag': self.etag, 'Metadata': {'source': 'get-0'}},
+        )
+
+    def test_records_head_object_response_for_ranged_get(self):
+        self.configure_for_ranged_get()
+        self.add_head_object_response_with_metadata()
+        self.add_get_responses_with_metadata()
+
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        self.assertEqual(
+            self.transfer_future.meta.response['Metadata'],
+            {'source': 'head'},
+        )
+
+    def test_records_get_object_response_when_head_is_skipped(self):
+        self.provide_size_and_etag()
+        self.add_get_responses_with_metadata()
+
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        recorded_response = self.transfer_future.meta.response
+        self.assertEqual(recorded_response['Metadata'], {'source': 'get-0'})
+        self.assertEqual(recorded_response['ETag'], self.etag)
+        self.assertNotIn('Body', recorded_response)
+
+    def test_records_first_chunk_response_without_head_object(self):
+        self.reset_stubber_with_new_client(
+            {'config': Config(response_checksum_validation='when_required')}
+        )
+        self.submission_main_kwargs['client'] = self.client
+        self.stubber.add_response(
+            'get_object',
+            {
+                'Body': BytesIO(self.content),
+                'ContentRange': f'bytes 0-{len(self.content) - 1}/'
+                f'{len(self.content)}',
+                'ETag': self.etag,
+                'Metadata': {'source': 'get-0'},
+            },
+        )
+
+        self.submission_task = self.get_download_submission_task()
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        recorded_response = self.transfer_future.meta.response
+        self.assertEqual(recorded_response['Metadata'], {'source': 'get-0'})
+        self.assertNotIn('Body', recorded_response)
+
+    def test_records_first_ranged_get_response_when_head_is_skipped(self):
+        self.configure_for_ranged_get()
+        self.provide_size_and_etag()
+        self.add_get_responses_with_metadata()
+
+        self.wait_and_assert_completed_successfully(self.submission_task)
+
+        # Only the first part's response is recorded.
+        self.assertEqual(
+            self.transfer_future.meta.response['Metadata'],
+            {'source': 'get-0'},
+        )
+
 
 class TestGetObjectTask(BaseTaskTest):
     def setUp(self):
@@ -624,6 +729,25 @@ class TestGetObjectTask(BaseTaskTest):
 
         self.stubber.assert_no_pending_responses()
         self.assert_io_writes([(0, self.content)])
+
+    def test_records_response_on_transfer_meta(self):
+        transfer_meta = TransferMeta()
+        self.stubber.add_response(
+            'get_object',
+            service_response={
+                'Body': self.stream,
+                'ETag': 'myetag',
+                'Metadata': {'foo': 'bar'},
+                'TagCount': 2,
+            },
+        )
+        task = self.get_download_task(transfer_meta=transfer_meta)
+        task()
+
+        self.assertEqual(
+            transfer_meta.response,
+            {'ETag': 'myetag', 'Metadata': {'foo': 'bar'}, 'TagCount': 2},
+        )
 
     def test_extra_args(self):
         self.stubber.add_response(
@@ -707,6 +831,47 @@ class TestGetObjectTask(BaseTaskTest):
         # the io queue.
         self.stubber.assert_no_pending_responses()
         self.assert_io_writes([(0, self.content)])
+
+    def test_records_response_of_successful_retry(self):
+        transfer_meta = TransferMeta()
+        self.stubber.add_response(
+            'get_object',
+            service_response={
+                'Body': StreamWithError(self.stream, SOCKET_ERROR),
+                'Metadata': {'attempt': '1'},
+            },
+        )
+        self.stubber.add_response(
+            'get_object',
+            service_response={
+                'Body': BytesIO(self.content),
+                'Metadata': {'attempt': '2'},
+            },
+        )
+        task = self.get_download_task(transfer_meta=transfer_meta)
+        task()
+
+        self.assertEqual(
+            transfer_meta.response, {'Metadata': {'attempt': '2'}}
+        )
+
+    def test_does_not_record_response_that_fails_validation(self):
+        transfer_meta = TransferMeta()
+        self.stubber.add_response(
+            'get_object',
+            service_response={
+                'Body': self.stream,
+                'ContentRange': 'bytes 5-9/10',
+            },
+        )
+        self.extra_args['Range'] = 'bytes=0-4'
+        task = self.get_download_task(transfer_meta=transfer_meta)
+        task()
+
+        self.assertIsInstance(
+            self.transfer_coordinator.exception, S3ValidationError
+        )
+        self.assertIsNone(transfer_meta.response)
 
     def test_retries_failure(self):
         for _ in range(self.max_attempts):

@@ -165,6 +165,31 @@ class TestNonMultipartUpload(BaseUploadTest):
     def assert_put_object_body_was_correct(self):
         self.assertEqual(self.sent_bodies, [self.content])
 
+    def test_response_from_put_object(self):
+        self.stubber.add_response(
+            method='put_object',
+            service_response={
+                'ETag': 'myetag',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+        self.extra_args['Metadata'] = {'foo': 'bar'}
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        self.assertIsNone(future.meta.response)
+        future.result()
+
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': 'myetag',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'
         self.add_put_object_response_with_default_expected_params(
@@ -493,6 +518,34 @@ class TestMultipartUpload(BaseUploadTest):
         response = self.create_stubbed_responses()[-1]
         response['expected_params'] = expected_params
         self.stubber.add_response(**response)
+
+    def test_response_from_complete_multipart_upload(self):
+        responses = self.create_stubbed_responses()
+        # CreateMultipartUpload and UploadPart responses describe the upload
+        # and its parts, not the object, so they must not be recorded.
+        responses[0]['service_response']['AbortRuleId'] = 'abort-rule'
+        responses[-1]['service_response'] = {
+            'ETag': 'myetag-3',
+            'VersionId': 'myversion',
+            'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+        }
+        for response in responses:
+            self.stubber.add_response(**response)
+
+        future = self.manager.upload(
+            self.filename, self.bucket, self.key, self.extra_args
+        )
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': 'myetag-3',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
 
     def test_upload(self):
         self.extra_args['RequestPayer'] = 'requester'

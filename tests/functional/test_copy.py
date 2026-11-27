@@ -208,6 +208,41 @@ class TestNonMultipartCopy(BaseCopyTest):
         future.result()
         self.stubber.assert_no_pending_responses()
 
+    def test_response_from_copy_object(self):
+        last_modified = datetime.datetime(
+            2026, 1, 1, tzinfo=datetime.timezone.utc
+        )
+        head_response = self.create_stubbed_responses()[0]
+        head_response['service_response']['Metadata'] = {'from': 'source'}
+        self.stubber.add_response(**head_response)
+        self.stubber.add_response(
+            method='copy_object',
+            service_response={
+                'CopyObjectResult': {
+                    'ETag': 'destetag',
+                    'LastModified': last_modified,
+                },
+                'VersionId': 'destversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
+        future = self.manager.copy(**self.create_call_kwargs())
+        future.result()
+
+        # The source HeadObject is not recorded, and the CopyObjectResult
+        # members are flattened so ETag is at the top level for every
+        # transfer type.
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': 'destetag',
+                'LastModified': last_modified,
+                'VersionId': 'destversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
     def test_copy_with_checksum(self):
         self.extra_args['ChecksumAlgorithm'] = 'crc32'
         expected_head_params = {
@@ -689,6 +724,42 @@ class TestMultipartCopy(BaseCopyTest):
         future = self.manager.copy(**call_kwargs)
         future.result()
         self.stubber.assert_no_pending_responses()
+
+    def test_response_from_complete_multipart_upload(self):
+        responses = self.create_stubbed_responses()
+        responses[0]['service_response']['Metadata'] = {'from': 'source'}
+        responses[-1]['service_response'] = {
+            'ETag': 'destetag-3',
+            'VersionId': 'destversion',
+            'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+        }
+        for response in responses:
+            self.stubber.add_response(**response)
+
+        future = self.manager.copy(**self.create_call_kwargs())
+        future.result()
+
+        self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': 'destetag-3',
+                'VersionId': 'destversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
+    def test_response_is_none_when_copy_fails(self):
+        self.add_head_object_response()
+        self.add_create_multipart_upload_response()
+        self.stubber.add_client_error('upload_part_copy', 'ArbitraryFailure')
+        self.stubber.add_response('abort_multipart_upload', {})
+
+        future = self.manager.copy(**self.create_call_kwargs())
+        with self.assertRaises(ClientError):
+            future.result()
+
+        self.assertIsNone(future.meta.response)
 
     def test_abort_on_failure(self):
         # First add the head object and create multipart upload

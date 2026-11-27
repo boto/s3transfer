@@ -23,6 +23,7 @@ from s3transfer.exceptions import (
 )
 from s3transfer.futures import (
     BaseExecutor,
+    BaseTransferMeta,
     BoundedExecutor,
     ExecutorFuture,
     NonThreadedExecutor,
@@ -145,6 +146,11 @@ class TestTransferFuture(unittest.TestCase):
             self.future.result()
 
 
+class TestBaseTransferMeta(unittest.TestCase):
+    def test_response_defaults_to_none(self):
+        self.assertIsNone(BaseTransferMeta().response)
+
+
 class TestTransferMeta(unittest.TestCase):
     def setUp(self):
         self.transfer_meta = TransferMeta()
@@ -167,6 +173,45 @@ class TestTransferMeta(unittest.TestCase):
     def test_user_context(self):
         self.transfer_meta.user_context['foo'] = 'bar'
         self.assertEqual(self.transfer_meta.user_context, {'foo': 'bar'})
+
+    def test_response(self):
+        self.assertIsNone(self.transfer_meta.response)
+        self.transfer_meta._set_response(
+            {
+                'Body': object(),
+                'ResponseMetadata': {'HTTPStatusCode': 200},
+                'ETag': 'myetag',
+                'Metadata': {'foo': 'bar'},
+                'Expiration': 'expiry-date="date", rule-id="rule"',
+                'TagCount': 1,
+            }
+        )
+        self.assertEqual(
+            self.transfer_meta.response,
+            {
+                'ETag': 'myetag',
+                'Metadata': {'foo': 'bar'},
+                'Expiration': 'expiry-date="date", rule-id="rule"',
+                'TagCount': 1,
+            },
+        )
+
+    def test_response_is_a_deep_copy(self):
+        response = {'ETag': 'myetag', 'Metadata': {'foo': 'bar'}}
+        self.transfer_meta._set_response(response)
+        response['Metadata']['foo'] = 'changed'
+        self.transfer_meta.response['Metadata']['new'] = 'value'
+
+        self.assertEqual(
+            self.transfer_meta.response['Metadata'],
+            {'foo': 'bar', 'new': 'value'},
+        )
+        self.assertEqual(response['Metadata'], {'foo': 'changed'})
+
+    def test_response_can_be_cleared(self):
+        self.transfer_meta._set_response({'ETag': 'myetag'})
+        self.transfer_meta._set_response(None)
+        self.assertIsNone(self.transfer_meta.response)
 
 
 class TestTransferCoordinator(unittest.TestCase):

@@ -170,6 +170,54 @@ class TestCRTS3Transfers(BaseTransferManagerIntegTest):
         self.assertTrue(self.object_exists('20mb.txt'))
         self._assert_subscribers_called(file_size)
 
+    def assert_response_after_crt_upload(self, key, filesize):
+        filename = self.files.create_file_with_size(key, filesize=filesize)
+        self.addCleanup(self.delete_object, key)
+        with self._create_s3_transfer() as transfer:
+            future = transfer.upload(
+                filename,
+                self.bucket_name,
+                key,
+                extra_args={'Metadata': {'foo': 'bar'}},
+            )
+            future.result()
+        return self.assert_written_response(future, key)
+
+    def test_response_upload_below_multipart_chunksize(self):
+        recorded_response = self.assert_response_after_crt_upload(
+            'metadata-1mb.txt', filesize=1024 * 1024
+        )
+        self.assertNotIn('-', recorded_response['ETag'])
+
+    def test_response_upload_above_multipart_chunksize(self):
+        recorded_response = self.assert_response_after_crt_upload(
+            'metadata-20mb.txt', filesize=20 * 1024 * 1024
+        )
+        # The CompleteMultipartUpload ETag ends with the number of parts.
+        self.assertRegex(recorded_response['ETag'], r'-\d+"$')
+
+    def assert_response_after_crt_download(self, key, filesize):
+        filename = self.put_object_with_metadata(key, filesize)
+        download_path = os.path.join(self.files.rootdir, 'downloaded')
+        with self._create_s3_transfer() as transfer:
+            future = transfer.download(self.bucket_name, key, download_path)
+            future.result()
+        assert_files_equal(filename, download_path)
+        self.assert_downloaded_response(future, key)
+        return future.meta.response
+
+    def test_response_download_below_multipart_chunksize(self):
+        self.assert_response_after_crt_download(
+            'metadata-1mb.txt', filesize=1024 * 1024
+        )
+
+    def test_response_download_above_multipart_chunksize(self):
+        recorded_response = self.assert_response_after_crt_download(
+            'metadata-20mb.txt', filesize=20 * 1024 * 1024
+        )
+        # CRT reports the headers of the whole object for ranged downloads.
+        self.assertEqual(recorded_response['ContentLength'], 20 * 1024 * 1024)
+
     def test_upload_file_above_threshold_with_acl(self):
         transfer = self._create_s3_transfer()
         file_size = 6 * 1024 * 1024

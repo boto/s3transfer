@@ -19,7 +19,7 @@ from io import BytesIO
 
 from botocore.stub import ANY
 
-from s3transfer.futures import IN_MEMORY_UPLOAD_TAG
+from s3transfer.futures import IN_MEMORY_UPLOAD_TAG, TransferMeta
 from s3transfer.manager import TransferConfig
 from s3transfer.upload import (
     AggregatedProgressCallback,
@@ -655,6 +655,39 @@ class TestPutObjectTask(BaseUploadTest):
             task()
             self.stubber.assert_no_pending_responses()
             self.assertEqual(self.sent_bodies, [self.content])
+
+    def test_records_response_on_transfer_meta(self):
+        transfer_meta = TransferMeta()
+        with open(self.filename, 'rb') as fileobj:
+            task = self.get_task(
+                PutObjectTask,
+                main_kwargs={
+                    'client': self.client,
+                    'fileobj': fileobj,
+                    'bucket': self.bucket,
+                    'key': self.key,
+                    'extra_args': {},
+                    'transfer_meta': transfer_meta,
+                },
+            )
+            self.stubber.add_response(
+                method='put_object',
+                service_response={
+                    'ETag': 'myetag',
+                    'VersionId': 'myversion',
+                    'Expiration': 'expiry-date="date", rule-id="rule"',
+                },
+            )
+            task()
+            self.stubber.assert_no_pending_responses()
+        self.assertEqual(
+            transfer_meta.response,
+            {
+                'ETag': 'myetag',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="date", rule-id="rule"',
+            },
+        )
 
 
 class TestUploadPartTask(BaseUploadTest):

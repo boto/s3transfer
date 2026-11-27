@@ -105,6 +105,8 @@ class TestCRTTransferManager(unittest.TestCase):
             crt_request_serializer=self.request_serializer,
         )
         self.record_subscriber = RecordingSubscriber()
+        self.response_status_code = 200
+        self.response_headers = []
 
     def tearDown(self):
         self.files.remove_all()
@@ -235,6 +237,11 @@ class TestCRTTransferManager(unittest.TestCase):
         on_body_callback(chunk=self.expected_download_content, offset=0)
 
     def _simulate_make_request_side_effect(self, **kwargs):
+        if kwargs.get('on_headers'):
+            kwargs['on_headers'](
+                status_code=self.response_status_code,
+                headers=self.response_headers,
+            )
         if kwargs.get('recv_filepath'):
             self._simulate_file_download(kwargs['recv_filepath'])
         if kwargs.get('on_body'):
@@ -254,6 +261,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'on_headers': mock.ANY,
                 'send_filepath': self.filename,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -268,6 +276,30 @@ class TestCRTTransferManager(unittest.TestCase):
         )
         self._assert_subscribers_called(future)
 
+    def test_upload_records_response(self):
+        self.response_headers = [
+            ('ETag', '"myetag-3"'),
+            ('x-amz-version-id', 'myversion'),
+            (
+                'x-amz-expiration',
+                'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            ),
+            ('x-amz-request-id', 'myrequestid'),
+        ]
+        future = self.transfer_manager.upload(
+            self.filename, self.bucket, self.key, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': '"myetag-3"',
+                'VersionId': 'myversion',
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
     def test_upload_from_seekable_stream(self):
         with open(self.filename, 'rb') as f:
             future = self.transfer_manager.upload(
@@ -281,6 +313,7 @@ class TestCRTTransferManager(unittest.TestCase):
                 {
                     'request': mock.ANY,
                     'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                    'on_headers': mock.ANY,
                     'send_filepath': None,
                     'on_progress': mock.ANY,
                     'on_done': mock.ANY,
@@ -313,6 +346,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'on_headers': mock.ANY,
                 'send_filepath': None,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -347,6 +381,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'on_headers': mock.ANY,
                 'send_filepath': self.filename,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -383,6 +418,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'on_headers': mock.ANY,
                 'send_filepath': self.filename,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -481,6 +517,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.PUT_OBJECT,
+                'on_headers': mock.ANY,
                 'send_filepath': self.filename,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -508,6 +545,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.GET_OBJECT,
+                'on_headers': mock.ANY,
                 'recv_filepath': mock.ANY,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -533,6 +571,103 @@ class TestCRTTransferManager(unittest.TestCase):
             # Check the fake response overwrites the file because of download
             self.assertEqual(f.read(), self.expected_download_content)
 
+    def test_download_records_response(self):
+        self.response_headers = [
+            ('ETag', '"myetag"'),
+            ('Content-Length', '11'),
+            ('x-amz-meta-foo', 'bar'),
+            ('x-amz-tagging-count', '2'),
+            (
+                'x-amz-expiration',
+                'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            ),
+        ]
+        future = self.transfer_manager.download(
+            self.bucket, self.key, self.filename, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self.assertEqual(
+            future.meta.response,
+            {
+                'ETag': '"myetag"',
+                'ContentLength': 11,
+                'Metadata': {'foo': 'bar'},
+                'TagCount': 2,
+                'Expiration': 'expiry-date="Fri, 30 Oct 2026 00:00:00 GMT", rule-id="rule"',
+            },
+        )
+
+    def test_download_does_not_record_error_response_headers(self):
+        self.response_status_code = 404
+        self.response_headers = [('x-amz-request-id', 'myrequestid')]
+        future = self.transfer_manager.download(
+            self.bucket, self.key, self.filename, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self.assertIsNone(future.meta.response)
+
+    def test_download_response_is_none_when_download_fails(self):
+        error = awscrt.exceptions.AwsCrtError(
+            code=0, name='AWS_ERROR_S3_RESPONSE_CHECKSUM_MISMATCH', message=''
+        )
+        self.response_headers = [('ETag', '"myetag"')]
+        self.s3_request.finished_future.result.side_effect = error
+
+        def make_request(**kwargs):
+            kwargs['on_headers'](
+                status_code=200, headers=self.response_headers
+            )
+            kwargs['on_done'](error=error)
+            return self.s3_request
+
+        self.s3_crt_client.make_request.side_effect = make_request
+        seen_by_subscriber = []
+
+        class ResponseSubscriber(BaseSubscriber):
+            def on_done(self, future, **kwargs):
+                seen_by_subscriber.append(future.meta.response)
+
+        future = self.transfer_manager.download(
+            self.bucket,
+            self.key,
+            self.filename,
+            {},
+            [ResponseSubscriber()],
+        )
+        with self.assertRaises(awscrt.exceptions.AwsCrtError):
+            future.result()
+
+        # Subscribers must not see the metadata of a failed transfer.
+        self.assertEqual(seen_by_subscriber, [None])
+        self.assertIsNone(future.meta.response)
+
+    def test_response_is_none_when_result_raises_before_on_done(self):
+        # The CRT future resolves before the on_done callbacks run.
+        error = awscrt.exceptions.AwsCrtError(
+            code=0, name='AWS_ERROR_S3_RESPONSE_CHECKSUM_MISMATCH', message=''
+        )
+        self.s3_request.finished_future.result.side_effect = error
+
+        def make_request(**kwargs):
+            kwargs['on_headers'](
+                status_code=200, headers=[('ETag', '"myetag"')]
+            )
+            return self.s3_request
+
+        self.s3_crt_client.make_request.side_effect = make_request
+        future = self.transfer_manager.download(
+            self.bucket, self.key, self.filename, {}, [self.record_subscriber]
+        )
+        self.assertEqual(
+            future.meta.response, {'ETag': '"myetag"', 'Metadata': {}}
+        )
+        with self.assertRaises(awscrt.exceptions.AwsCrtError):
+            future.result()
+
+        self.assertIsNone(future.meta.response)
+
     def test_download_to_seekable_stream(self):
         with open(self.filename, 'wb') as f:
             future = self.transfer_manager.download(
@@ -546,6 +681,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.GET_OBJECT,
+                'on_headers': mock.ANY,
                 'recv_filepath': None,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -581,6 +717,7 @@ class TestCRTTransferManager(unittest.TestCase):
             {
                 'request': mock.ANY,
                 'type': awscrt.s3.S3RequestType.GET_OBJECT,
+                'on_headers': mock.ANY,
                 'recv_filepath': None,
                 'on_progress': mock.ANY,
                 'on_done': mock.ANY,
@@ -661,6 +798,15 @@ class TestCRTTransferManager(unittest.TestCase):
             expected_content_length=0,
         )
         self._assert_subscribers_called(future)
+
+    def test_delete_does_not_record_response(self):
+        self.response_headers = [('x-amz-version-id', 'myversion')]
+        future = self.transfer_manager.delete(
+            self.bucket, self.key, {}, [self.record_subscriber]
+        )
+        future.result()
+
+        self.assertIsNone(future.meta.response)
 
     def test_delete_throws_error_for_unsupported_arg(self):
         with self.assertRaisesRegex(

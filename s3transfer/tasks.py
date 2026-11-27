@@ -366,7 +366,16 @@ class CreateMultipartUploadTask(Task):
 class CompleteMultipartUploadTask(Task):
     """Task to complete a multipart upload"""
 
-    def _main(self, client, bucket, key, upload_id, parts, extra_args):
+    def _main(
+        self,
+        client,
+        bucket,
+        key,
+        upload_id,
+        parts,
+        extra_args,
+        transfer_meta=None,
+    ):
         """
         :param client: The client to use when calling CompleteMultipartUpload
         :param bucket: The name of the bucket to upload to
@@ -380,11 +389,14 @@ class CompleteMultipartUploadTask(Task):
             ``UploadPartTask.main()``.
         :param extra_args:  A dictionary of any extra arguments that may be
             used in completing the multipart transfer.
+        :param transfer_meta: The TransferMeta to record the response on.
         """
-        client.complete_multipart_upload(
+        response = client.complete_multipart_upload(
             Bucket=bucket,
             Key=key,
             UploadId=upload_id,
             MultipartUpload={'Parts': parts},
             **extra_args,
         )
+        if transfer_meta is not None:
+            transfer_meta._set_response(response)

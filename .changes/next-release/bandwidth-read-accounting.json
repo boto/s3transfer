@@ -1,0 +1,5 @@
+{
+  "category": "BandwidthLimiter",
+  "description": "Account for bytes actually read when limiting bandwidth, without charging for short reads or end-of-stream reads as full chunks.",
+  "type": "bugfix"
+}
